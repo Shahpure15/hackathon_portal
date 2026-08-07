@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Users, Layers, FileText, CheckCircle, Clock, AlertTriangle, LogOut, Info, ShieldAlert, Lock
+  Users, Layers, FileText, CheckCircle, Clock, AlertTriangle, LogOut, Info, ShieldAlert, Lock, Menu
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -27,8 +27,14 @@ const LeaderDashboard = () => {
   const [teamInfo, setTeamInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('team'); // 'team', 'ps', 'settings'
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [viewingPS, setViewingPS] = useState(null);
   const [selectConfirmState, setSelectConfirmState] = useState(null);
+
+  const handleTabClick = (tabName) => {
+    setActiveTab(tabName);
+    setMobileMenuOpen(false);
+  };
   
   // Change password states
   const [oldPassword, setOldPassword] = useState('');
@@ -203,8 +209,37 @@ const LeaderDashboard = () => {
 
   return (
     <div className="dashboard-layout">
+      {/* Mobile Header */}
+      <div className="mobile-header">
+        <button
+          onClick={() => setMobileMenuOpen(true)}
+          className="mobile-menu-toggle"
+          title="Open Menu"
+        >
+          <Menu size={24} />
+        </button>
+        <span style={{ fontWeight: 800, fontSize: '1.25rem' }} className="text-gradient">
+          MIT India Leader
+        </span>
+        <div style={{ width: 44 }}></div>
+      </div>
+
+      {mobileMenuOpen && (
+        <div className="mobile-backdrop" onClick={() => setMobileMenuOpen(false)}></div>
+      )}
+
       {/* Sidebar Navigation */}
-      <div className="sidebar" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'space-between', padding: '24px 0' }}>
+      <div 
+        className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}
+        style={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          height: '100vh', 
+          justifyContent: 'space-between', 
+          padding: '24px 0',
+          transition: 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+        }}
+      >
         <div>
           <div style={{ padding: '0 24px 32px 24px' }}>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800 }} className="text-gradient">
@@ -215,7 +250,7 @@ const LeaderDashboard = () => {
 
           <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '0 12px' }}>
             <button 
-              onClick={() => setActiveTab('team')} 
+              onClick={() => handleTabClick('team')} 
               className={`btn ${activeTab === 'team' ? 'btn-primary' : 'btn-secondary'}`}
               style={{ justifyContent: 'flex-start', padding: '12px 16px', border: 'none', background: activeTab === 'team' ? undefined : 'transparent', width: '100%', cursor: 'pointer', gap: '8px', minHeight: 'auto', height: '44px' }}
             >
@@ -223,7 +258,7 @@ const LeaderDashboard = () => {
               Team Roster
             </button>
             <button 
-              onClick={() => setActiveTab('ps')} 
+              onClick={() => handleTabClick('ps')} 
               className={`btn ${activeTab === 'ps' ? 'btn-primary' : 'btn-secondary'}`}
               style={{ justifyContent: 'flex-start', padding: '12px 16px', border: 'none', background: activeTab === 'ps' ? undefined : 'transparent', width: '100%', cursor: 'pointer', gap: '8px', minHeight: 'auto', height: '44px' }}
             >
@@ -231,7 +266,7 @@ const LeaderDashboard = () => {
               Problem Statement
             </button>
             <button 
-              onClick={() => setActiveTab('settings')} 
+              onClick={() => handleTabClick('settings')} 
               className={`btn ${activeTab === 'settings' ? 'btn-primary' : 'btn-secondary'}`}
               style={{ justifyContent: 'flex-start', padding: '12px 16px', border: 'none', background: activeTab === 'settings' ? undefined : 'transparent', width: '100%', cursor: 'pointer', gap: '8px', minHeight: 'auto', height: '44px' }}
             >

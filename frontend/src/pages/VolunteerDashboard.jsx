@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Users, UserCheck, Search, X, CheckCircle, ChevronLeft, ChevronRight, LogOut, Info, QrCode
+  Users, UserCheck, Search, X, CheckCircle, ChevronLeft, ChevronRight, LogOut, Info, QrCode, Menu
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,6 +12,7 @@ const VolunteerDashboard = () => {
   const { logout } = useAuth();
   const { addToast } = useToast();
 
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [checkpoints, setCheckpoints] = useState([]);
   const [activeCheckpointId, setActiveCheckpointId] = useState('');
 
@@ -125,8 +126,37 @@ const VolunteerDashboard = () => {
 
   return (
     <div className="dashboard-layout">
+      {/* Mobile Header */}
+      <div className="mobile-header">
+        <button
+          onClick={() => setMobileMenuOpen(true)}
+          className="mobile-menu-toggle"
+          title="Open Menu"
+        >
+          <Menu size={24} />
+        </button>
+        <span style={{ fontWeight: 800, fontSize: '1.25rem' }} className="text-gradient">
+          MIT India Volunteer
+        </span>
+        <div style={{ width: 44 }}></div>
+      </div>
+
+      {mobileMenuOpen && (
+        <div className="mobile-backdrop" onClick={() => setMobileMenuOpen(false)}></div>
+      )}
+
       {/* Sidebar Navigation */}
-      <div className="sidebar" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'space-between', padding: '24px 0' }}>
+      <div 
+        className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}
+        style={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          height: '100vh', 
+          justifyContent: 'space-between', 
+          padding: '24px 0',
+          transition: 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+        }}
+      >
         <div>
           <div style={{ padding: '0 24px 32px 24px' }}>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800 }} className="text-gradient">
@@ -136,7 +166,11 @@ const VolunteerDashboard = () => {
           </div>
 
           <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '0 12px' }}>
-            <div className="btn btn-primary" style={{ justifyContent: 'flex-start', padding: '12px 16px', border: 'none', cursor: 'default' }}>
+            <div 
+              onClick={() => setMobileMenuOpen(false)}
+              className="btn btn-primary" 
+              style={{ justifyContent: 'flex-start', padding: '12px 16px', border: 'none', cursor: 'default' }}
+            >
               <UserCheck size={18} />
               Check-in Desk
             </div>
@@ -231,7 +265,7 @@ const VolunteerDashboard = () => {
                 <button 
                   onClick={() => setSelectedTeam(t)} 
                   className="btn btn-secondary"
-                  style={{ padding: '8px 16px', fontSize: '0.8rem', minHeight: 0 }}
+                  style={{ padding: '10px 16px', fontSize: '0.85rem', minHeight: '44px' }}
                 >
                   Verify & Checkin
                 </button>
@@ -303,7 +337,7 @@ const VolunteerDashboard = () => {
                               <button
                                 onClick={() => handleMarkPresent(member.id, member.name)}
                                 className="btn btn-primary"
-                                style={{ minHeight: 0, padding: '8px 16px', fontSize: '0.8rem' }}
+                                style={{ minHeight: '44px', padding: '10px 20px', fontSize: '0.85rem' }}
                               >
                                 Mark Present
                               </button>

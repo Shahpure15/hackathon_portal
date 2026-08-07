@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     JWT_REFRESH_SECRET_KEY: str = "2e84d4b1a43a41cb982e0a295c52c2f0f81d11e8a8d052b0f4a8b7ea8b9c02ff"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    CORS_ALLOWED_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
     ENVIRONMENT: str = "development"
     SENTRY_DSN: str = ""
 

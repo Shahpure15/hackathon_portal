@@ -68,12 +68,13 @@ async def login(
     db.commit()
 
     # Set HTTP-only Cookie for the Refresh Token
+    is_prod = settings.ENVIRONMENT == "production"
     response.set_cookie(
         key="refresh_token",
         value=refresh_token_str,
         httponly=True,
-        secure=settings.ENVIRONMENT == "production",
-        samesite="strict",
+        secure=True if is_prod else False,
+        samesite="none" if is_prod else "lax",
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
     )
 
@@ -124,12 +125,13 @@ async def refresh(
     )
 
     # 4. Set the new refresh token cookie
+    is_prod = settings.ENVIRONMENT == "production"
     response.set_cookie(
         key="refresh_token",
         value=new_refresh,
         httponly=True,
-        secure=settings.ENVIRONMENT == "production",
-        samesite="strict",
+        secure=True if is_prod else False,
+        samesite="none" if is_prod else "lax",
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
     )
 
@@ -156,7 +158,13 @@ async def logout(
             db.commit()
 
     # Clear refresh token cookie
-    response.delete_cookie(key="refresh_token")
+    is_prod = settings.ENVIRONMENT == "production"
+    response.delete_cookie(
+        key="refresh_token",
+        httponly=True,
+        secure=True if is_prod else False,
+        samesite="none" if is_prod else "lax"
+    )
     return {"message": "Logged out successfully"}
 
 

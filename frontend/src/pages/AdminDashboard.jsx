@@ -28,7 +28,13 @@ const formatContact = (contactStr) => {
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('teams');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { addToast } = useToast();
+
+  const handleTabClick = (tabName) => {
+    setActiveTab(tabName);
+    setMobileMenuOpen(false);
+  };
 
   // Shared state: Pods (needed for team filtering & editing)
   const [pods, setPods] = useState([]);
@@ -50,9 +56,28 @@ const AdminDashboard = () => {
 
   return (
     <div className="dashboard-layout">
+      {/* Mobile Header */}
+      <div className="mobile-header">
+        <button
+          onClick={() => setMobileMenuOpen(true)}
+          className="mobile-menu-toggle"
+          title="Open Menu"
+        >
+          <Menu size={24} />
+        </button>
+        <span style={{ fontWeight: 800, fontSize: '1.25rem' }} className="text-gradient">
+          MIT India Admin
+        </span>
+        <div style={{ width: 44 }}></div>
+      </div>
+
+      {mobileMenuOpen && (
+        <div className="mobile-backdrop" onClick={() => setMobileMenuOpen(false)}></div>
+      )}
+
       {/* Sidebar Navigation */}
       <div
-        className="sidebar"
+        className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}
         style={{
           display: 'flex',
           flexDirection: 'column',
@@ -60,7 +85,7 @@ const AdminDashboard = () => {
           justifyContent: 'space-between',
           padding: '24px 0',
           width: sidebarCollapsed ? '80px' : '260px',
-          transition: 'width 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+          transition: 'width 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
           overflow: 'hidden'
         }}
       >
@@ -85,7 +110,7 @@ const AdminDashboard = () => {
 
           <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: sidebarCollapsed ? '0 8px' : '0 12px', transition: 'padding 0.25s' }}>
             <button
-              onClick={() => setActiveTab('teams')}
+              onClick={() => handleTabClick('teams')}
               className={`btn ${activeTab === 'teams' ? 'btn-primary' : 'btn-secondary'}`}
               style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'teams' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px' }}
               title="Teams"
@@ -94,7 +119,7 @@ const AdminDashboard = () => {
               {!sidebarCollapsed && <span style={{ marginLeft: '12px', textTransform: 'none', letterSpacing: 'normal' }}>Teams</span>}
             </button>
             <button
-              onClick={() => setActiveTab('pods')}
+              onClick={() => handleTabClick('pods')}
               className={`btn ${activeTab === 'pods' ? 'btn-primary' : 'btn-secondary'}`}
               style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'pods' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px' }}
               title="POD Groups"
@@ -103,7 +128,7 @@ const AdminDashboard = () => {
               {!sidebarCollapsed && <span style={{ marginLeft: '12px', textTransform: 'none', letterSpacing: 'normal' }}>POD Groups</span>}
             </button>
             <button
-              onClick={() => setActiveTab('volunteers')}
+              onClick={() => handleTabClick('volunteers')}
               className={`btn ${activeTab === 'volunteers' ? 'btn-primary' : 'btn-secondary'}`}
               style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'volunteers' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px' }}
               title="Volunteers"
@@ -112,7 +137,7 @@ const AdminDashboard = () => {
               {!sidebarCollapsed && <span style={{ marginLeft: '12px', textTransform: 'none', letterSpacing: 'normal' }}>Volunteers</span>}
             </button>
             <button
-              onClick={() => setActiveTab('checkpoints')}
+              onClick={() => handleTabClick('checkpoints')}
               className={`btn ${activeTab === 'checkpoints' ? 'btn-primary' : 'btn-secondary'}`}
               style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'checkpoints' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px' }}
               title="Attendance Slots"
@@ -121,7 +146,7 @@ const AdminDashboard = () => {
               {!sidebarCollapsed && <span style={{ marginLeft: '12px', textTransform: 'none', letterSpacing: 'normal' }}>Attendance Slots</span>}
             </button>
             <button
-              onClick={() => setActiveTab('ps')}
+              onClick={() => handleTabClick('ps')}
               className={`btn ${activeTab === 'ps' ? 'btn-primary' : 'btn-secondary'}`}
               style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'ps' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px' }}
               title="Problem Statements"

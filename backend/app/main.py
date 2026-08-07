@@ -7,6 +7,9 @@ from sqlalchemy import text
 from app.config import settings
 from app.database import get_db
 from app.routers import auth, admin, leader, volunteer
+from app.limiter import limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
 
 # Initialize Sentry if DSN is provided
 if settings.SENTRY_DSN:
@@ -22,11 +25,15 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Set up limiter state
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # Configure CORS middleware
-# Note: Allows localhost for local development and can be extended with production URL.
+origins = [origin.strip() for origin in settings.CORS_ALLOWED_ORIGINS.split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Nginx serves and routes proxies, but we keep this open/flexible for API dev testing
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

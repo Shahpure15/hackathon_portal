@@ -1,6 +1,8 @@
 import sys
 import os
 from datetime import datetime, timedelta
+import secrets
+import string
 
 # Add current directory to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -8,6 +10,11 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from app.database import SessionLocal
 from app.models import Event, EventConfig, User, Role, CheckpointType
 from app.auth import get_password_hash
+from app.config import settings
+
+def generate_random_password(length=16):
+    alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 def seed_db():
     db = SessionLocal()
@@ -39,7 +46,13 @@ def seed_db():
 
         # 3. Create Default Admin User
         admin_username = "admin"
-        admin_password = "AdminPassword123!"
+        admin_password = os.environ.get("ADMIN_SEED_PASSWORD")
+        if not admin_password:
+            if settings.ENVIRONMENT == "development":
+                admin_password = "AdminPassword123!"
+            else:
+                admin_password = generate_random_password()
+
         admin = User(
             eventId=event.id,
             username=admin_username,
@@ -50,7 +63,13 @@ def seed_db():
 
         # 4. Create Default Volunteer User
         volunteer_username = "volunteer"
-        volunteer_password = "VolunteerPassword123!"
+        volunteer_password = os.environ.get("VOLUNTEER_SEED_PASSWORD")
+        if not volunteer_password:
+            if settings.ENVIRONMENT == "development":
+                volunteer_password = "VolunteerPassword123!"
+            else:
+                volunteer_password = generate_random_password()
+
         volunteer = User(
             eventId=event.id,
             username=volunteer_username,

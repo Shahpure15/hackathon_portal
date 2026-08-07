@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from typing import Dict, Any, List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models import Role, Team, TeamMember, ProblemStatement, PSSelection, EventConfig, Volunteer
 from app.auth import require_role, CurrentUser
 from app.schemas import ProblemStatementResponse
+from app.limiter import limiter
 
 router = APIRouter(prefix="/leader", tags=["leader"])
 
@@ -119,7 +120,9 @@ async def get_problem_statements_for_leaders(
     ]
 
 @router.post("/select-ps")
+@limiter.limit("5/minute; 1/second")
 async def select_problem_statement(
+    request: Request,
     payload: Dict[str, Any],
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.LEADER))
