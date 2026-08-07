@@ -6,6 +6,12 @@ import {
 } from 'lucide-react';
 import api from '../services/api';
 import { useToast } from '../contexts/ToastContext';
+import DataTable from '../components/DataTable';
+import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
+import CredentialDialog from '../components/CredentialDialog';
+import DateTimePicker from '../components/DateTimePicker';
+import useTableQuery from '../components/useTableQuery';
 
 const formatContact = (contactStr) => {
   if (!contactStr) return { email: '', phone: '' };
@@ -163,34 +169,30 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
   const { addToast } = useToast();
   const [teams, setTeams] = useState([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(false);
 
-  // Filters
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [podFilter, setPodFilter] = useState('');
-  const [hasPodFilter, setHasPodFilter] = useState('');
-  const [hasPsFilter, setHasPsFilter] = useState('');
+  const {
+    page,
+    setPage,
+    search,
+    setSearch,
+    filters,
+    onFilterChange,
+    clearFilters
+  } = useTableQuery('', 'asc', 'teams');
 
   // Modals Control
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [showImportModal, setShowImportModal] = useState(false);
 
-  // Debounced search
+  // Debounced fetch when search, filters or page changes
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
-      setPage(1);
       fetchTeams();
-    }, 300); // 300ms debounce
+    }, 300);
     return () => clearTimeout(delayDebounceFn);
-  }, [search, statusFilter, podFilter, hasPodFilter, hasPsFilter]);
-
-  // Fetch when page changes
-  useEffect(() => {
-    fetchTeams();
-  }, [page]);
+  }, [search, filters, page]);
 
   const fetchTeams = async () => {
     setLoading(true);
@@ -198,10 +200,10 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
       const res = await api.get('/admin/teams', {
         params: {
           search: search || undefined,
-          status: statusFilter || undefined,
-          podId: podFilter || undefined,
-          hasPod: hasPodFilter === '' ? undefined : hasPodFilter === 'true',
-          hasPs: hasPsFilter === '' ? undefined : hasPsFilter === 'true',
+          status: filters.status || undefined,
+          podId: filters.podId || undefined,
+          hasPod: filters.hasPod === '' || filters.hasPod === undefined ? undefined : filters.hasPod === 'true',
+          hasPs: filters.hasPs === '' || filters.hasPs === undefined ? undefined : filters.hasPs === 'true',
           page,
           limit: 10
         }
@@ -214,15 +216,6 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleClearFilters = () => {
-    setSearch('');
-    setStatusFilter('');
-    setPodFilter('');
-    setHasPodFilter('');
-    setHasPsFilter('');
-    setPage(1);
   };
 
   const handleExport = () => {
@@ -272,8 +265,8 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
 
           <div style={{ flex: 1, minWidth: '150px' }}>
             <select 
-              value={statusFilter} 
-              onChange={(e) => setStatusFilter(e.target.value)} 
+              value={filters.status || ''} 
+              onChange={(e) => onFilterChange('status', e.target.value)} 
               className="form-input" 
               style={{ width: '100%', padding: '10px' }}
             >
@@ -287,8 +280,8 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
 
           <div style={{ flex: 1, minWidth: '150px' }}>
             <select 
-              value={podFilter} 
-              onChange={(e) => setPodFilter(e.target.value)} 
+              value={filters.podId || ''} 
+              onChange={(e) => onFilterChange('podId', e.target.value)} 
               className="form-input" 
               style={{ width: '100%', padding: '10px' }}
             >
@@ -303,8 +296,8 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', borderTop: '1px solid var(--border-light)', paddingTop: '16px' }}>
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
             <select 
-              value={hasPodFilter} 
-              onChange={(e) => setHasPodFilter(e.target.value)} 
+              value={filters.hasPod || ''} 
+              onChange={(e) => onFilterChange('hasPod', e.target.value)} 
               className="form-input" 
               style={{ width: '180px', padding: '8px 12px', fontSize: '0.85rem' }}
             >
@@ -314,8 +307,8 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
             </select>
 
             <select 
-              value={hasPsFilter} 
-              onChange={(e) => setHasPsFilter(e.target.value)} 
+              value={filters.hasPs || ''} 
+              onChange={(e) => onFilterChange('hasPs', e.target.value)} 
               className="form-input" 
               style={{ width: '200px', padding: '8px 12px', fontSize: '0.85rem' }}
             >
@@ -325,10 +318,10 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
             </select>
           </div>
 
-          {(search || statusFilter || podFilter || hasPodFilter || hasPsFilter) && (
+          {(search || filters.status || filters.podId || filters.hasPod || filters.hasPs) && (
             <button 
               type="button" 
-              onClick={handleClearFilters} 
+              onClick={clearFilters} 
               className="btn btn-secondary"
               style={{ padding: '6px 12px', minHeight: 'auto', fontSize: '0.8rem' }}
             >
@@ -338,139 +331,94 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
         </div>
       </div>
 
-      {/* Top Pagination Row & Stats */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
-        <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-          Found <strong style={{ color: 'var(--text)' }}>{total}</strong> teams matching filters.
-          {pages > 1 && ` Showing page ${page} of ${pages}.`}
-        </div>
-        
-        {pages > 1 && (
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <button
-              onClick={() => setPage((p) => Math.max(p - 1, 1))}
-              disabled={page === 1}
-              className="btn btn-secondary"
-              style={{ padding: '6px 10px', minHeight: 'auto' }}
-            >
-              <ChevronLeft size={14} />
-            </button>
-            <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Page {page} / {pages}</span>
-            <button
-              onClick={() => setPage((p) => Math.min(p + 1, pages))}
-              disabled={page === pages}
-              className="btn btn-secondary"
-              style={{ padding: '6px 10px', minHeight: 'auto' }}
-            >
-              <ChevronRight size={14} />
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Table listing */}
-      <div className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
-        {loading ? (
-          <div style={{ padding: '60px', textAlign: 'center' }}>
-            <span className="spinner" style={{ width: '40px', height: '40px', margin: '0 auto' }}></span>
-            <p style={{ marginTop: '16px', color: 'var(--text-secondary)' }}>Loading roster data...</p>
-          </div>
-        ) : teams.length === 0 ? (
-          <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
+      <DataTable
+        columns={[
+          {
+            header: 'Team Info',
+            accessor: 'name',
+            render: (t) => (
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '1rem' }}>{t.name}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Code: <strong style={{ color: 'var(--text-secondary)' }}>{t.registrationId}</strong> | {t.collegeName}
+                </div>
+              </div>
+            )
+          },
+          {
+            header: 'Leader Contact',
+            accessor: 'leaderName',
+            render: (t) => (
+              <div>
+                <div style={{ fontWeight: 500 }}>{t.leaderName}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>{t.leaderEmail}</div>
+              </div>
+            )
+          },
+          {
+            header: 'POD Group',
+            accessor: 'podName',
+            render: (t) => (
+              t.podName ? (
+                <span style={{ fontSize: '0.85rem', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary)', padding: '4px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                  {t.podName}
+                </span>
+              ) : (
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Unassigned</span>
+              )
+            )
+          },
+          {
+            header: 'Problem Statement',
+            accessor: 'selectedPsCode',
+            render: (t) => (
+              t.selectedPsCode ? (
+                <span style={{ fontSize: '0.85rem', color: 'var(--accent-blue)', fontWeight: 600 }}>
+                  {t.selectedPsCode}
+                </span>
+              ) : (
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>None locked</span>
+              )
+            )
+          },
+          {
+            header: 'Status',
+            accessor: 'status',
+            render: (t) => (
+              <span className={`status-badge status-${t.status.toLowerCase()}`}>
+                {t.status}
+              </span>
+            )
+          },
+          {
+            header: '',
+            align: 'right',
+            width: '80px',
+            render: (t) => (
+              <button
+                onClick={() => setSelectedTeam(t)}
+                className="btn btn-secondary"
+                style={{ padding: '8px', borderRadius: '8px' }}
+                title="Edit Team"
+              >
+                <Edit2 size={14} />
+              </button>
+            )
+          }
+        ]}
+        data={teams}
+        page={page}
+        pages={pages}
+        totalCount={total}
+        onPageChange={setPage}
+        loading={loading}
+        emptyState={
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
             <Users size={32} style={{ marginBottom: '12px' }} />
             <p>No teams match your criteria.</p>
           </div>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--border-light)', background: 'rgba(255,255,255,0.01)' }}>
-                <th style={{ padding: '16px 24px', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Team Info</th>
-                <th style={{ padding: '16px 24px', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Leader Contact</th>
-                <th style={{ padding: '16px 24px', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>POD Group</th>
-                <th style={{ padding: '16px 24px', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Problem Statement</th>
-                <th style={{ padding: '16px 24px', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Status</th>
-                <th style={{ padding: '16px 24px', width: '80px' }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {teams.map((t) => (
-                <tr key={t.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                  <td style={{ padding: '20px 24px' }}>
-                    <div style={{ fontWeight: 600, fontSize: '1rem' }}>{t.name}</div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                      Code: <strong style={{ color: 'var(--text-secondary)' }}>{t.registrationId}</strong> | {t.collegeName}
-                    </div>
-                  </td>
-                  <td style={{ padding: '20px 24px' }}>
-                    <div style={{ fontWeight: 500 }}>{t.leaderName}</div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>{t.leaderEmail}</div>
-                  </td>
-                  <td style={{ padding: '20px 24px' }}>
-                    {t.podName ? (
-                      <span style={{ fontSize: '0.85rem', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary)', padding: '4px 8px', borderRadius: '6px', fontWeight: 600 }}>
-                        {t.podName}
-                      </span>
-                    ) : (
-                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Unassigned</span>
-                    )}
-                  </td>
-                  <td style={{ padding: '20px 24px' }}>
-                    {t.selectedPsCode ? (
-                      <span style={{ fontSize: '0.85rem', color: 'var(--accent-blue)', fontWeight: 600 }}>
-                        {t.selectedPsCode}
-                      </span>
-                    ) : (
-                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>None locked</span>
-                    )}
-                  </td>
-                  <td style={{ padding: '20px 24px' }}>
-                    <span className={`status-badge status-${t.status.toLowerCase()}`}>
-                      {t.status}
-                    </span>
-                  </td>
-                  <td style={{ padding: '20px 24px', textAlign: 'right' }}>
-                    <button
-                      onClick={() => setSelectedTeam(t)}
-                      className="btn btn-secondary"
-                      style={{ padding: '8px', borderRadius: '8px' }}
-                      title="Edit Team"
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {/* Pagination Controls */}
-      {pages > 1 && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '24px' }}>
-          <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-            Showing page {page} of {pages}
-          </span>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={() => setPage((p) => Math.max(p - 1, 1))}
-              disabled={page === 1}
-              className="btn btn-secondary"
-              style={{ padding: '8px 12px' }}
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <button
-              onClick={() => setPage((p) => Math.min(p + 1, pages))}
-              disabled={page === pages}
-              className="btn btn-secondary"
-              style={{ padding: '8px 12px' }}
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-        </div>
-      )}
+        }
+      />
 
       {/* Team Details Modal */}
       {selectedTeam && (
@@ -1614,23 +1562,38 @@ const PodRosterModal = ({ pod, onClose }) => {
               <h3 style={{ fontSize: '1rem', fontWeight: 600, borderBottom: '1px solid var(--border-light)', paddingBottom: '8px', marginBottom: '12px' }}>
                 Assigned Teams ({teams.length})
               </h3>
-              {teams.length === 0 ? (
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No teams assigned to this POD yet.</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '240px', overflowY: 'auto' }}>
-                  {teams.map(t => (
-                    <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderRadius: '8px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-light)', fontSize: '0.9rem' }}>
+              <DataTable
+                columns={[
+                  {
+                    header: 'Team Info',
+                    accessor: 'name',
+                    render: (t) => (
                       <div>
-                        <span style={{ fontWeight: 600 }}>{t.name}</span>
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginLeft: '8px' }}>({t.registrationId}) — {t.collegeName}</span>
+                        <div style={{ fontWeight: 600 }}>{t.name}</div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '2px' }}>Code: {t.registrationId}</div>
                       </div>
+                    )
+                  },
+                  {
+                    header: 'College',
+                    accessor: 'collegeName',
+                    render: (t) => <span style={{ fontSize: '0.85rem' }}>{t.collegeName}</span>
+                  },
+                  {
+                    header: 'Status',
+                    accessor: 'status',
+                    render: (t) => (
                       <span className={`status-badge status-${t.status.toLowerCase()}`} style={{ fontSize: '0.65rem' }}>
                         {t.status}
                       </span>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    )
+                  }
+                ]}
+                data={teams}
+                loading={loading}
+                hideTopPagination={true}
+                emptyState={<p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No teams assigned to this POD yet.</p>}
+              />
             </div>
           </div>
         )}
@@ -1649,6 +1612,18 @@ const VolunteersView = ({ pods, fetchPodsPool }) => {
   const { addToast } = useToast();
   const [volunteers, setVolunteers] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
+
+  const {
+    page,
+    setPage,
+    search,
+    setSearch,
+    filters,
+    onFilterChange,
+    clearFilters
+  } = useTableQuery('', 'asc', 'vols');
   
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
@@ -1675,14 +1650,27 @@ const VolunteersView = ({ pods, fetchPodsPool }) => {
   }, [showAddModal, showImportModal]);
 
   useEffect(() => {
-    fetchVolunteers();
-  }, []);
+    const delayDebounceFn = setTimeout(() => {
+      fetchVolunteers();
+    }, 300);
+    return () => clearTimeout(delayDebounceFn);
+  }, [search, filters, page]);
 
   const fetchVolunteers = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/admin/volunteers');
-      setVolunteers(res.data || []);
+      const res = await api.get('/admin/volunteers', {
+        params: {
+          search: search || undefined,
+          type: filters.type || undefined,
+          podId: filters.podId || undefined,
+          page,
+          limit: 10
+        }
+      });
+      setVolunteers(res.data.results || []);
+      setTotal(res.data.total);
+      setPages(res.data.pages);
     } catch (err) {
       addToast('Failed to fetch volunteer list', 'error');
     } finally {
@@ -1808,110 +1796,178 @@ const VolunteersView = ({ pods, fetchPodsPool }) => {
         </div>
       </div>
 
-      {/* Roster Listing */}
-      <div className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
-        {loading ? (
-          <div style={{ padding: '40px', textAlign: 'center' }}>
-            <span className="spinner" style={{ width: '32px', height: '32px', margin: '0 auto' }}></span>
+      {/* Search and Filters */}
+      <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', width: '100%' }}>
+          <div style={{ position: 'relative', flex: 2, minWidth: '280px' }}>
+            <Search size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <input
+              type="text"
+              placeholder="Search volunteers by name or contact details..."
+              className="form-input"
+              style={{ paddingLeft: '48px', width: '100%' }}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
-        ) : volunteers.length === 0 ? (
-          <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
+
+          <div style={{ flex: 1, minWidth: '150px' }}>
+            <select 
+              value={filters.type || ''} 
+              onChange={(e) => onFilterChange('type', e.target.value)} 
+              className="form-input" 
+              style={{ width: '100%', padding: '10px' }}
+            >
+              <option value="">All Types</option>
+              <option value="FACULTY">Faculty</option>
+              <option value="STUDENT">Student</option>
+            </select>
+          </div>
+
+          <div style={{ flex: 1, minWidth: '150px' }}>
+            <select 
+              value={filters.podId || ''} 
+              onChange={(e) => onFilterChange('podId', e.target.value)} 
+              className="form-input" 
+              style={{ width: '100%', padding: '10px' }}
+            >
+              <option value="">All PODs</option>
+              {pods.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid var(--border-light)', paddingTop: '16px' }}>
+          {(search || filters.type || filters.podId) && (
+            <button 
+              type="button" 
+              onClick={clearFilters} 
+              className="btn btn-secondary"
+              style={{ padding: '6px 12px', minHeight: 'auto', fontSize: '0.8rem' }}
+            >
+              Clear Filters
+            </button>
+          )}
+        </div>
+      </div>
+
+      <DataTable
+        columns={[
+          {
+            header: 'Volunteer',
+            accessor: 'name',
+            render: (v) => <div style={{ fontWeight: 600 }}>{v.name}</div>
+          },
+          {
+            header: 'Type',
+            accessor: 'type',
+            render: (v) => (
+              <span style={{ fontSize: '0.75rem', background: v.type === 'FACULTY' ? 'rgba(99, 102, 241, 0.1)' : 'rgba(255,255,255,0.04)', color: v.type === 'FACULTY' ? 'var(--primary)' : 'var(--text-secondary)', padding: '3px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                {v.type}
+              </span>
+            )
+          },
+          {
+            header: 'Contact Details',
+            accessor: 'contact',
+            render: (v) => (
+              <div>
+                <div>{formatContact(v.contact).email || v.contact}</div>
+                {formatContact(v.contact).phone && (
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    {formatContact(v.contact).phone}
+                  </div>
+                )}
+              </div>
+            )
+          },
+          {
+            header: 'Assigned POD Group',
+            accessor: 'podId',
+            render: (v) => (
+              <select 
+                value={v.podId || ''} 
+                onChange={(e) => handleUpdatePodInline(v.id, e.target.value)}
+                className="form-input"
+                style={{ padding: '6px 12px', fontSize: '0.85rem', width: '180px' }}
+              >
+                <option value="">Unassigned</option>
+                {pods.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            )
+          },
+          {
+            header: 'Login Access',
+            accessor: 'hasLogin',
+            render: (v) => (
+              v.hasLogin ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--success)' }}>
+                    Username: <code>{v.username}</code>
+                  </span>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button 
+                      onClick={() => handleResetVolunteerPassword(v.id, v.name)}
+                      className="btn btn-secondary"
+                      style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 0, height: 'auto' }}
+                    >
+                      Reset Password
+                    </button>
+                    <button 
+                      onClick={() => handleRevokeVolunteerLogin(v.id, v.name)}
+                      className="btn btn-secondary"
+                      style={{ padding: '4px 8px', fontSize: '0.75rem', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)', minHeight: 0, height: 'auto' }}
+                    >
+                      Revoke Login
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>No Login Account</span>
+                  <button 
+                    onClick={() => handleCreateVolunteerLogin(v.id, v.name)}
+                    className="btn btn-primary"
+                    style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 0, height: 'auto', alignSelf: 'flex-start' }}
+                  >
+                    Enable Login
+                  </button>
+                </div>
+              )
+            )
+          },
+          {
+            header: '',
+            align: 'right',
+            width: '80px',
+            render: (v) => (
+              <button 
+                onClick={() => handleDeleteVolunteer(v.id, v.name)}
+                className="btn btn-secondary" 
+                style={{ padding: '6px 10px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)' }}
+              >
+                ✕
+              </button>
+            )
+          }
+        ]}
+        data={volunteers}
+        page={page}
+        pages={pages}
+        totalCount={total}
+        onPageChange={setPage}
+        loading={loading}
+        emptyState={
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
             <UserCheck size={32} style={{ marginBottom: '12px' }} />
             <p>No volunteers registered yet.</p>
           </div>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--border-light)', background: 'rgba(255,255,255,0.01)' }}>
-                <th style={{ padding: '16px 24px', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Volunteer</th>
-                <th style={{ padding: '16px 24px', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Type</th>
-                <th style={{ padding: '16px 24px', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Contact details</th>
-                <th style={{ padding: '16px 24px', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Assigned POD Group</th>
-                <th style={{ padding: '16px 24px', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Login Access</th>
-                <th style={{ padding: '16px 24px', width: '80px' }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {volunteers.map(v => (
-                <tr key={v.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                  <td style={{ padding: '16px 24px', fontWeight: 600 }}>{v.name}</td>
-                  <td style={{ padding: '16px 24px' }}>
-                    <span style={{ fontSize: '0.75rem', background: v.type === 'FACULTY' ? 'rgba(99, 102, 241, 0.1)' : 'rgba(255,255,255,0.04)', color: v.type === 'FACULTY' ? 'var(--primary)' : 'var(--text-secondary)', padding: '3px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                      {v.type}
-                    </span>
-                  </td>
-                  <td style={{ padding: '16px 24px', color: 'var(--text-secondary)' }}>
-                    <div>{formatContact(v.contact).email || v.contact}</div>
-                    {formatContact(v.contact).phone && (
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        {formatContact(v.contact).phone}
-                      </div>
-                    )}
-                  </td>
-                  <td style={{ padding: '16px 24px' }}>
-                    <select 
-                      value={v.podId || ''} 
-                      onChange={(e) => handleUpdatePodInline(v.id, e.target.value)}
-                      className="form-input"
-                      style={{ padding: '6px 12px', fontSize: '0.85rem', width: '180px' }}
-                    >
-                      <option value="">Unassigned</option>
-                      {pods.map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td style={{ padding: '16px 24px' }}>
-                    {v.hasLogin ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--success)' }}>
-                          Username: <code>{v.username}</code>
-                        </span>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button 
-                            onClick={() => handleResetVolunteerPassword(v.id, v.name)}
-                            className="btn btn-secondary"
-                            style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 0, height: 'auto' }}
-                          >
-                            Reset Password
-                          </button>
-                          <button 
-                            onClick={() => handleRevokeVolunteerLogin(v.id, v.name)}
-                            className="btn btn-secondary"
-                            style={{ padding: '4px 8px', fontSize: '0.75rem', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)', minHeight: 0, height: 'auto' }}
-                          >
-                            Revoke Login
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>No Login Account</span>
-                        <button 
-                          onClick={() => handleCreateVolunteerLogin(v.id, v.name)}
-                          className="btn btn-primary"
-                          style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 0, height: 'auto', alignSelf: 'flex-start' }}
-                        >
-                          Enable Login
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                  <td style={{ padding: '16px 24px', textAlign: 'right' }}>
-                    <button 
-                      onClick={() => handleDeleteVolunteer(v.id, v.name)}
-                      className="btn btn-secondary" 
-                      style={{ padding: '6px 10px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)' }}
-                    >
-                      ✕
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+        }
+      />
 
       {/* Add Volunteer Modal */}
       {showAddModal && createPortal(
@@ -2686,32 +2742,35 @@ const PSTeamsModal = ({ ps, onClose }) => {
           Teams that locked in this Problem Statement.
         </p>
 
-        {loading ? (
-          <div style={{ padding: '40px', textAlign: 'center' }}>
-            <span className="spinner" style={{ width: '32px', height: '32px', margin: '0 auto' }}></span>
-          </div>
-        ) : selections.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)', padding: '20px 0' }}>No teams have selected this problem statement yet.</p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {selections.map((sel, i) => (
-              <div key={sel.teamId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderRadius: '8px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-light)' }}>
+        <DataTable
+          columns={[
+            {
+              header: 'Team Info',
+              accessor: 'teamName',
+              render: (sel) => (
                 <div>
                   <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{sel.teamName}</div>
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                     Code: <strong>{sel.registrationId}</strong> | Leader: {sel.leaderName} ({sel.leaderEmail})
                   </div>
                 </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textAlign: 'right' }}>
-                  Locked At
-                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginTop: '2px' }}>
-                    {new Date(sel.selectedAt).toLocaleTimeString()}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+              )
+            },
+            {
+              header: 'Locked At',
+              accessor: 'selectedAt',
+              render: (sel) => (
+                <span style={{ fontWeight: 600 }}>
+                  {new Date(sel.selectedAt).toLocaleTimeString()}
+                </span>
+              )
+            }
+          ]}
+          data={selections}
+          loading={loading}
+          hideTopPagination={true}
+          emptyState={<p style={{ color: 'var(--text-muted)', padding: '20px 0' }}>No teams have selected this problem statement yet.</p>}
+        />
       </div>
     </div>
   );

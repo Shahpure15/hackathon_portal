@@ -5,6 +5,8 @@ import {
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import DataTable from '../components/DataTable';
+import useTableQuery from '../components/useTableQuery';
 
 const VolunteerDashboard = () => {
   const { logout } = useAuth();
@@ -16,10 +18,15 @@ const VolunteerDashboard = () => {
   // Teams listing states
   const [teams, setTeams] = useState([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
-  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const {
+    page,
+    setPage,
+    search,
+    setSearch
+  } = useTableQuery('', 'asc', 'vcheckin');
 
   // Detail checkin modal state
   const [selectedTeam, setSelectedTeam] = useState(null);
@@ -32,15 +39,10 @@ const VolunteerDashboard = () => {
 
   useEffect(() => {
     const delayDebounce = setTimeout(() => {
-      setPage(1);
       fetchTeams();
     }, 300);
     return () => clearTimeout(delayDebounce);
-  }, [search]);
-
-  useEffect(() => {
-    fetchTeams();
-  }, [page]);
+  }, [search, page]);
 
   const fetchCheckpoints = async () => {
     try {
@@ -191,84 +193,64 @@ const VolunteerDashboard = () => {
           />
         </div>
 
-        {/* Teams Table */}
-        <div className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
-          {loading ? (
-            <div style={{ padding: '60px', textAlign: 'center' }}>
-              <span className="spinner" style={{ width: '40px', height: '40px', margin: '0 auto' }}></span>
-            </div>
-          ) : teams.length === 0 ? (
-            <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
+        <DataTable
+          columns={[
+            {
+              header: 'Team Name / College',
+              accessor: 'name',
+              render: (t) => (
+                <div>
+                  <div style={{ fontWeight: 600 }}>{t.name}</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{t.collegeName}</div>
+                </div>
+              )
+            },
+            {
+              header: 'Team Code',
+              accessor: 'registrationId',
+              render: (t) => <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t.registrationId}</span>
+            },
+            {
+              header: 'Leader',
+              accessor: 'leaderName'
+            },
+            {
+              header: 'Member verification',
+              accessor: 'verifiedCount',
+              render: (t) => (
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: t.verifiedCount === t.memberCount ? 'var(--success)' : 'var(--primary)' }}>
+                  {t.verifiedCount} / {t.memberCount} Verified
+                </span>
+              )
+            },
+            {
+              header: '',
+              align: 'right',
+              width: '160px',
+              render: (t) => (
+                <button 
+                  onClick={() => setSelectedTeam(t)} 
+                  className="btn btn-secondary"
+                  style={{ padding: '8px 16px', fontSize: '0.8rem', minHeight: 0 }}
+                >
+                  Verify & Checkin
+                </button>
+              )
+            }
+          ]}
+          data={teams}
+          page={page}
+          pages={pages}
+          totalCount={total}
+          onPageChange={setPage}
+          loading={loading}
+          emptyState={
+            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
               <Users size={32} style={{ marginBottom: '12px' }} />
               <p>No teams match your search.</p>
             </div>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border-light)', background: 'rgba(255,255,255,0.01)' }}>
-                  <th style={{ padding: '16px 24px', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Team Name / College</th>
-                  <th style={{ padding: '16px 24px', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Team Code</th>
-                  <th style={{ padding: '16px 24px', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Leader</th>
-                  <th style={{ padding: '16px 24px', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Member verification</th>
-                  <th style={{ padding: '16px 24px', width: '160px' }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {teams.map(t => (
-                  <tr key={t.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                    <td style={{ padding: '16px 24px' }}>
-                      <div style={{ fontWeight: 600 }}>{t.name}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{t.collegeName}</div>
-                    </td>
-                    <td style={{ padding: '16px 24px', fontWeight: 700, fontSize: '0.9rem' }}>{t.registrationId}</td>
-                    <td style={{ padding: '16px 24px' }}>{t.leaderName}</td>
-                    <td style={{ padding: '16px 24px' }}>
-                      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: t.verifiedCount === t.memberCount ? 'var(--success)' : 'var(--primary)' }}>
-                        {t.verifiedCount} / {t.memberCount} Verified
-                      </span>
-                    </td>
-                    <td style={{ padding: '16px 24px', textAlign: 'right' }}>
-                      <button 
-                        onClick={() => setSelectedTeam(t)} 
-                        className="btn btn-secondary"
-                        style={{ padding: '8px 16px', fontSize: '0.8rem', minHeight: 0 }}
-                      >
-                        Verify & Checkin
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        {/* Pagination */}
-        {pages > 1 && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '24px' }}>
-            <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-              Showing page {page} of {pages}
-            </span>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                onClick={() => setPage((p) => Math.max(p - 1, 1))}
-                disabled={page === 1}
-                className="btn btn-secondary"
-                style={{ padding: '8px 12px' }}
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <button
-                onClick={() => setPage((p) => Math.min(p + 1, pages))}
-                disabled={page === pages}
-                className="btn btn-secondary"
-                style={{ padding: '8px 12px' }}
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
-          </div>
-        )}
+          }
+        />
 
         {selectedTeam && (
           <div className="modal-overlay-fade" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>

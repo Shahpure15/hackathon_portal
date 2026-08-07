@@ -937,28 +937,80 @@ async def export_pod_roster(
 # VOLUNTEERS MANAGEMENT
 # ==========================================
 
-@router.get("/volunteers", response_model=List[VolunteerResponse])
+@router.get("/volunteers")
 async def get_volunteers(
+    search: Optional[str] = None,
+    type: Optional[str] = None,
+    podId: Optional[str] = None,
+    page: Optional[int] = None,
+    limit: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
-    volunteers = db.query(Volunteer).filter(Volunteer.eventId == current_user.eventId).order_by(Volunteer.name).all()
+    query = db.query(Volunteer).filter(Volunteer.eventId == current_user.eventId)
     
+    if search:
+        search_escaped = escape_like_string(search.strip())
+        query = query.filter(
+            or_(
+                Volunteer.name.ilike(f"%{search_escaped}%"),
+                Volunteer.contact.ilike(f"%{search_escaped}%")
+            )
+        )
+        
+    if type:
+        query = query.filter(Volunteer.type == type)
+        
+    if podId:
+        query = query.filter(Volunteer.podId == podId)
+        
+    if page is not None or limit is not None:
+        p = page or 1
+        l = limit or 10
+        total = query.count()
+        volunteers = query.order_by(Volunteer.name).offset((p - 1) * l).limit(l).all()
+        
+        results = []
+        for v in volunteers:
+            pod_name = v.pod.name if v.pod else None
+            user_rec = v.user
+            results.append({
+                "id": v.id,
+                "eventId": v.eventId,
+                "name": v.name,
+                "type": v.type.value,
+                "contact": v.contact,
+                "podId": v.podId,
+                "podName": pod_name,
+                "username": user_rec.username if user_rec else None,
+                "hasLogin": user_rec is not None
+            })
+            
+        import math
+        pages = math.ceil(total / l)
+        return {
+            "results": results,
+            "total": total,
+            "page": p,
+            "pages": pages if pages > 0 else 1
+        }
+        
+    volunteers = query.order_by(Volunteer.name).all()
     results = []
     for v in volunteers:
         pod_name = v.pod.name if v.pod else None
         user_rec = v.user
-        results.append(VolunteerResponse(
-            id=v.id,
-            eventId=v.eventId,
-            name=v.name,
-            type=v.type,
-            contact=v.contact,
-            podId=v.podId,
-            podName=pod_name,
-            username=user_rec.username if user_rec else None,
-            hasLogin=user_rec is not None
-        ))
+        results.append({
+            "id": v.id,
+            "eventId": v.eventId,
+            "name": v.name,
+            "type": v.type.value,
+            "contact": v.contact,
+            "podId": v.podId,
+            "podName": pod_name,
+            "username": user_rec.username if user_rec else None,
+            "hasLogin": user_rec is not None
+        })
     return results
 
 @router.post("/volunteers", response_model=VolunteerResponse)
