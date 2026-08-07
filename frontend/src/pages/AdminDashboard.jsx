@@ -2316,6 +2316,12 @@ const PSView = () => {
   // Modals state
   const [showImportModal, setShowImportModal] = useState(false);
   const [selectedPS, setSelectedPS] = useState(null);
+  const [showReleaseModal, setShowReleaseModal] = useState(false);
+  const [showLockConfirm, setShowLockConfirm] = useState(false);
+
+  // Sorting note: backend sorting is deferred for now, default sort is used
+  const sortKey = '';
+  const sortDir = 'asc';
 
   useEffect(() => {
     fetchPS();
@@ -2339,11 +2345,12 @@ const PSView = () => {
       const res = await api.get('/admin/config');
       if (res.data.psReleaseAt) {
         setReleaseTime(res.data.psReleaseAt);
-        // Format to YYYY-MM-DDTHH:MM for datetime-local input
+        // Format to ISO string for picker
         const localDate = new Date(res.data.psReleaseAt);
-        const offset = localDate.getTimezoneOffset();
-        const adjustedDate = new Date(localDate.getTime() - (offset * 60 * 1000));
-        setInputReleaseTime(adjustedDate.toISOString().substring(0, 16));
+        setInputReleaseTime(localDate.toISOString());
+      } else {
+        setReleaseTime('');
+        setInputReleaseTime('');
       }
     } catch (err) {
       console.error(err);
@@ -2351,10 +2358,9 @@ const PSView = () => {
   };
 
   const handleSaveConfig = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     if (!inputReleaseTime) return;
 
-    // Convert local input time to UTC ISO string
     const utcDate = new Date(inputReleaseTime).toISOString();
 
     setIsUpdatingConfig(true);
@@ -2364,6 +2370,7 @@ const PSView = () => {
       });
       addToast('PS release time updated successfully!', 'success');
       setReleaseTime(res.data.psReleaseAt);
+      setShowReleaseModal(false);
       fetchConfig();
     } catch (err) {
       addToast(err.response?.data?.detail || 'Failed to update release configuration', 'error');
@@ -2373,8 +2380,6 @@ const PSView = () => {
   };
 
   const handleClearReleaseTime = async () => {
-    if (!window.confirm('Are you sure you want to clear/lock the PS release? Teams will not be able to select.')) return;
-    
     setIsUpdatingConfig(true);
     try {
       await api.patch('/admin/config/ps-release-at', {
@@ -2383,6 +2388,8 @@ const PSView = () => {
       addToast('PS release cleared. Selections are locked.', 'info');
       setReleaseTime('');
       setInputReleaseTime('');
+      setShowLockConfirm(false);
+      setShowReleaseModal(false);
     } catch (err) {
       addToast('Failed to clear release configuration', 'error');
     } finally {
@@ -2415,44 +2422,54 @@ const PSView = () => {
       <div className="glass-panel" style={{ padding: '24px', marginBottom: '32px' }}>
         <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <FileText size={18} style={{ color: 'var(--primary)' }} />
-          Release Schedule Config
+          Problem Selection Release Config
         </h3>
-        
-        <form onSubmit={handleSaveConfig} style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-end' }}>
-          <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: '240px' }}>
-            <label className="form-label">Release Date & Time (Local Time)</label>
-            <input
-              type="datetime-local"
-              className="form-input"
-              value={inputReleaseTime}
-              onChange={(e) => setInputReleaseTime(e.target.value)}
-              required
-              disabled={isUpdatingConfig}
-            />
-          </div>
 
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button type="submit" className="btn btn-primary" disabled={!inputReleaseTime || isUpdatingConfig}>
-              {isUpdatingConfig ? <span className="spinner"></span> : 'Set Release Time'}
-            </button>
-            {releaseTime && (
-              <button type="button" onClick={handleClearReleaseTime} className="btn btn-secondary" style={{ color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)' }} disabled={isUpdatingConfig}>
-                Lock Selections
-              </button>
-            )}
-          </div>
-        </form>
-
-        <div style={{ marginTop: '16px', fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px', borderTop: '1px solid var(--border-light)', paddingTop: '16px' }}>
+        {!releaseTime ? (
           <div>
-            Active Schedule: <strong style={{ color: releaseTime ? 'var(--success)' : 'var(--warning)' }}>{formatToIST(releaseTime)}</strong>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+              Problem statement selections are currently <strong>locked</strong>. Set a future release time to allow teams to choose their statement.
+            </p>
+            <form onSubmit={handleSaveConfig} style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-end', maxWidth: '600px' }}>
+              <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: '240px' }}>
+                <label className="form-label">Release Date & Time (Local Time)</label>
+                <DateTimePicker
+                  value={inputReleaseTime}
+                  onChange={setInputReleaseTime}
+                  minDateTime={new Date()}
+                  placeholder="Select Release Date & Time"
+                  disabled={isUpdatingConfig}
+                />
+              </div>
+              <button type="submit" className="btn btn-primary" disabled={!inputReleaseTime || isUpdatingConfig} style={{ height: '42px', minHeight: 'auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {isUpdatingConfig ? <span className="spinner"></span> : 'Set Release Time'}
+              </button>
+            </form>
           </div>
-          {releaseTime && (
-            <div style={{ color: 'var(--text-muted)' }}>
-              UTC Timestamp: {new Date(releaseTime).toUTCString()}
+        ) : (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
+            <div>
+              <p style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 600 }}>
+                Selections Scheduled: <span style={{ color: 'var(--success)' }}>{formatToIST(releaseTime)}</span>
+              </p>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                UTC Time: {new Date(releaseTime).toUTCString()}
+              </p>
             </div>
-          )}
-        </div>
+            <button
+              type="button"
+              onClick={() => {
+                const localDate = new Date(releaseTime);
+                setInputReleaseTime(localDate.toISOString());
+                setShowReleaseModal(true);
+              }}
+              className="btn btn-primary"
+              style={{ minHeight: 'auto', padding: '10px 20px', cursor: 'pointer' }}
+            >
+              Unlock Selections / Update
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Tile Grid */}
@@ -2527,6 +2544,69 @@ const PSView = () => {
           onClose={() => setSelectedPS(null)}
         />
       )}
+
+      {/* Update Release Modal */}
+      <Modal
+        isOpen={showReleaseModal}
+        onClose={() => setShowReleaseModal(false)}
+        title="Update Release Schedule"
+        maxWidth="440px"
+      >
+        <div style={{ marginBottom: '20px' }}>
+          <label className="form-label">Release Date & Time (Local Time)</label>
+          <DateTimePicker
+            value={inputReleaseTime}
+            onChange={setInputReleaseTime}
+            minDateTime={new Date()}
+            placeholder="Select Release Date & Time"
+            disabled={isUpdatingConfig}
+          />
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginTop: '28px' }}>
+          <button
+            type="button"
+            onClick={() => setShowLockConfirm(true)}
+            className="btn btn-secondary"
+            style={{ color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)', minHeight: 'auto' }}
+            disabled={isUpdatingConfig}
+          >
+            Clear / Lock Selections
+          </button>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              type="button"
+              onClick={() => setShowReleaseModal(false)}
+              className="btn btn-secondary"
+              style={{ minHeight: 'auto' }}
+              disabled={isUpdatingConfig}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSaveConfig()}
+              className="btn btn-primary"
+              style={{ minHeight: 'auto' }}
+              disabled={!inputReleaseTime || isUpdatingConfig}
+            >
+              {isUpdatingConfig ? <span className="spinner"></span> : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Lock Selections Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={showLockConfirm}
+        title="Lock Selections & Clear Schedule"
+        message="Are you sure you want to clear the release schedule? Selections will be immediately locked and teams will no longer be able to select problem statements."
+        confirmLabel="Lock Selections"
+        cancelLabel="Keep Scheduled"
+        danger={true}
+        onConfirm={handleClearReleaseTime}
+        onCancel={() => setShowLockConfirm(false)}
+      />
     </div>
   );
 };
