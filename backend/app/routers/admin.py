@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, and_, func
 
 from app.database import get_db
@@ -116,7 +116,11 @@ async def get_teams(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
-    query = db.query(Team).filter(Team.eventId == current_user.eventId)
+    query = db.query(Team).options(
+        joinedload(Team.pod),
+        joinedload(Team.psSelection).joinedload(PSSelection.ps),
+        joinedload(Team.members)
+    ).filter(Team.eventId == current_user.eventId)
     
     # Filters
     if status:
@@ -275,14 +279,16 @@ async def patch_team(
                 raise HTTPException(status_code=400, detail=f"Invalid team status: {value}")
         
         if old_val != value:
-            # Soft check for Pod Capacity Warning
+            # Strict check for Pod Capacity Limit
             if key == "podId" and value:
                 pod = db.query(Pod).filter(Pod.id == value).first()
-                if pod and pod.capacity:
+                if pod and pod.capacity is not None:
                     assigned_count = db.query(Team).filter(Team.podId == value).count()
                     if assigned_count >= pod.capacity:
-                        # Just logging warning in response, let client proceed as soft warning
-                        diff["_warning"] = f"Pod capacity warning: {pod.name} is full ({assigned_count}/{pod.capacity})"
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Cannot assign team to {pod.name}. The POD group is already at full capacity ({assigned_count}/{pod.capacity})."
+                        )
             
             diff[key] = {"from": old_val if old_val is not None else None, "to": value if value is not None else None}
             setattr(team, key, value)
@@ -805,7 +811,18 @@ async def update_pod(
             
     if "capacity" in payload:
         old_cap = pod.capacity
-        new_cap = int(capacity) if capacity is not None and str(capacity).isdigit() else None
+        try:
+            new_cap = int(capacity) if capacity is not None else None
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Capacity must be a valid number")
+            
+        if new_cap is None or new_cap < 1:
+            raise HTTPException(status_code=400, detail="Capacity must be at least 1")
+            
+        team_count = db.query(Team).filter(Team.podId == pod.id).count()
+        if new_cap < team_count:
+            raise HTTPException(status_code=400, detail=f"Cannot reduce capacity to {new_cap} because {team_count} teams are currently assigned to this POD.")
+            
         if old_cap != new_cap:
             diff["capacity"] = {"from": old_cap, "to": new_cap}
             pod.capacity = new_cap
@@ -890,16 +907,51 @@ async def assign_teams_to_pod(
             )
             
     # Batch update
+    assigned_names = []
+    skipped_names = []
+    
+    current_assigned = db.query(Team).filter(Team.podId == pod_id).count() if pod_id else 0
+    spots_left = pod.capacity - current_assigned if (pod and pod.capacity is not None) else len(teams)
+    if spots_left < 0:
+        spots_left = 0
+
     for team in teams:
         old_pod = team.podId
-        if old_pod != pod_id:
-            team.podId = pod_id
-            log_audit(db, current_user.id, "team.pod_changed", "Team", team.id, {
-                "podId": {"from": old_pod, "to": pod_id}
-            })
+        if old_pod == pod_id:
+            continue
             
+        if pod_id:
+            if spots_left > 0:
+                team.podId = pod_id
+                log_audit(db, current_user.id, "team.pod_changed", "Team", team.id, {
+                    "podId": {"from": old_pod, "to": pod_id}
+                })
+                assigned_names.append(team.name)
+                spots_left -= 1
+            else:
+                skipped_names.append(team.name)
+        else:
+            # Unassigning
+            team.podId = None
+            log_audit(db, current_user.id, "team.pod_changed", "Team", team.id, {
+                "podId": {"from": old_pod, "to": None}
+            })
+            assigned_names.append(team.name)
+
     db.commit()
-    return {"message": f"Successfully updated POD assignments for {len(teams)} teams"}
+    
+    if skipped_names:
+        msg = (
+            f"Assigned {len(assigned_names)} teams to {pod.name}. "
+            f"Skipped {len(skipped_names)} teams due to capacity limit ({pod.capacity}): {', '.join(skipped_names)}."
+        )
+    else:
+        if pod_id:
+            msg = f"Successfully assigned {len(assigned_names)} teams to {pod.name}."
+        else:
+            msg = f"Successfully unassigned {len(assigned_names)} teams from POD."
+            
+    return {"message": msg}
 
 @router.get("/pods/{pod_id}/export")
 async def export_pod_roster(
@@ -958,7 +1010,10 @@ async def get_volunteers(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
-    query = db.query(Volunteer).filter(Volunteer.eventId == current_user.eventId)
+    query = db.query(Volunteer).options(
+        joinedload(Volunteer.pod),
+        joinedload(Volunteer.user)
+    ).filter(Volunteer.eventId == current_user.eventId)
     
     if search:
         search_escaped = escape_like_string(search.strip())

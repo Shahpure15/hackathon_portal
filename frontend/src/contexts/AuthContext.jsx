@@ -16,6 +16,9 @@ export const AuthProvider = ({ children }) => {
       setUser({ username: responseUsername, role, eventId, teamId });
       return { success: true };
     } catch (error) {
+      if (error.response?.status === 429) {
+        return { success: false, error: 'Too many attempts. Please try again in a few minutes.' };
+      }
       const message = error.response?.data?.detail || 'Invalid username or password';
       return { success: false, error: message };
     }
@@ -27,6 +30,8 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Error during logout api call', error);
     } finally {
+      localStorage.removeItem('adminActiveTab');
+      localStorage.removeItem('leaderActiveTab');
       setAccessToken(null);
       setUser(null);
     }
@@ -41,6 +46,8 @@ export const AuthProvider = ({ children }) => {
       setUser({ username, role, eventId, teamId });
     } catch (error) {
       // Refresh token invalid or missing, user is not logged in
+      localStorage.removeItem('adminActiveTab');
+      localStorage.removeItem('leaderActiveTab');
       setAccessToken(null);
       setUser(null);
     } finally {

@@ -71,9 +71,53 @@ const DataTable = ({
 
       <div className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
         {loading ? (
-          <div style={{ padding: '60px', textAlign: 'center' }}>
-            <span className="spinner" style={{ width: '40px', height: '40px', margin: '0 auto' }}></span>
-            <p style={{ marginTop: '16px', color: 'var(--text-secondary)' }}>Loading data...</p>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border-light)', background: 'rgba(255,255,255,0.01)' }}>
+                  {columns.map((col, idx) => (
+                    <th
+                      key={idx}
+                      style={{
+                        padding: '16px 24px',
+                        fontSize: '0.8rem',
+                        color: 'var(--text-muted)',
+                        textTransform: 'uppercase',
+                        width: col.width || 'auto',
+                        textAlign: col.align || 'left'
+                      }}
+                    >
+                      {col.header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...Array(5)].map((_, rowIdx) => (
+                  <tr key={rowIdx} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                    {columns.map((col, colIdx) => (
+                      <td
+                        key={colIdx}
+                        style={{
+                          padding: col.padding || '20px 24px',
+                          textAlign: col.align || 'left'
+                        }}
+                      >
+                        <div 
+                          className="skeleton" 
+                          style={{ 
+                            height: '18px', 
+                            borderRadius: '4px', 
+                            width: colIdx === 0 ? '70%' : colIdx === 1 ? '45%' : '80%',
+                            maxWidth: '100%'
+                          }}
+                        ></div>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : !data || data.length === 0 ? (
           <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>

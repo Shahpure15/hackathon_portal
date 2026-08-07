@@ -207,12 +207,18 @@ select.form-input option {
 
 /* Spinner Loader */
 .spinner {
+  display: inline-block;
   width: 20px;
   height: 20px;
   border: 2px solid rgba(185, 111, 56, 0.3);
   border-radius: 50%;
   border-top-color: var(--primary);
   animation: spin 0.8s linear infinite;
+}
+
+.spinner-white {
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  border-top-color: #fff !important;
 }
 
 @keyframes spin {
@@ -344,10 +350,10 @@ select.form-input option {
   right: 0;
   bottom: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   z-index: 1000;
-  padding: 24px;
+  padding: 40px 24px;
   overflow-y: auto;
   animation: fadeInOverlay 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
@@ -369,6 +375,7 @@ select.form-input option {
   animation: scaleInModal 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
   border: none !important;
   box-shadow: 0 25px 50px -12px rgba(43, 33, 24, 0.35) !important;
+  margin: auto;
 }
 
 @keyframes scaleInModal {
@@ -463,20 +470,49 @@ select.form-input option {
 }
 
 /* Modals & Grids on Small Screens */
-@media (max-width: 600px) {
+.modal-grid-1-1 {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 24px;
+}
+.modal-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.pod-mentor-form-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1.2fr 1fr auto;
+  gap: 8px;
+  align-items: end;
+}
+
+@media (max-width: 850px) {
   .glass-card.modal-scale-up {
     width: 95vw !important;
     max-width: 95vw !important;
-    padding: 16px !important;
+    padding: 20px 16px !important;
     overflow-y: auto;
     max-height: 90vh;
   }
   
   /* Force grid containers inside modals to stack vertically */
   .glass-card.modal-scale-up [style*="display: grid"],
-  .glass-card.modal-scale-up [style*="display:grid"] {
+  .glass-card.modal-scale-up [style*="display:grid"],
+  .modal-grid-1-1,
+  .modal-grid-3,
+  .pod-mentor-form-grid {
     grid-template-columns: 1fr !important;
     gap: 16px !important;
+  }
+
+  .pod-mentor-form-grid {
+    align-items: stretch !important;
+  }
+  
+  .pod-mentor-form-grid button {
+    margin-top: 12px;
+    width: 100%;
   }
 
   /* Tap targets touch target enhancement */

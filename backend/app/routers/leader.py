@@ -157,8 +157,8 @@ async def select_problem_statement(
         result = db.execute(
             text("""
                 UPDATE problem_statements 
-                SET selectedCount = selectedCount + 1 
-                WHERE id = :ps_id AND selectedCount < capacity AND eventId = :event_id
+                SET "selectedCount" = "selectedCount" + 1 
+                WHERE id = :ps_id AND "selectedCount" < capacity AND "eventId" = :event_id
             """),
             {"ps_id": ps_id, "event_id": current_user.eventId}
         )

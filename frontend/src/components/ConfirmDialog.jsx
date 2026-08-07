@@ -9,7 +9,8 @@ const ConfirmDialog = ({
   cancelLabel = 'Cancel',
   danger = false,
   onConfirm,
-  onCancel
+  onCancel,
+  loading = false
 }) => {
   return (
     <Modal
@@ -28,6 +29,7 @@ const ConfirmDialog = ({
           onClick={onCancel}
           className="btn btn-secondary"
           style={{ minHeight: 'auto', padding: '8px 16px' }}
+          disabled={loading}
         >
           {cancelLabel}
         </button>
@@ -35,16 +37,18 @@ const ConfirmDialog = ({
           type="button"
           onClick={onConfirm}
           className="btn"
+          disabled={loading}
           style={{
             minHeight: 'auto',
             padding: '8px 16px',
             backgroundColor: danger ? 'var(--danger)' : 'var(--primary)',
             color: '#fff',
             border: 'none',
-            cursor: 'pointer'
+            cursor: loading ? 'not-allowed' : 'pointer',
+            opacity: loading ? 0.65 : 1
           }}
         >
-          {confirmLabel}
+          {loading ? <span className="spinner spinner-white" style={{ width: '16px', height: '16px' }}></span> : confirmLabel}
         </button>
       </div>
     </Modal>

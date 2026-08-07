@@ -12,6 +12,7 @@ from app.auth import (
     verify_password, get_password_hash, create_access_token, 
     create_refresh_token, rotate_refresh_token, get_current_user, CurrentUser
 )
+from app.limiter import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -19,7 +20,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 DUMMY_HASH = "$argon2id$v=19$m=65536,t=3,p=4$2q1gXp5eF9S16aC07V0mDw$Z7u4D1Z258Yy02+o3l/Kq8mO372h2Z1o0O392o2m0o8"
 
 @router.post("/login", response_model=TokenResponse)
+@limiter.limit("5/minute")
 async def login(
+    request: Request,
     login_data: UserLogin, 
     response: Response, 
     db: Session = Depends(get_db)
@@ -184,6 +187,9 @@ async def change_password(
         
     if not verify_password(data.oldPassword, user.passwordHash):
         raise HTTPException(status_code=400, detail="Incorrect old password")
+        
+    if data.newPassword == data.oldPassword:
+        raise HTTPException(status_code=400, detail="New password cannot be the same as your current password")
         
     user.passwordHash = get_password_hash(data.newPassword)
     

@@ -144,12 +144,15 @@ def upgrade() -> None:
     sa.Column('passwordHash', sa.String(length=255), nullable=False),
     sa.Column('role', sa.Enum('ADMIN', 'VOLUNTEER', 'LEADER', name='role', native_enum=False), nullable=False),
     sa.Column('teamId', sa.String(length=36), nullable=True),
+    sa.Column('volunteerId', sa.String(length=36), nullable=True),
     sa.Column('createdAt', sa.DateTime(), nullable=False),
     sa.ForeignKeyConstraint(['eventId'], ['events.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['teamId'], ['teams.id'], ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['volunteerId'], ['volunteers.id'], ondelete='SET NULL'),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('eventId', 'username', name='uq_user_event_username'),
-    sa.UniqueConstraint('teamId')
+    sa.UniqueConstraint('teamId'),
+    sa.UniqueConstraint('volunteerId')
     )
     op.create_table('attendance_records',
     sa.Column('id', sa.String(length=36), nullable=False),

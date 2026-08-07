@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Users, Layers, FileText, CheckCircle, Clock, AlertTriangle, LogOut, Info, ShieldAlert, Lock, Menu
+  Users, Layers, FileText, CheckCircle, Clock, AlertTriangle, LogOut, Info, ShieldAlert, Lock, Menu, Eye, EyeOff, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -26,13 +26,15 @@ const LeaderDashboard = () => {
   
   const [teamInfo, setTeamInfo] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('team'); // 'team', 'ps', 'settings'
+  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('leaderActiveTab') || 'team'); // 'team', 'ps', 'settings'
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [viewingPS, setViewingPS] = useState(null);
   const [selectConfirmState, setSelectConfirmState] = useState(null);
 
   const handleTabClick = (tabName) => {
     setActiveTab(tabName);
+    localStorage.setItem('leaderActiveTab', tabName);
     setMobileMenuOpen(false);
   };
   
@@ -41,6 +43,9 @@ const LeaderDashboard = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [showOldPassword, setShowOldPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleChangePasswordSubmit = async (e) => {
     e.preventDefault();
@@ -50,6 +55,10 @@ const LeaderDashboard = () => {
     }
     if (newPassword !== confirmPassword) {
       addToast('New passwords do not match', 'error');
+      return;
+    }
+    if (newPassword === oldPassword) {
+      addToast('New password cannot be the same as your current password', 'error');
       return;
     }
     setIsChangingPassword(true);
@@ -237,49 +246,65 @@ const LeaderDashboard = () => {
           height: '100vh', 
           justifyContent: 'space-between', 
           padding: '24px 0',
-          transition: 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+          width: sidebarCollapsed ? '80px' : '260px',
+          transition: 'width 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+          overflow: 'hidden'
         }}
       >
         <div>
-          <div style={{ padding: '0 24px 32px 24px' }}>
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 800 }} className="text-gradient">
-              MIT India
-            </h2>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Leader Workspace</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : 'space-between', padding: sidebarCollapsed ? '0 12px 32px 12px' : '0 24px 32px 24px', transition: 'padding 0.25s' }}>
+            {!sidebarCollapsed && (
+              <div>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 800 }} className="text-gradient">
+                  MIT India
+                </h2>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Leader Workspace</span>
+              </div>
+            )}
+            <button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: '6px' }}
+              title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+            >
+              {sidebarCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+            </button>
           </div>
 
-          <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '0 12px' }}>
+          <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: sidebarCollapsed ? '0 8px' : '0 12px', transition: 'padding 0.25s' }}>
             <button 
               onClick={() => handleTabClick('team')} 
               className={`btn ${activeTab === 'team' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ justifyContent: 'flex-start', padding: '12px 16px', border: 'none', background: activeTab === 'team' ? undefined : 'transparent', width: '100%', cursor: 'pointer', gap: '8px', minHeight: 'auto', height: '44px' }}
+              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'team' ? undefined : 'transparent', width: '100%', cursor: 'pointer', minHeight: 'auto', height: '48px' }}
+              title="Team Roster"
             >
               <Users size={18} />
-              Team Roster
+              {!sidebarCollapsed && <span style={{ marginLeft: '12px', textTransform: 'none', letterSpacing: 'normal' }}>Team Roster</span>}
             </button>
             <button 
               onClick={() => handleTabClick('ps')} 
               className={`btn ${activeTab === 'ps' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ justifyContent: 'flex-start', padding: '12px 16px', border: 'none', background: activeTab === 'ps' ? undefined : 'transparent', width: '100%', cursor: 'pointer', gap: '8px', minHeight: 'auto', height: '44px' }}
+              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'ps' ? undefined : 'transparent', width: '100%', cursor: 'pointer', minHeight: 'auto', height: '48px' }}
+              title="Select Topic"
             >
               <FileText size={18} />
-              Problem Statement
+              {!sidebarCollapsed && <span style={{ marginLeft: '12px', textTransform: 'none', letterSpacing: 'normal' }}>Select Topic</span>}
             </button>
             <button 
               onClick={() => handleTabClick('settings')} 
               className={`btn ${activeTab === 'settings' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ justifyContent: 'flex-start', padding: '12px 16px', border: 'none', background: activeTab === 'settings' ? undefined : 'transparent', width: '100%', cursor: 'pointer', gap: '8px', minHeight: 'auto', height: '44px' }}
+              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'settings' ? undefined : 'transparent', width: '100%', cursor: 'pointer', minHeight: 'auto', height: '48px' }}
+              title="Change Password"
             >
               <Lock size={18} />
-              Change Password
+              {!sidebarCollapsed && <span style={{ marginLeft: '12px', textTransform: 'none', letterSpacing: 'normal' }}>Change Password</span>}
             </button>
           </nav>
         </div>
 
-        <div style={{ padding: '0 24px' }}>
-          <button onClick={logout} className="btn btn-secondary" style={{ width: '100%' }}>
-            <LogOut size={16} style={{ marginRight: '8px' }} />
-            Logout
+        <div style={{ padding: sidebarCollapsed ? '0 8px' : '0 24px', transition: 'padding 0.25s' }}>
+          <button onClick={logout} className="btn btn-secondary" style={{ width: '100%', padding: sidebarCollapsed ? '12px' : '12px 16px', justifyContent: 'center', minHeight: 'auto', height: '48px' }} title="Logout">
+            <LogOut size={16} />
+            {!sidebarCollapsed && <span style={{ marginLeft: '8px', textTransform: 'none', letterSpacing: 'normal' }}>Logout</span>}
           </button>
         </div>
       </div>
@@ -301,7 +326,7 @@ const LeaderDashboard = () => {
           </div>
         </div>
 
-        {activeTab === 'team' && (
+        <div style={{ display: activeTab === 'team' ? 'block' : 'none' }}>
           <div>
             {/* Dashboard Cards Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px', marginBottom: '24px' }}>
@@ -371,9 +396,9 @@ const LeaderDashboard = () => {
               </div>
             </div>
           </div>
-        )}
+        </div>
 
-        {activeTab === 'ps' && (
+        <div style={{ display: activeTab === 'ps' ? 'block' : 'none' }}>
           <div>
             {/* SECTION: Locked Problem Statement Display */}
             {hasSelection ? (
@@ -461,8 +486,20 @@ const LeaderDashboard = () => {
                     </div>
 
                     {statementsLoading ? (
-                      <div style={{ padding: '40px', textAlign: 'center' }}>
-                        <span className="spinner" style={{ width: '32px', height: '32px', margin: '0 auto' }}></span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        {[...Array(4)].map((_, i) => (
+                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px', borderRadius: '12px', background: 'var(--bg-surface)', border: '1px solid var(--border-light)', flexWrap: 'wrap', gap: '16px' }}>
+                            <div style={{ flex: 1, minWidth: '240px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                                <div className="skeleton" style={{ height: '18px', width: '60px', borderRadius: '4px' }}></div>
+                                <div className="skeleton" style={{ height: '20px', width: '150px', borderRadius: '4px' }}></div>
+                              </div>
+                              <div className="skeleton" style={{ height: '14px', width: '80%', borderRadius: '4px', marginBottom: '6px' }}></div>
+                              <div className="skeleton" style={{ height: '12px', width: '100px', borderRadius: '4px' }}></div>
+                            </div>
+                            <div className="skeleton" style={{ height: '40px', width: '140px', borderRadius: '999px' }}></div>
+                          </div>
+                        ))}
                       </div>
                     ) : statements.length === 0 ? (
                       <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>No problem statements are configured.</p>
@@ -521,9 +558,9 @@ const LeaderDashboard = () => {
               </div>
             )}
           </div>
-        )}
+        </div>
 
-        {activeTab === 'settings' && (
+        <div style={{ display: activeTab === 'settings' ? 'block' : 'none' }}>
           <div className="glass-panel" style={{ padding: '32px', maxWidth: '480px' }}>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '8px' }} className="text-gradient">
               Change Account Password
@@ -531,45 +568,83 @@ const LeaderDashboard = () => {
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '24px' }}>
               Ensure your new password contains at least 8 characters and a mix of letters and numbers.
             </p>
-
             <form onSubmit={handleChangePasswordSubmit}>
               <div className="form-group">
                 <label className="form-label">Current Password</label>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  className="form-input"
-                  value={oldPassword}
-                  onChange={(e) => setOldPassword(e.target.value)}
-                  required
-                  disabled={isChangingPassword}
-                />
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showOldPassword ? "text" : "password"}
+                    name="current-password"
+                    autoComplete="current-password"
+                    placeholder="••••••••"
+                    className="form-input"
+                    value={oldPassword}
+                    onChange={(e) => setOldPassword(e.target.value)}
+                    required
+                    disabled={isChangingPassword}
+                    style={{ paddingRight: '44px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowOldPassword(!showOldPassword)}
+                    style={{ position: 'absolute', right: '0', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '44px', width: '44px' }}
+                    tabIndex="-1"
+                  >
+                    {showOldPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </div>
 
               <div className="form-group">
                 <label className="form-label">New Password</label>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  className="form-input"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  required
-                  disabled={isChangingPassword}
-                />
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showNewPassword ? "text" : "password"}
+                    name="new-password"
+                    autoComplete="new-password"
+                    placeholder="••••••••"
+                    className="form-input"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                    disabled={isChangingPassword}
+                    style={{ paddingRight: '44px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    style={{ position: 'absolute', right: '0', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '44px', width: '44px' }}
+                    tabIndex="-1"
+                  >
+                    {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </div>
 
               <div className="form-group" style={{ marginBottom: '24px' }}>
                 <label className="form-label">Confirm New Password</label>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  className="form-input"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  disabled={isChangingPassword}
-                />
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    name="confirm-new-password"
+                    autoComplete="new-password"
+                    placeholder="••••••••"
+                    className="form-input"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    disabled={isChangingPassword}
+                    style={{ paddingRight: '44px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    style={{ position: 'absolute', right: '0', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '44px', width: '44px' }}
+                    tabIndex="-1"
+                  >
+                    {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </div>
 
               <button
@@ -577,11 +652,11 @@ const LeaderDashboard = () => {
                 className="btn btn-primary"
                 disabled={isChangingPassword}
               >
-                {isChangingPassword ? <span className="spinner"></span> : 'Change Password'}
+                {isChangingPassword ? <span className="spinner spinner-white" style={{ width: '14px', height: '14px' }}></span> : 'Change Password'}
               </button>
             </form>
           </div>
-        )}
+        </div>
       </div>
       
       {/* Dynamic badges css overrides */}
@@ -659,6 +734,7 @@ const LeaderDashboard = () => {
           danger={false}
           onConfirm={executeSelectPS}
           onCancel={() => setSelectConfirmState(null)}
+          loading={isSelecting}
         />
       )}
     </div>

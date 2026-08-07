@@ -13,8 +13,10 @@ const VolunteerDashboard = () => {
   const { addToast } = useToast();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [checkpoints, setCheckpoints] = useState([]);
   const [activeCheckpointId, setActiveCheckpointId] = useState('');
+  const [markingMemberId, setMarkingMemberId] = useState('');
 
   // Teams listing states
   const [teams, setTeams] = useState([]);
@@ -103,6 +105,7 @@ const VolunteerDashboard = () => {
       return;
     }
 
+    setMarkingMemberId(memberId);
     try {
       await api.post('/volunteer/checkin', {
         teamMemberId: memberId,
@@ -110,7 +113,7 @@ const VolunteerDashboard = () => {
       });
       addToast(`${memberName} marked present!`, 'success');
       // Refresh detailed data
-      fetchDetailedTeam(selectedTeam.id);
+      await fetchDetailedTeam(selectedTeam.id);
       // Refresh list to update verified counts
       fetchTeams();
     } catch (err) {
@@ -119,6 +122,8 @@ const VolunteerDashboard = () => {
       } else {
         addToast('Failed to mark check-in. Try again.', 'error');
       }
+    } finally {
+      setMarkingMemberId('');
     }
   };
 
@@ -154,33 +159,47 @@ const VolunteerDashboard = () => {
           height: '100vh', 
           justifyContent: 'space-between', 
           padding: '24px 0',
-          transition: 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+          width: sidebarCollapsed ? '80px' : '260px',
+          transition: 'width 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+          overflow: 'hidden'
         }}
       >
         <div>
-          <div style={{ padding: '0 24px 32px 24px' }}>
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 800 }} className="text-gradient">
-              MIT India
-            </h2>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Volunteer Workspace</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : 'space-between', padding: sidebarCollapsed ? '0 12px 32px 12px' : '0 24px 32px 24px', transition: 'padding 0.25s' }}>
+            {!sidebarCollapsed && (
+              <div>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 800 }} className="text-gradient">
+                  MIT India
+                </h2>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Volunteer Workspace</span>
+              </div>
+            )}
+            <button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: '6px' }}
+              title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+            >
+              {sidebarCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+            </button>
           </div>
 
-          <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '0 12px' }}>
+          <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: sidebarCollapsed ? '0 8px' : '0 12px', transition: 'padding 0.25s' }}>
             <div 
               onClick={() => setMobileMenuOpen(false)}
               className="btn btn-primary" 
-              style={{ justifyContent: 'flex-start', padding: '12px 16px', border: 'none', cursor: 'default' }}
+              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', cursor: 'default', width: '100%', minHeight: 'auto', height: '48px' }}
+              title="Check-in Desk"
             >
               <UserCheck size={18} />
-              Check-in Desk
+              {!sidebarCollapsed && <span style={{ marginLeft: '12px', textTransform: 'none', letterSpacing: 'normal' }}>Check-in Desk</span>}
             </div>
           </nav>
         </div>
 
-        <div style={{ padding: '0 24px' }}>
-          <button onClick={logout} className="btn btn-secondary" style={{ width: '100%' }}>
-            <LogOut size={16} style={{ marginRight: '8px' }} />
-            Logout
+        <div style={{ padding: sidebarCollapsed ? '0 8px' : '0 24px', transition: 'padding 0.25s' }}>
+          <button onClick={logout} className="btn btn-secondary" style={{ width: '100%', padding: sidebarCollapsed ? '12px' : '12px 16px', justifyContent: 'center', minHeight: 'auto', height: '48px' }} title="Logout">
+            <LogOut size={16} />
+            {!sidebarCollapsed && <span style={{ marginLeft: '8px', textTransform: 'none', letterSpacing: 'normal' }}>Logout</span>}
           </button>
         </div>
       </div>
@@ -338,8 +357,9 @@ const VolunteerDashboard = () => {
                                 onClick={() => handleMarkPresent(member.id, member.name)}
                                 className="btn btn-primary"
                                 style={{ minHeight: '44px', padding: '10px 20px', fontSize: '0.85rem' }}
+                                disabled={markingMemberId === member.id}
                               >
-                                Mark Present
+                                {markingMemberId === member.id ? <span className="spinner spinner-white" style={{ width: '16px', height: '16px' }}></span> : 'Mark Present'}
                               </button>
                             )}
                           </div>

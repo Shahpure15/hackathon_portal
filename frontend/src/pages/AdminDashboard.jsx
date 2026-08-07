@@ -26,13 +26,20 @@ const formatContact = (contactStr) => {
 };
 
 const AdminDashboard = () => {
-  const [activeTab, setActiveTab] = useState('teams');
+  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('adminActiveTab') || 'teams');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { addToast } = useToast();
 
+  // Custom Reset Password states
+  const [resetPasswordState, setResetPasswordState] = useState(null);
+  const [customPasswordValue, setCustomPasswordValue] = useState('');
+  const [showResetPasswordInput, setShowResetPasswordInput] = useState(false);
+  const [isSavingReset, setIsSavingReset] = useState(false);
+
   const handleTabClick = (tabName) => {
     setActiveTab(tabName);
+    localStorage.setItem('adminActiveTab', tabName);
     setMobileMenuOpen(false);
   };
 
@@ -160,6 +167,8 @@ const AdminDashboard = () => {
         <div style={{ padding: sidebarCollapsed ? '0 8px' : '0 24px', transition: 'padding 0.25s' }}>
           <button
             onClick={async () => {
+              localStorage.removeItem('adminActiveTab');
+              localStorage.removeItem('leaderActiveTab');
               await api.post('/auth/logout');
               window.location.href = '/login';
             }}
@@ -175,12 +184,93 @@ const AdminDashboard = () => {
 
       {/* Main Content Area */}
       <div className="main-content" style={{ backgroundColor: 'var(--bg-main)' }}>
-        {activeTab === 'teams' && <div className="fade-in-up"><TeamsView pods={pods} fetchPodsPool={fetchPodsPool} /></div>}
-        {activeTab === 'pods' && <div className="fade-in-up"><PodsView pods={pods} fetchPodsPool={fetchPodsPool} /></div>}
-        {activeTab === 'volunteers' && <div className="fade-in-up"><VolunteersView pods={pods} fetchPodsPool={fetchPodsPool} /></div>}
-        {activeTab === 'checkpoints' && <div className="fade-in-up"><CheckpointsView /></div>}
-        {activeTab === 'ps' && <div className="fade-in-up"><PSView /></div>}
+        <div style={{ display: activeTab === 'teams' ? 'block' : 'none' }} className="fade-in-up">
+          <TeamsView pods={pods} fetchPodsPool={fetchPodsPool} />
+        </div>
+        <div style={{ display: activeTab === 'pods' ? 'block' : 'none' }} className="fade-in-up">
+          <PodsView pods={pods} fetchPodsPool={fetchPodsPool} />
+        </div>
+        <div style={{ display: activeTab === 'volunteers' ? 'block' : 'none' }} className="fade-in-up">
+          <VolunteersView pods={pods} fetchPodsPool={fetchPodsPool} />
+        </div>
+        <div style={{ display: activeTab === 'checkpoints' ? 'block' : 'none' }} className="fade-in-up">
+          <CheckpointsView />
+        </div>
+        <div style={{ display: activeTab === 'ps' ? 'block' : 'none' }} className="fade-in-up">
+          <PSView />
+        </div>
       </div>
+
+      {resetPasswordState && (
+        <Modal
+          isOpen={true}
+          onClose={() => { setResetPasswordState(null); setCustomPasswordValue(''); }}
+          title={`Reset Password for ${resetPasswordState.targetName}`}
+          maxWidth="440px"
+        >
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            const pwd = customPasswordValue.trim();
+            const payload = pwd ? { password: pwd } : {};
+            setIsSavingReset(true);
+            try {
+              const url = resetPasswordState.type === 'team'
+                ? `/admin/teams/${resetPasswordState.targetId}/reset-password`
+                : `/admin/volunteers/${resetPasswordState.targetId}/reset-password`;
+              const res = await api.post(url, payload);
+              addToast(`Password reset successfully!`, 'success');
+              setCredentialsToShow({
+                title: `Password Reset for ${resetPasswordState.targetName}`,
+                username: res.data.username,
+                password: res.data.password
+              });
+              setResetPasswordState(null);
+              setCustomPasswordValue('');
+              if (resetPasswordState.type === 'volunteer') {
+                fetchVolunteers();
+              }
+            } catch (err) {
+              addToast(err.response?.data?.detail || 'Failed to reset password', 'error');
+            } finally {
+              setIsSavingReset(false);
+            }
+          }}>
+            <div className="form-group" style={{ marginBottom: '20px' }}>
+              <label className="form-label">New Password (Optional)</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showResetPasswordInput ? "text" : "password"}
+                  placeholder="Leave blank to auto-generate"
+                  className="form-input"
+                  value={customPasswordValue}
+                  onChange={(e) => setCustomPasswordValue(e.target.value)}
+                  style={{ paddingRight: '44px' }}
+                  disabled={isSavingReset}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowResetPasswordInput(!showResetPasswordInput)}
+                  style={{ position: 'absolute', right: '0', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '44px', width: '44px' }}
+                >
+                  {showResetPasswordInput ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px', lineHeight: '1.4' }}>
+                If you leave this blank, the system will automatically generate a strong random 16-character password.
+              </p>
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button type="button" onClick={() => { setResetPasswordState(null); setCustomPasswordValue(''); }} className="btn btn-secondary" style={{ minHeight: '38px', height: '38px', padding: '6px 16px', fontSize: '0.85rem' }} disabled={isSavingReset}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" style={{ minHeight: '38px', height: '38px', padding: '6px 16px', fontSize: '0.85rem' }} disabled={isSavingReset}>
+                {isSavingReset ? <span className="spinner spinner-white" style={{ width: '14px', height: '14px' }}></span> : 'Reset Password'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 };
@@ -224,6 +314,29 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
   const [showBulkPodModal, setShowBulkPodModal] = useState(false);
   const [selectedBulkPodId, setSelectedBulkPodId] = useState('');
   const [isAssigningBulk, setIsAssigningBulk] = useState(false);
+
+  // Inline POD creation in bulk modal
+  const [showInlineBulkPod, setShowInlineBulkPod] = useState(false);
+  const [inlineBulkPodName, setInlineBulkPodName] = useState('');
+  const [isCreatingInlinePod, setIsCreatingInlinePod] = useState(false);
+
+  const handleCreateInlineBulkPod = async (e) => {
+    e.preventDefault();
+    if (!inlineBulkPodName.trim()) return;
+    setIsCreatingInlinePod(true);
+    try {
+      const res = await api.post('/admin/pods', { name: inlineBulkPodName.trim() });
+      addToast(`POD Group '${res.data.name}' created!`, 'success');
+      setInlineBulkPodName('');
+      setShowInlineBulkPod(false);
+      await fetchPodsPool();
+      setSelectedBulkPodId(res.data.id);
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to create POD group', 'error');
+    } finally {
+      setIsCreatingInlinePod(false);
+    }
+  };
 
   // Conflict resolution states
   const [showConflictDialog, setShowConflictDialog] = useState(false);
@@ -300,6 +413,37 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
     }
   };
 
+  const handleDownloadTeamsTemplate = () => {
+    const headers = [
+      "Team Code",
+      "Team Name",
+      "Member 1 Name",
+      "Member 1 Lead",
+      "Member 1 College",
+      "Member 1 Email",
+      "Member 1 Mobile",
+      "Member 2 Name",
+      "Member 2 Lead",
+      "Member 2 College",
+      "Member 2 Email",
+      "Member 2 Mobile",
+      "Member 3 Name",
+      "Member 3 Lead",
+      "Member 3 College",
+      "Member 3 Email",
+      "Member 3 Mobile"
+    ];
+    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" +
+      "T1001,Alpha Force,Alice Cooper,Yes,MIT,alice@mit.edu,+91 9999988888,Bob Harris,No,MIT,bob@mit.edu,+91 9999977777,Charlie Vance,No,MIT,charlie@mit.edu,+91 9999966666\n";
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "teams_import_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleExport = async () => {
     addToast('Preparing roster download...', 'info');
     try {
@@ -331,7 +475,11 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button onClick={handleDownloadTeamsTemplate} className="btn btn-secondary" title="Download Teams Import Template CSV">
+            <Download size={16} />
+            Template CSV
+          </button>
           <button onClick={handleExport} className="btn btn-secondary">
             <Download size={16} />
             Export CSV
@@ -603,7 +751,11 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
       {/* Bulk POD Assignment Modal */}
       <Modal
         isOpen={showBulkPodModal}
-        onClose={() => setShowBulkPodModal(false)}
+        onClose={() => {
+          setShowBulkPodModal(false);
+          setShowInlineBulkPod(false);
+          setInlineBulkPodName('');
+        }}
         title="Assign Teams to POD Group"
         maxWidth="440px"
       >
@@ -623,7 +775,52 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
               </option>
             ))}
           </select>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '8px' }}>
+          
+          <div style={{ marginTop: '12px' }}>
+            {!showInlineBulkPod ? (
+              <button 
+                type="button" 
+                onClick={() => setShowInlineBulkPod(true)}
+                className="btn btn-secondary"
+                style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 'auto', height: 'auto' }}
+              >
+                + Create new POD Group
+              </button>
+            ) : (
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-light)', marginTop: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="New POD Name"
+                  className="form-input"
+                  value={inlineBulkPodName}
+                  onChange={(e) => setInlineBulkPodName(e.target.value)}
+                  style={{ flex: 1, padding: '6px 12px', minHeight: '34px', fontSize: '0.85rem' }}
+                />
+                <button
+                  type="button"
+                  onClick={handleCreateInlineBulkPod}
+                  className="btn btn-primary"
+                  style={{ padding: '6px 12px', minHeight: '34px', fontSize: '0.85rem' }}
+                  disabled={isCreatingInlinePod || !inlineBulkPodName.trim()}
+                >
+                  Create
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowInlineBulkPod(false);
+                    setInlineBulkPodName('');
+                  }}
+                  className="btn btn-secondary"
+                  style={{ padding: '6px 12px', minHeight: '34px', fontSize: '0.85rem' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+          
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '12px' }}>
             All selected {selectedTeamIds.length} teams will be moved to the chosen POD.
           </p>
         </div>
@@ -749,22 +946,13 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onClose }) => {
   // Handle outside click/Escape closes
   const modalRef = useRef();
 
-  const handleResetTeamPassword = async () => {
-    const customPassword = window.prompt(`Enter a new password for team '${team.name}' (leave blank to auto-generate):`);
-    if (customPassword === null) return;
-
-    try {
-      const payload = customPassword.trim() ? { password: customPassword.trim() } : {};
-      const res = await api.post(`/admin/teams/${team.id}/reset-password`, payload);
-      addToast(`Password reset for ${team.name}!`, 'success');
-      setCredentialsToShow({
-        title: `Credentials Reset for ${team.name}`,
-        username: res.data.username,
-        password: res.data.password
-      });
-    } catch (err) {
-      addToast(err.response?.data?.detail || 'Failed to reset password', 'error');
-    }
+  const handleResetTeamPassword = () => {
+    setResetPasswordState({
+      isOpen: true,
+      targetId: team.id,
+      targetName: team.name,
+      type: 'team'
+    });
   };
 
   useEffect(() => {
@@ -844,7 +1032,6 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onClose }) => {
       onClick={(e) => e.target === modalRef.current && onClose()}
       ref={modalRef}
       className="modal-overlay-fade"
-      style={{ background: 'rgba(0,0,0,0)' }}
     >
       <div className="glass-card modal-scale-up" style={{ width: '80vw', maxWidth: '1200px', padding: '24px', position: 'relative' }}>
         <button
@@ -865,10 +1052,10 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onClose }) => {
             <p style={{ marginTop: '12px', color: 'var(--text-secondary)' }}>Loading team information...</p>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: '24px' }}>
+          <div className="modal-grid-1-1">
             {/* Left column: read-only summaries & forms */}
             <div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '16px' }}>
+              <div className="modal-grid-3" style={{ marginBottom: '16px' }}>
                 <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', textTransform: 'uppercase' }}>Leader Contact</span>
                   <div style={{ fontWeight: 600, marginTop: '4px' }}>{team.leaderName}</div>
@@ -1591,9 +1778,21 @@ const PodsView = ({ pods, fetchPodsPool }) => {
 // ==========================================
 const PodRosterModal = ({ pod, onClose }) => {
   const { addToast } = useToast();
+  const modalOverlayRef = useRef();
   const [teams, setTeams] = useState([]);
   const [volunteers, setVolunteers] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Pod info editing states
+  const [localPod, setLocalPod] = useState(pod);
+  const [isEditingPod, setIsEditingPod] = useState(false);
+  const [editedName, setEditedName] = useState(pod.name);
+  const [editedCapacity, setEditedCapacity] = useState(pod.capacity || '');
+
+  // Team assignment states
+  const [allTeamsPool, setAllTeamsPool] = useState([]);
+  const [selectedTeamId, setSelectedTeamId] = useState('');
+  const [showAddTeam, setShowAddTeam] = useState(false);
 
   // New States for volunteer management
   const [allVolunteersPool, setAllVolunteersPool] = useState([]);
@@ -1609,7 +1808,6 @@ const PodRosterModal = ({ pod, onClose }) => {
   const [newVolEmail, setNewVolEmail] = useState('');
   const [newVolPhone, setNewVolPhone] = useState('');
 
-
   useEffect(() => {
     document.body.style.overflow = 'hidden';
     return () => {
@@ -1620,16 +1818,12 @@ const PodRosterModal = ({ pod, onClose }) => {
   const fetchRoster = async () => {
     try {
       // Fetch teams assigned to this pod
-      const teamsRes = await api.get('/admin/teams', { params: { podId: pod.id, limit: 100 } });
+      const teamsRes = await api.get('/admin/teams', { params: { podId: localPod.id, limit: 100 } });
       setTeams(teamsRes.data.results || []);
 
-      // Fetch volunteers pool
-      const volRes = await api.get('/admin/volunteers');
-      const allVols = volRes.data || [];
-      setAllVolunteersPool(allVols);
-
-      const podVols = allVols.filter(v => v.podId === pod.id);
-      setVolunteers(podVols);
+      // Fetch volunteers assigned to this pod
+      const volRes = await api.get('/admin/volunteers', { params: { podId: localPod.id } });
+      setVolunteers(volRes.data || []);
     } catch (err) {
       addToast('Failed to fetch POD roster details', 'error');
     } finally {
@@ -1637,9 +1831,83 @@ const PodRosterModal = ({ pod, onClose }) => {
     }
   };
 
+  const fetchTeamsPool = async () => {
+    try {
+      const allTeamsRes = await api.get('/admin/teams', { params: { limit: 1000 } });
+      setAllTeamsPool(allTeamsRes.data.results || []);
+    } catch (err) {
+      addToast('Failed to fetch team options', 'error');
+    }
+  };
+
+  const fetchVolunteersPool = async () => {
+    try {
+      const volRes = await api.get('/admin/volunteers');
+      setAllVolunteersPool(volRes.data || []);
+    } catch (err) {
+      addToast('Failed to fetch volunteer options', 'error');
+    }
+  };
+
   useEffect(() => {
     fetchRoster();
-  }, [pod.id]);
+  }, [localPod.id]);
+
+  const handleUpdatePodInfo = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!editedName.trim()) return;
+    setIsActionSaving(true);
+    try {
+      const res = await api.patch(`/admin/pods/${localPod.id}`, {
+        name: editedName.trim(),
+        capacity: editedCapacity ? parseInt(editedCapacity) : null
+      });
+      setLocalPod(res.data);
+      setIsEditingPod(false);
+      addToast('POD details updated successfully!', 'success');
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to update POD info', 'error');
+    } finally {
+      setIsActionSaving(false);
+    }
+  };
+
+  const handleAssignTeamSubmit = async () => {
+    if (!selectedTeamId) return;
+    setIsActionSaving(true);
+    try {
+      await api.post('/admin/pods/assign-teams', {
+        teamIds: [selectedTeamId],
+        podId: localPod.id
+      });
+      addToast('Team assigned successfully!', 'success');
+      setSelectedTeamId('');
+      setShowAddTeam(false);
+      await fetchRoster();
+      await fetchTeamsPool();
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to assign team', 'error');
+    } finally {
+      setIsActionSaving(false);
+    }
+  };
+
+  const handleRemoveTeam = async (teamId) => {
+    setIsActionSaving(true);
+    try {
+      await api.post('/admin/pods/assign-teams', {
+        teamIds: [teamId],
+        podId: null
+      });
+      addToast('Team removed from POD', 'success');
+      await fetchRoster();
+      await fetchTeamsPool();
+    } catch (err) {
+      addToast('Failed to remove team', 'error');
+    } finally {
+      setIsActionSaving(false);
+    }
+  };
 
   const handleAssignExistingSubmit = async () => {
     if (!selectedExistingVolId) return;
@@ -1652,6 +1920,7 @@ const PodRosterModal = ({ pod, onClose }) => {
       setSelectedExistingVolId('');
       setShowAddExisting(false);
       await fetchRoster();
+      await fetchVolunteersPool();
     } catch (err) {
       addToast('Failed to assign volunteer', 'error');
     } finally {
@@ -1669,7 +1938,7 @@ const PodRosterModal = ({ pod, onClose }) => {
         name: newVolName.trim(),
         type: newVolType,
         contact: combinedContact,
-        podId: pod.id
+        podId: localPod.id
       });
       addToast('Volunteer created and assigned successfully!', 'success');
       setNewVolName('');
@@ -1678,6 +1947,7 @@ const PodRosterModal = ({ pod, onClose }) => {
       setNewVolType('MENTOR');
       setShowCreateNew(false);
       await fetchRoster();
+      await fetchVolunteersPool();
     } catch (err) {
       addToast('Failed to create volunteer', 'error');
     } finally {
@@ -1695,22 +1965,76 @@ const PodRosterModal = ({ pod, onClose }) => {
       addToast('Volunteer removed from POD', 'success');
       setUnassignConfirmState(null);
       await fetchRoster();
+      await fetchVolunteersPool();
     } catch (err) {
       addToast('Failed to remove volunteer', 'error');
     }
   };
 
   return createPortal(
-    <div className="modal-overlay-fade" style={{ background: 'rgba(0,0,0,0)' }}>
-      <div className="glass-card modal-scale-up" style={{ width: '75vw', maxWidth: '1000px', padding: '24px', position: 'relative' }}>
+    <div
+      ref={modalOverlayRef}
+      onClick={(e) => e.target === modalOverlayRef.current && onClose()}
+      className="modal-overlay-fade"
+    >
+      <div className="glass-card modal-scale-up" style={{ width: '100%', maxWidth: '1000px', padding: '24px', position: 'relative' }}>
         <button onClick={onClose} style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
           <X size={20} />
         </button>
 
-        <h2 style={{ fontSize: '1.75rem', marginBottom: '4px' }}>{pod.name} Detail Roster</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '24px' }}>
-          Overview of assigned mentor volunteers and team participants.
-        </p>
+        <div style={{ marginBottom: '24px', paddingRight: '48px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: 0 }}>{localPod.name} Detail Roster</h2>
+            {!isEditingPod && (
+              <button
+                type="button"
+                onClick={() => setIsEditingPod(true)}
+                className="btn btn-secondary"
+                style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 'auto', height: '24px' }}
+              >
+                Edit Details
+              </button>
+            )}
+          </div>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '4px', marginBottom: isEditingPod ? '16px' : 0 }}>
+            Capacity limit: {localPod.capacity ? `${teams.length} / ${localPod.capacity} Teams` : `${teams.length} Teams`} assigned
+          </p>
+
+          {isEditingPod && (
+            <form onSubmit={handleUpdatePodInfo} style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap', background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-light)', width: '100%', marginTop: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 2, minWidth: '160px' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>POD Group Name</span>
+                <input
+                  type="text"
+                  value={editedName}
+                  onChange={(e) => setEditedName(e.target.value)}
+                  className="form-input"
+                  style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+                  required
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: '100px' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Team Capacity</span>
+                <input
+                  type="number"
+                  value={editedCapacity}
+                  onChange={(e) => setEditedCapacity(e.target.value)}
+                  className="form-input"
+                  style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+                  min="1"
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button type="submit" className="btn btn-primary" style={{ padding: '8px 16px', fontSize: '0.8rem', minHeight: 'auto', height: '36px' }} disabled={isActionSaving}>
+                  {isActionSaving ? <span className="spinner spinner-white" style={{ width: '14px', height: '14px' }}></span> : 'Save'}
+                </button>
+                <button type="button" onClick={() => { setIsEditingPod(false); setEditedName(localPod.name); setEditedCapacity(localPod.capacity || ''); }} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '0.8rem', minHeight: 'auto', height: '36px' }}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
 
         {loading ? (
           <div style={{ padding: '40px', textAlign: 'center' }}>
@@ -1726,7 +2050,12 @@ const PodRosterModal = ({ pod, onClose }) => {
                 </h3>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button
-                    onClick={() => { setShowAddExisting(!showAddExisting); setShowCreateNew(false); }}
+                    onClick={() => {
+                      const nextVal = !showAddExisting;
+                      setShowAddExisting(nextVal);
+                      setShowCreateNew(false);
+                      if (nextVal) fetchVolunteersPool();
+                    }}
                     className="btn btn-secondary"
                     style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 'auto', height: '28px' }}
                   >
@@ -1753,7 +2082,7 @@ const PodRosterModal = ({ pod, onClose }) => {
                   >
                     <option value="">-- Select an unassigned volunteer --</option>
                     {allVolunteersPool
-                      .filter(v => v.podId !== pod.id)
+                      .filter(v => v.podId !== localPod.id)
                       .map(v => (
                         <option key={v.id} value={v.id}>
                           {v.name} ({v.type}) {v.podId ? '[Assigned elsewhere]' : '[Unassigned]'}
@@ -1774,7 +2103,7 @@ const PodRosterModal = ({ pod, onClose }) => {
 
               {/* Create New Volunteer Form */}
               {showCreateNew && (
-                <form onSubmit={handleCreateNewSubmit} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.2fr 1fr auto', gap: '8px', background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-light)', marginBottom: '16px', alignItems: 'end' }}>
+                <form onSubmit={handleCreateNewSubmit} className="pod-mentor-form-grid" style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-light)', marginBottom: '16px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Name</span>
                     <input
@@ -1862,9 +2191,54 @@ const PodRosterModal = ({ pod, onClose }) => {
 
             {/* Teams roster section */}
             <div>
-              <h3 style={{ fontSize: '1rem', fontWeight: 600, borderBottom: '1px solid var(--border-light)', paddingBottom: '8px', marginBottom: '12px' }}>
-                Assigned Teams ({teams.length})
-              </h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-light)', paddingBottom: '8px', marginBottom: '12px' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>
+                  Assigned Teams ({teams.length})
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextVal = !showAddTeam;
+                    setShowAddTeam(nextVal);
+                    if (nextVal) fetchTeamsPool();
+                  }}
+                  className="btn btn-secondary"
+                  style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 'auto', height: '28px' }}
+                >
+                  + Assign Team
+                </button>
+              </div>
+
+              {/* Assign Team Dropdown Box */}
+              {showAddTeam && (
+                <div style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-light)', marginBottom: '16px', flexWrap: 'wrap' }}>
+                  <select
+                    value={selectedTeamId}
+                    onChange={(e) => setSelectedTeamId(e.target.value)}
+                    className="form-input"
+                    style={{ flex: 1, padding: '6px 12px', fontSize: '0.85rem', minWidth: '200px' }}
+                  >
+                    <option value="">-- Select a team to assign --</option>
+                    {allTeamsPool
+                      .filter(t => t.podId !== localPod.id)
+                      .map(t => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} ({t.registrationId}) {t.pod ? `[Assigned to ${t.pod.name}]` : '[Unassigned]'}
+                        </option>
+                      ))
+                    }
+                  </select>
+                  <button
+                    onClick={handleAssignTeamSubmit}
+                    className="btn btn-primary"
+                    style={{ padding: '6px 16px', fontSize: '0.85rem', minHeight: 'auto', height: '36px' }}
+                    disabled={isActionSaving || !selectedTeamId}
+                  >
+                    Assign
+                  </button>
+                </div>
+              )}
+
               <DataTable
                 columns={[
                   {
@@ -1889,6 +2263,21 @@ const PodRosterModal = ({ pod, onClose }) => {
                       <span className={`status-badge status-${t.status.toLowerCase()}`} style={{ fontSize: '0.65rem' }}>
                         {t.status}
                       </span>
+                    )
+                  },
+                  {
+                    header: 'Actions',
+                    accessor: 'id',
+                    align: 'right',
+                    render: (t) => (
+                      <button
+                        onClick={() => handleRemoveTeam(t.id)}
+                        className="btn btn-secondary"
+                        style={{ padding: '4px 8px', fontSize: '0.75rem', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)', minHeight: 'auto', height: '24px' }}
+                        disabled={isActionSaving}
+                      >
+                        ✕ Remove
+                      </button>
                     )
                   }
                 ]}
@@ -2060,23 +2449,13 @@ const VolunteersView = ({ pods, fetchPodsPool }) => {
     }
   };
 
-  const handleResetVolunteerPassword = async (volId, volName) => {
-    const customPassword = window.prompt(`Enter a new password for ${volName} (leave blank to auto-generate):`);
-    if (customPassword === null) return; // cancelled
-
-    try {
-      const payload = customPassword.trim() ? { password: customPassword.trim() } : {};
-      const res = await api.post(`/admin/volunteers/${volId}/reset-password`, payload);
-      addToast(`Password reset for ${volName}!`, 'success');
-      setCredentialsToShow({
-        title: `Password Reset for ${volName}`,
-        username: res.data.username,
-        password: res.data.password
-      });
-      fetchVolunteers();
-    } catch (err) {
-      addToast(err.response?.data?.detail || 'Failed to reset password', 'error');
-    }
+  const handleResetVolunteerPassword = (volId, volName) => {
+    setResetPasswordState({
+      isOpen: true,
+      targetId: volId,
+      targetName: volName,
+      type: 'volunteer'
+    });
   };
 
   const handleUpdatePodInline = async (volId, newPodId) => {
@@ -2106,6 +2485,20 @@ const VolunteersView = ({ pods, fetchPodsPool }) => {
     }
   };
 
+  const handleDownloadVolunteersTemplate = () => {
+    const headers = ["name", "type", "contact"];
+    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" +
+      "John Doe,STUDENT,john@mit.edu | +91 9999988888\n" +
+      "Dr. Smith,FACULTY,smith@mit.edu | +91 8888877777\n";
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "volunteers_import_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
@@ -2116,7 +2509,11 @@ const VolunteersView = ({ pods, fetchPodsPool }) => {
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button onClick={handleDownloadVolunteersTemplate} className="btn btn-secondary" title="Download Volunteers Import Template CSV">
+            <Download size={16} />
+            Template CSV
+          </button>
           <button onClick={() => setShowImportModal(true)} className="btn btn-secondary">
             <Upload size={16} />
             Import CSV
@@ -3076,6 +3473,20 @@ const PSView = () => {
     return d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', timeZoneName: 'short' });
   };
 
+  const handleDownloadPSTemplate = () => {
+    const headers = ["code", "title", "description", "capacity", "requirements"];
+    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" +
+      "PS01,Decentralized Voting System,A blockchain-based secure voting portal,12,React and basic Solidity knowledge required\n" +
+      "PS02,AI Route Optimization,Build an AI routing engine for electric buses,8,Python and basic ML libraries familiarity\n";
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "problem_statements_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
@@ -3085,10 +3496,16 @@ const PSView = () => {
             Upload challenges and manage leader selection schedules.
           </p>
         </div>
-        <button onClick={() => setShowImportModal(true)} className="btn btn-primary">
-          <Upload size={16} />
-          Import PS CSV
-        </button>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button onClick={handleDownloadPSTemplate} className="btn btn-secondary" title="Download PS Import Template CSV">
+            <Download size={16} />
+            Template CSV
+          </button>
+          <button onClick={() => setShowImportModal(true)} className="btn btn-primary">
+            <Upload size={16} />
+            Import PS CSV
+          </button>
+        </div>
       </div>
 
       {/* Release Configuration Card */}
@@ -3147,8 +3564,23 @@ const PSView = () => {
 
       {/* Tile Grid */}
       {loading ? (
-        <div style={{ padding: '60px', textAlign: 'center' }}>
-          <span className="spinner" style={{ width: '40px', height: '40px', margin: '0 auto' }}></span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="glass-card" style={{ padding: '24px', minHeight: '180px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <div className="skeleton" style={{ height: '18px', width: '60px', borderRadius: '4px' }}></div>
+                  <div className="skeleton" style={{ height: '18px', width: '80px', borderRadius: '4px' }}></div>
+                </div>
+                <div className="skeleton" style={{ height: '24px', width: '85%', borderRadius: '4px', marginBottom: '10px' }}></div>
+                <div className="skeleton" style={{ height: '16px', width: '100%', borderRadius: '4px', marginBottom: '6px' }}></div>
+                <div className="skeleton" style={{ height: '16px', width: '70%', borderRadius: '4px' }}></div>
+              </div>
+              <div style={{ marginTop: '20px' }}>
+                <div className="skeleton" style={{ height: '14px', width: '100%', borderRadius: '4px' }}></div>
+              </div>
+            </div>
+          ))}
         </div>
       ) : statements.length === 0 ? (
         <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }} className="glass-panel">
@@ -3236,22 +3668,13 @@ const PSView = () => {
           />
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginTop: '28px' }}>
-          <button
-            type="button"
-            onClick={() => setShowLockConfirm(true)}
-            className="btn btn-secondary"
-            style={{ color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)', minHeight: 'auto' }}
-            disabled={isUpdatingConfig}
-          >
-            Clear / Lock Selections
-          </button>
-          <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '28px' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
             <button
               type="button"
               onClick={() => setShowReleaseModal(false)}
               className="btn btn-secondary"
-              style={{ minHeight: 'auto' }}
+              style={{ minHeight: '38px', height: '38px', padding: '6px 16px', fontSize: '0.85rem' }}
               disabled={isUpdatingConfig}
             >
               Cancel
@@ -3260,10 +3683,22 @@ const PSView = () => {
               type="button"
               onClick={() => handleSaveConfig()}
               className="btn btn-primary"
-              style={{ minHeight: 'auto' }}
+              style={{ minHeight: '38px', height: '38px', padding: '6px 16px', fontSize: '0.85rem' }}
               disabled={!inputReleaseTime || isUpdatingConfig}
             >
-              {isUpdatingConfig ? <span className="spinner"></span> : 'Save Changes'}
+              {isUpdatingConfig ? <span className="spinner spinner-white" style={{ width: '14px', height: '14px' }}></span> : 'Save Changes'}
+            </button>
+          </div>
+          
+          <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '16px', display: 'flex', justifyContent: 'center' }}>
+            <button
+              type="button"
+              onClick={() => setShowLockConfirm(true)}
+              className="btn btn-secondary"
+              style={{ color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)', minHeight: '38px', height: '38px', padding: '6px 16px', fontSize: '0.85rem', width: '100%' }}
+              disabled={isUpdatingConfig}
+            >
+              Deactivate Timer & Lock Selections
             </button>
           </div>
         </div>
@@ -3272,9 +3707,9 @@ const PSView = () => {
       {/* Lock Selections Confirm Dialog */}
       <ConfirmDialog
         isOpen={showLockConfirm}
-        title="Lock Selections & Clear Schedule"
-        message="Are you sure you want to clear the release schedule? Selections will be immediately locked and teams will no longer be able to select problem statements."
-        confirmLabel="Lock Selections"
+        title="Deactivate Timer & Lock Selections"
+        message="Are you sure you want to deactivate the countdown timer? Problem statement selections will be locked immediately and teams will no longer be able to select topics."
+        confirmLabel="Deactivate & Lock"
         cancelLabel="Keep Scheduled"
         danger={true}
         onConfirm={handleClearReleaseTime}
@@ -3468,6 +3903,7 @@ const PSTeamsModal = ({ ps, onClose }) => {
   const { addToast } = useToast();
   const [selections, setSelections] = useState([]);
   const [loading, setLoading] = useState(true);
+  const modalOverlayRef = useRef();
 
   useEffect(() => {
     const fetchSelections = async () => {
@@ -3483,8 +3919,24 @@ const PSTeamsModal = ({ ps, onClose }) => {
     fetchSelections();
   }, [ps.id]);
 
-  return (
-    <div className="modal-overlay-fade" style={{ background: 'rgba(0,0,0,0)' }}>
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div 
+      ref={modalOverlayRef}
+      onClick={(e) => e.target === modalOverlayRef.current && onClose()}
+      className="modal-overlay-fade"
+    >
       <div className="glass-card modal-scale-up" style={{ width: '100%', maxWidth: '640px', padding: '32px', position: 'relative' }}>
         <button onClick={onClose} style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
           <X size={20} />
@@ -3524,11 +3976,15 @@ const PSTeamsModal = ({ ps, onClose }) => {
             {
               header: 'Locked At',
               accessor: 'selectedAt',
-              render: (sel) => (
-                <span style={{ fontWeight: 600 }}>
-                  {new Date(sel.selectedAt).toLocaleTimeString()}
-                </span>
-              )
+              render: (sel) => {
+                const timeStr = sel.selectedAt;
+                const utcStr = timeStr && !timeStr.endsWith('Z') && !timeStr.includes('+') ? timeStr + 'Z' : timeStr;
+                return (
+                  <span style={{ fontWeight: 600 }}>
+                    {utcStr ? new Date(utcStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : ''}
+                  </span>
+                );
+              }
             }
           ]}
           data={selections}
@@ -3537,7 +3993,8 @@ const PSTeamsModal = ({ ps, onClose }) => {
           emptyState={<p style={{ color: 'var(--text-muted)', padding: '20px 0' }}>No teams have selected this problem statement yet.</p>}
         />
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
