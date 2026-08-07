@@ -15,12 +15,13 @@ from app.database import get_db
 from app.models import (
     User, Role, Team, TeamMember, TeamStatus, Pod, Volunteer, 
     VolunteerType, ProblemStatement, PSSelection, AuditLog, 
-    PendingImport, EventConfig
+    PendingImport, EventConfig, CheckpointType, AttendanceRecord
 )
 from app.auth import require_role, CurrentUser, get_password_hash
 from app.schemas import (
     TeamResponse, TeamDetailResponse, AuditLogResponse, 
-    PodResponse, VolunteerResponse, ProblemStatementResponse
+    PodResponse, VolunteerResponse, ProblemStatementResponse,
+    CheckpointTypeCreate, CheckpointTypeUpdate, CheckpointTypeResponse
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -857,6 +858,7 @@ async def assign_teams_to_pod(
 ):
     team_ids = payload.get("teamIds", [])
     pod_id = payload.get("podId") # Can be null to unassign
+    force = payload.get("force", False)
     
     if not team_ids:
         raise HTTPException(status_code=400, detail="No teams selected for assignment")
@@ -867,18 +869,27 @@ async def assign_teams_to_pod(
         if not pod:
             raise HTTPException(status_code=404, detail="POD not found")
             
-        # Soft capacity check
-        if pod.capacity:
-            current_teams = db.query(Team).filter(Team.podId == pod.id).count()
-            # Teams that will end up in this pod (new assignments minus existing ones in team_ids)
-            teams_to_add = len(team_ids)
-            total_after = current_teams + teams_to_add
-            if total_after > pod.capacity:
-                # We return a soft warning
-                pass
-                
-    # Batch update
+    # Batch retrieve teams
     teams = db.query(Team).filter(Team.id.in_(team_ids), Team.eventId == current_user.eventId).all()
+    
+    # Conflict check
+    if pod_id and not force:
+        conflicts = []
+        for team in teams:
+            if team.podId and team.podId != pod_id:
+                conflicts.append({
+                    "teamId": team.id,
+                    "teamName": team.name,
+                    "podName": team.pod.name if team.pod else "Unknown"
+                })
+        if conflicts:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=409,
+                content={"conflicts": conflicts}
+            )
+            
+    # Batch update
     for team in teams:
         old_pod = team.podId
         if old_pod != pod_id:
@@ -1455,7 +1466,8 @@ async def get_problem_statements(
             description=s.description,
             capacity=s.capacity,
             selectedCount=s.selectedCount,
-            remainingCapacity=max(s.capacity - s.selectedCount, 0)
+            remainingCapacity=max(s.capacity - s.selectedCount, 0),
+            requirements=s.requirements
         ) for s in statements
     ]
 
@@ -1500,6 +1512,9 @@ async def import_problem_statements_preview(
         title = str(row.get("title", "")).strip()
         description = str(row.get("description", "")).strip()
         capacity_raw = row.get("capacity")
+        requirements = str(row.get("requirements", "")).strip() if row.get("requirements") is not None and pd.notna(row.get("requirements")) else None
+        if requirements == "nan" or not requirements:
+            requirements = None
         
         if not code or code.lower() == "nan":
             preview_data["invalid"].append({"row": row_num, "reason": "Missing Code (e.g. PS01)"})
@@ -1531,6 +1546,7 @@ async def import_problem_statements_preview(
             "title": title,
             "description": description,
             "capacity": capacity,
+            "requirements": requirements,
             "row": row_num
         })
         
@@ -1577,7 +1593,8 @@ async def import_problem_statements_confirm(
                 code=row["code"],
                 title=row["title"],
                 description=row["description"],
-                capacity=row["capacity"]
+                capacity=row["capacity"],
+                requirements=row.get("requirements")
             )
             db.add(ps)
             
@@ -1688,5 +1705,117 @@ async def update_ps_release_time(
         "message": "Problem statement release time configured successfully!",
         "psReleaseAt": config.psReleaseAt.replace(tzinfo=timezone.utc) if config.psReleaseAt else None
     }
+
+
+# ==========================================
+# ATTENDANCE CHECKPOINTS CRUD
+# ==========================================
+
+@router.get("/checkpoints", response_model=List[CheckpointTypeResponse])
+async def get_checkpoints(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    return db.query(CheckpointType).filter(CheckpointType.eventId == current_user.eventId).order_by(CheckpointType.name).all()
+
+@router.post("/checkpoints", response_model=CheckpointTypeResponse)
+async def create_checkpoint(
+    payload: CheckpointTypeCreate,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    existing = db.query(CheckpointType).filter(
+        CheckpointType.eventId == current_user.eventId,
+        CheckpointType.name == payload.name.strip()
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="A checkpoint with this name already exists")
+
+    cp = CheckpointType(
+        eventId=current_user.eventId,
+        name=payload.name.strip(),
+        description=payload.description.strip() if payload.description else None
+    )
+    db.add(cp)
+    db.commit()
+    db.refresh(cp)
+
+    log_audit(db, current_user.id, "checkpoint.create", "CheckpointType", cp.id, {
+        "name": cp.name,
+        "description": cp.description
+    })
+    db.commit()
+    return cp
+
+@router.patch("/checkpoints/{id}", response_model=CheckpointTypeResponse)
+async def update_checkpoint(
+    id: str,
+    payload: CheckpointTypeUpdate,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    cp = db.query(CheckpointType).filter(
+        CheckpointType.id == id,
+        CheckpointType.eventId == current_user.eventId
+    ).first()
+    if not cp:
+        raise HTTPException(status_code=404, detail="Checkpoint not found")
+
+    diff = {}
+    if payload.name is not None:
+        name_clean = payload.name.strip()
+        if not name_clean:
+            raise HTTPException(status_code=400, detail="Checkpoint name cannot be empty")
+        
+        if name_clean != cp.name:
+            existing = db.query(CheckpointType).filter(
+                CheckpointType.eventId == current_user.eventId,
+                CheckpointType.name == name_clean
+            ).first()
+            if existing:
+                raise HTTPException(status_code=400, detail="A checkpoint with this name already exists")
+            
+        diff["name"] = {"from": cp.name, "to": name_clean}
+        cp.name = name_clean
+
+    if payload.description is not None:
+        desc_clean = payload.description.strip() or None
+        diff["description"] = {"from": cp.description, "to": desc_clean}
+        cp.description = desc_clean
+
+    if diff:
+        log_audit(db, current_user.id, "checkpoint.update", "CheckpointType", cp.id, diff)
+        db.commit()
+        db.refresh(cp)
+    
+    return cp
+
+@router.delete("/checkpoints/{id}")
+async def delete_checkpoint(
+    id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    cp = db.query(CheckpointType).filter(
+        CheckpointType.id == id,
+        CheckpointType.eventId == current_user.eventId
+    ).first()
+    if not cp:
+        raise HTTPException(status_code=404, detail="Checkpoint not found")
+
+    has_records = db.query(AttendanceRecord).filter(AttendanceRecord.checkpointTypeId == id).first()
+    if has_records:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete checkpoint because it has logged attendance records. Delete or clear the attendance records first."
+        )
+
+    log_audit(db, current_user.id, "checkpoint.delete", "CheckpointType", cp.id, {
+        "name": cp.name,
+        "description": cp.description
+    })
+    db.delete(cp)
+    db.commit()
+    return {"message": "Checkpoint deleted successfully"}
 
 

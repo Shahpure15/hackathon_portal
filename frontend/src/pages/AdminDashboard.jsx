@@ -112,6 +112,15 @@ const AdminDashboard = () => {
               {!sidebarCollapsed && <span style={{ marginLeft: '12px', textTransform: 'none', letterSpacing: 'normal' }}>Volunteers</span>}
             </button>
             <button
+              onClick={() => setActiveTab('checkpoints')}
+              className={`btn ${activeTab === 'checkpoints' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'checkpoints' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px' }}
+              title="Attendance Slots"
+            >
+              <CheckCircle size={18} />
+              {!sidebarCollapsed && <span style={{ marginLeft: '12px', textTransform: 'none', letterSpacing: 'normal' }}>Attendance Slots</span>}
+            </button>
+            <button
               onClick={() => setActiveTab('ps')}
               className={`btn ${activeTab === 'ps' ? 'btn-primary' : 'btn-secondary'}`}
               style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'ps' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px' }}
@@ -144,6 +153,7 @@ const AdminDashboard = () => {
         {activeTab === 'teams' && <div className="fade-in-up"><TeamsView pods={pods} fetchPodsPool={fetchPodsPool} /></div>}
         {activeTab === 'pods' && <div className="fade-in-up"><PodsView pods={pods} fetchPodsPool={fetchPodsPool} /></div>}
         {activeTab === 'volunteers' && <div className="fade-in-up"><VolunteersView pods={pods} fetchPodsPool={fetchPodsPool} /></div>}
+        {activeTab === 'checkpoints' && <div className="fade-in-up"><CheckpointsView /></div>}
         {activeTab === 'ps' && <div className="fade-in-up"><PSView /></div>}
       </div>
     </div>
@@ -185,6 +195,19 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
   // Modals Control
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [selectedTeamIds, setSelectedTeamIds] = useState([]);
+  const [showBulkPodModal, setShowBulkPodModal] = useState(false);
+  const [selectedBulkPodId, setSelectedBulkPodId] = useState('');
+  const [isAssigningBulk, setIsAssigningBulk] = useState(false);
+  
+  // Conflict resolution states
+  const [showConflictDialog, setShowConflictDialog] = useState(false);
+  const [currentConflicts, setCurrentConflicts] = useState([]);
+
+  // Clear selection on team data change
+  useEffect(() => {
+    setSelectedTeamIds([]);
+  }, [teams]);
 
   // Debounced fetch when search, filters or page changes
   useEffect(() => {
@@ -218,11 +241,58 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
     }
   };
 
-  const handleExport = () => {
-    // Standard file download request
-    const API_URL = import.meta.env.VITE_API_URL || '/api';
-    window.open(`${API_URL}/admin/teams/export`, '_blank');
-    addToast('Roster download triggered', 'info');
+  const handleBulkAssign = async (force = false) => {
+    setIsAssigningBulk(true);
+    try {
+      const res = await api.post('/admin/pods/assign-teams', {
+        podId: selectedBulkPodId || null,
+        teamIds: selectedTeamIds,
+        force
+      });
+      
+      if (res.status === 409) {
+        setCurrentConflicts(res.data.conflicts || []);
+        setShowConflictDialog(true);
+        setIsAssigningBulk(false);
+        return;
+      }
+      
+      addToast(res.data.message || 'Successfully updated POD assignments!', 'success');
+      setShowBulkPodModal(false);
+      setShowConflictDialog(false);
+      setSelectedTeamIds([]);
+      fetchTeams();
+      fetchPodsPool();
+    } catch (err) {
+      if (err.response && err.response.status === 409) {
+        setCurrentConflicts(err.response.data.conflicts || []);
+        setShowConflictDialog(true);
+      } else {
+        addToast(err.response?.data?.detail || 'Failed to assign teams to POD', 'error');
+      }
+    } finally {
+      setIsAssigningBulk(false);
+    }
+  };
+
+  const handleExport = async () => {
+    addToast('Preparing roster download...', 'info');
+    try {
+      const response = await api.get('/admin/teams/export', {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'teams_roster_export.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      addToast('Roster downloaded successfully!', 'success');
+    } catch (err) {
+      addToast('Failed to download roster', 'error');
+    }
   };
 
   return (
@@ -247,6 +317,35 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
           </button>
         </div>
       </div>
+
+      {selectedTeamIds.length > 0 && (
+        <div className="glass-panel" style={{ padding: '16px 24px', marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(99, 102, 241, 0.05)', borderColor: 'rgba(99, 102, 241, 0.2)' }}>
+          <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>
+            <span style={{ color: 'var(--primary)' }}>{selectedTeamIds.length}</span> teams selected
+          </div>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              onClick={() => {
+                setSelectedTeamIds([]);
+              }}
+              className="btn btn-secondary"
+              style={{ minHeight: 'auto', padding: '8px 16px', fontSize: '0.85rem' }}
+            >
+              Cancel Selection
+            </button>
+            <button
+              onClick={() => {
+                setSelectedBulkPodId('');
+                setShowBulkPodModal(true);
+              }}
+              className="btn btn-primary"
+              style={{ minHeight: 'auto', padding: '8px 16px', fontSize: '0.85rem' }}
+            >
+              Assign to POD Group
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Filter and Search controls */}
       <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -333,6 +432,39 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
 
       <DataTable
         columns={[
+          {
+            header: (
+              <input
+                type="checkbox"
+                checked={teams.length > 0 && selectedTeamIds.length === teams.length}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setSelectedTeamIds(teams.map(t => t.id));
+                  } else {
+                    setSelectedTeamIds([]);
+                  }
+                }}
+                style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+              />
+            ),
+            width: '40px',
+            accessor: 'checkbox',
+            render: (t) => (
+              <input
+                type="checkbox"
+                checked={selectedTeamIds.includes(t.id)}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setSelectedTeamIds(prev => [...prev, t.id]);
+                  } else {
+                    setSelectedTeamIds(prev => prev.filter(id => id !== t.id));
+                  }
+                }}
+                onClick={(e) => e.stopPropagation()}
+                style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+              />
+            )
+          },
           {
             header: 'Team Info',
             accessor: 'name',
@@ -443,6 +575,104 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
         />
       )}
 
+      {/* Bulk POD Assignment Modal */}
+      <Modal
+        isOpen={showBulkPodModal}
+        onClose={() => setShowBulkPodModal(false)}
+        title="Assign Teams to POD Group"
+        maxWidth="440px"
+      >
+        <div style={{ marginBottom: '20px' }}>
+          <label className="form-label">Target POD Group</label>
+          <select
+            value={selectedBulkPodId}
+            onChange={(e) => setSelectedBulkPodId(e.target.value)}
+            className="form-input"
+            style={{ width: '100%' }}
+            disabled={isAssigningBulk}
+          >
+            <option value="">Unassign / Remove from POD</option>
+            {pods.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} {p.capacity ? `(Cap: ${p.teamCount}/${p.capacity})` : ''}
+              </option>
+            ))}
+          </select>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '8px' }}>
+            All selected {selectedTeamIds.length} teams will be moved to the chosen POD.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '28px' }}>
+          <button
+            type="button"
+            onClick={() => setShowBulkPodModal(false)}
+            className="btn btn-secondary"
+            style={{ minHeight: 'auto' }}
+            disabled={isAssigningBulk}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => handleBulkAssign(false)}
+            className="btn btn-primary"
+            style={{ minHeight: 'auto' }}
+            disabled={isAssigningBulk}
+          >
+            {isAssigningBulk ? <span className="spinner"></span> : 'Assign POD'}
+          </button>
+        </div>
+      </Modal>
+
+      {/* POD Assignment Conflict Resolution Modal */}
+      <Modal
+        isOpen={showConflictDialog}
+        onClose={() => setShowConflictDialog(false)}
+        title="Conflict: Teams Already Assigned"
+        maxWidth="500px"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <p style={{ fontSize: '0.9rem', color: 'var(--text-primary)', lineHeight: 1.5 }}>
+            The following teams are already assigned to other POD groups:
+          </p>
+
+          <div style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '8px', padding: '16px', maxHeight: '200px', overflowY: 'auto' }}>
+            <ul style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {currentConflicts.map((c, i) => (
+                <li key={i} style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  <strong>{c.teamName}</strong> is in <strong>{c.podName}</strong>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+            Do you want to override and force re-assign these teams to the new POD?
+          </p>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '16px' }}>
+            <button
+              type="button"
+              onClick={() => setShowConflictDialog(false)}
+              className="btn btn-secondary"
+              style={{ minHeight: 'auto' }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => handleBulkAssign(true)}
+              className="btn btn-primary"
+              style={{ minHeight: 'auto', background: 'var(--danger)', borderColor: 'var(--danger)' }}
+              disabled={isAssigningBulk}
+            >
+              {isAssigningBulk ? <span className="spinner"></span> : 'Force Re-assign'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       {/* CSS badge styling injection */}
       <style>{`
         .status-badge {
@@ -489,6 +719,7 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onClose }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [inlinePodName, setInlinePodName] = useState('');
   const [showInlinePod, setShowInlinePod] = useState(false);
+  const [credentialsToShow, setCredentialsToShow] = useState(null);
 
   // Handle outside click/Escape closes
   const modalRef = useRef();
@@ -501,7 +732,11 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onClose }) => {
       const payload = customPassword.trim() ? { password: customPassword.trim() } : {};
       const res = await api.post(`/admin/teams/${team.id}/reset-password`, payload);
       addToast(`Password reset for ${team.name}!`, 'success');
-      alert(`Password Reset for ${team.name}!\n\nUsername: ${res.data.username}\nPassword: ${res.data.password}\n\nPlease copy these credentials now.`);
+      setCredentialsToShow({
+        title: `Credentials Reset for ${team.name}`,
+        username: res.data.username,
+        password: res.data.password
+      });
     } catch (err) {
       addToast(err.response?.data?.detail || 'Failed to reset password', 'error');
     }
@@ -726,6 +961,19 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onClose }) => {
           </button>
         </div>
       </div>
+
+      {credentialsToShow && (
+        <CredentialDialog
+          isOpen={true}
+          onClose={() => {
+            setCredentialsToShow(null);
+            onClose();
+          }}
+          title={credentialsToShow.title}
+          username={credentialsToShow.username}
+          password={credentialsToShow.password}
+        />
+      )}
     </div>,
     document.body
   );
@@ -1084,6 +1332,7 @@ const PodsView = ({ pods, fetchPodsPool }) => {
   const [loading, setLoading] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedPod, setSelectedPod] = useState(null);
+  const [deleteConfirmPod, setDeleteConfirmPod] = useState(null);
   
   // Create Pod Form State
   const [podName, setPodName] = useState('');
@@ -1123,22 +1372,37 @@ const PodsView = ({ pods, fetchPodsPool }) => {
     }
   };
 
-  const handleDeletePod = async (id, name) => {
-    if (!window.confirm(`Are you sure you want to delete POD group '${name}'?`)) return;
-
+  const executeDeletePod = async () => {
+    if (!deleteConfirmPod) return;
+    const { id, name } = deleteConfirmPod;
     try {
       await api.delete(`/admin/pods/${id}`);
       addToast('POD deleted successfully', 'success');
+      setDeleteConfirmPod(null);
       fetchPodsPool();
     } catch (err) {
       addToast(err.response?.data?.detail || 'Failed to delete POD', 'error');
     }
   };
 
-  const handleExportRoster = (id, name) => {
-    const API_URL = import.meta.env.VITE_API_URL || '/api';
-    window.open(`${API_URL}/admin/pods/${id}/export`, '_blank');
-    addToast(`Exporting roster for ${name}`, 'info');
+  const handleExportRoster = async (id, name) => {
+    addToast(`Preparing roster download for ${name}...`, 'info');
+    try {
+      const response = await api.get(`/admin/pods/${id}/export`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `pod_roster_${name.toLowerCase().replace(/\s+/g, '_')}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      addToast(`Roster for ${name} downloaded successfully!`, 'success');
+    } catch (err) {
+      addToast(`Failed to download roster for ${name}`, 'error');
+    }
   };
 
   return (
@@ -1209,7 +1473,7 @@ const PodsView = ({ pods, fetchPodsPool }) => {
                     <Download size={12} /> Roster
                   </button>
                   <button 
-                    onClick={(e) => { e.stopPropagation(); handleDeletePod(p.id, p.name); }}
+                    onClick={(e) => { e.stopPropagation(); setDeleteConfirmPod({ id: p.id, name: p.name }); }}
                     className="btn btn-secondary" 
                     style={{ padding: '8px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)' }}
                     title="Delete Pod"
@@ -1280,6 +1544,18 @@ const PodsView = ({ pods, fetchPodsPool }) => {
           }} 
         />
       )}
+
+      {deleteConfirmPod && (
+        <ConfirmDialog
+          isOpen={true}
+          title="Delete POD Group"
+          message={`Are you sure you want to delete the POD group '${deleteConfirmPod.name}'? All assigned volunteers will be unassigned.`}
+          confirmLabel="Delete POD"
+          danger={true}
+          onConfirm={executeDeletePod}
+          onCancel={() => setDeleteConfirmPod(null)}
+        />
+      )}
     </div>
   );
 };
@@ -1300,6 +1576,7 @@ const PodRosterModal = ({ pod, onClose }) => {
   const [showAddExisting, setShowAddExisting] = useState(false);
   const [showCreateNew, setShowCreateNew] = useState(false);
   const [isActionSaving, setIsActionSaving] = useState(false);
+  const [unassignConfirmState, setUnassignConfirmState] = useState(null);
 
   // New volunteer form states
   const [newVolName, setNewVolName] = useState('');
@@ -1384,13 +1661,14 @@ const PodRosterModal = ({ pod, onClose }) => {
   };
 
 
-  const handleUnassignVolunteer = async (volId) => {
-    if (!window.confirm('Are you sure you want to remove this volunteer from this POD?')) return;
+  const executeUnassignVolunteer = async () => {
+    if (!unassignConfirmState) return;
     try {
-      await api.patch(`/admin/volunteers/${volId}`, {
+      await api.patch(`/admin/volunteers/${unassignConfirmState}`, {
         podId: null
       });
       addToast('Volunteer removed from POD', 'success');
+      setUnassignConfirmState(null);
       await fetchRoster();
     } catch (err) {
       addToast('Failed to remove volunteer', 'error');
@@ -1544,7 +1822,7 @@ const PodRosterModal = ({ pod, onClose }) => {
                         </div>
                       </div>
                       <button 
-                        onClick={() => handleUnassignVolunteer(v.id)}
+                        onClick={() => setUnassignConfirmState(v.id)}
                         style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, padding: '4px' }}
                         title="Remove from POD"
                       >
@@ -1596,6 +1874,16 @@ const PodRosterModal = ({ pod, onClose }) => {
               />
             </div>
           </div>
+        {unassignConfirmState && (
+          <ConfirmDialog
+            isOpen={true}
+            title="Remove Volunteer from POD"
+            message="Are you sure you want to remove this volunteer from this POD group?"
+            confirmLabel="Remove Volunteer"
+            danger={true}
+            onConfirm={executeUnassignVolunteer}
+            onCancel={() => setUnassignConfirmState(null)}
+          />
         )}
       </div>
     </div>,
@@ -1637,6 +1925,9 @@ const VolunteersView = ({ pods, fetchPodsPool }) => {
   const [podId, setPodId] = useState('');
   const [generateLogin, setGenerateLogin] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [credentialsToShow, setCredentialsToShow] = useState(null);
+  const [revokeConfirmState, setRevokeConfirmState] = useState(null);
+  const [deleteConfirmState, setDeleteConfirmState] = useState(null);
 
   useEffect(() => {
     if (showAddModal || showImportModal) {
@@ -1694,7 +1985,11 @@ const VolunteersView = ({ pods, fetchPodsPool }) => {
       });
       addToast('Volunteer created successfully!', 'success');
       if (res.data.username && res.data.generatedPassword) {
-        alert(`Volunteer created with Login Access!\n\nUsername: ${res.data.username}\nPassword: ${res.data.generatedPassword}\n\nPlease copy these credentials now as the password will not be shown again.`);
+        setCredentialsToShow({
+          title: 'Volunteer Created with Login Access',
+          username: res.data.username,
+          password: res.data.generatedPassword
+        });
       }
       setName('');
       setEmail('');
@@ -1716,18 +2011,24 @@ const VolunteersView = ({ pods, fetchPodsPool }) => {
     try {
       const res = await api.post(`/admin/volunteers/${volId}/login`);
       addToast(`Login created for ${volName}!`, 'success');
-      alert(`Login Created for ${volName}!\n\nUsername: ${res.data.username}\nPassword: ${res.data.generatedPassword}\n\nPlease copy these credentials now as the password will not be shown again.`);
+      setCredentialsToShow({
+        title: `Login Created for ${volName}`,
+        username: res.data.username,
+        password: res.data.generatedPassword
+      });
       fetchVolunteers();
     } catch (err) {
       addToast(err.response?.data?.detail || 'Failed to create login', 'error');
     }
   };
 
-  const handleRevokeVolunteerLogin = async (volId, volName) => {
-    if (!window.confirm(`Are you sure you want to revoke the login account for ${volName}? They will no longer be able to log in.`)) return;
+  const executeRevokeVolunteerLogin = async () => {
+    if (!revokeConfirmState) return;
+    const { volId, volName } = revokeConfirmState;
     try {
       await api.delete(`/admin/volunteers/${volId}/login`);
       addToast(`Login account revoked for ${volName}`, 'success');
+      setRevokeConfirmState(null);
       fetchVolunteers();
     } catch (err) {
       addToast(err.response?.data?.detail || 'Failed to revoke login', 'error');
@@ -1742,7 +2043,11 @@ const VolunteersView = ({ pods, fetchPodsPool }) => {
       const payload = customPassword.trim() ? { password: customPassword.trim() } : {};
       const res = await api.post(`/admin/volunteers/${volId}/reset-password`, payload);
       addToast(`Password reset for ${volName}!`, 'success');
-      alert(`Password Reset for ${volName}!\n\nUsername: ${res.data.username}\nPassword: ${res.data.password}\n\nPlease copy these credentials now.`);
+      setCredentialsToShow({
+        title: `Password Reset for ${volName}`,
+        username: res.data.username,
+        password: res.data.password
+      });
       fetchVolunteers();
     } catch (err) {
       addToast(err.response?.data?.detail || 'Failed to reset password', 'error');
@@ -1762,12 +2067,13 @@ const VolunteersView = ({ pods, fetchPodsPool }) => {
     }
   };
 
-  const handleDeleteVolunteer = async (id, name) => {
-    if (!window.confirm(`Are you sure you want to delete volunteer '${name}'?`)) return;
-
+  const executeDeleteVolunteer = async () => {
+    if (!deleteConfirmState) return;
+    const { volId, volName } = deleteConfirmState;
     try {
-      await api.delete(`/admin/volunteers/${id}`);
+      await api.delete(`/admin/volunteers/${volId}`);
       addToast('Volunteer deleted successfully', 'success');
+      setDeleteConfirmState(null);
       fetchVolunteers();
       fetchPodsPool();
     } catch (err) {
@@ -1918,7 +2224,7 @@ const VolunteersView = ({ pods, fetchPodsPool }) => {
                       Reset Password
                     </button>
                     <button 
-                      onClick={() => handleRevokeVolunteerLogin(v.id, v.name)}
+                      onClick={() => setRevokeConfirmState({ isOpen: true, volId: v.id, volName: v.name })}
                       className="btn btn-secondary"
                       style={{ padding: '4px 8px', fontSize: '0.75rem', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)', minHeight: 0, height: 'auto' }}
                     >
@@ -1946,7 +2252,7 @@ const VolunteersView = ({ pods, fetchPodsPool }) => {
             width: '80px',
             render: (v) => (
               <button 
-                onClick={() => handleDeleteVolunteer(v.id, v.name)}
+                onClick={() => setDeleteConfirmState({ isOpen: true, volId: v.id, volName: v.name })}
                 className="btn btn-secondary" 
                 style={{ padding: '6px 10px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)' }}
               >
@@ -2070,6 +2376,40 @@ const VolunteersView = ({ pods, fetchPodsPool }) => {
             fetchVolunteers();
             fetchPodsPool();
           }}
+        />
+      )}
+
+      {credentialsToShow && (
+        <CredentialDialog
+          isOpen={true}
+          onClose={() => setCredentialsToShow(null)}
+          title={credentialsToShow.title}
+          username={credentialsToShow.username}
+          password={credentialsToShow.password}
+        />
+      )}
+
+      {revokeConfirmState && revokeConfirmState.isOpen && (
+        <ConfirmDialog
+          isOpen={true}
+          title="Revoke Volunteer Login Access"
+          message={`Are you sure you want to revoke the login account for ${revokeConfirmState.volName}? They will no longer be able to access the volunteer portal.`}
+          confirmLabel="Revoke Login"
+          danger={true}
+          onConfirm={executeRevokeVolunteerLogin}
+          onCancel={() => setRevokeConfirmState(null)}
+        />
+      )}
+
+      {deleteConfirmState && deleteConfirmState.isOpen && (
+        <ConfirmDialog
+          isOpen={true}
+          title="Delete Volunteer"
+          message={`Are you sure you want to delete volunteer '${deleteConfirmState.volName}'? This action is permanent and cannot be undone.`}
+          confirmLabel="Delete Volunteer"
+          danger={true}
+          onConfirm={executeDeleteVolunteer}
+          onCancel={() => setDeleteConfirmState(null)}
         />
       )}
     </div>
@@ -2298,6 +2638,314 @@ const VolunteerImportModal = ({ onClose }) => {
       </div>
     </div>,
     document.body
+  );
+};
+
+
+// ==========================================
+// CHECKPOINTS VIEW TAB COMPONENT
+// ==========================================
+const CheckpointsView = () => {
+  const { addToast } = useToast();
+  const [checkpoints, setCheckpoints] = useState([]);
+  const [loading, setLoading] = useState(false);
+  
+  // Modals state
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  
+  // Form states
+  const [cpId, setCpId] = useState('');
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  
+  // Table query state
+  const {
+    page,
+    setPage,
+    search,
+    setSearch,
+    clearFilters
+  } = useTableQuery('', 'asc', 'checkpoints');
+  
+  const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(1);
+
+  const fetchCheckpoints = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/admin/checkpoints');
+      const allCp = res.data || [];
+      
+      const filtered = allCp.filter(c => 
+        c.name.toLowerCase().includes(search.toLowerCase()) ||
+        (c.description && c.description.toLowerCase().includes(search.toLowerCase()))
+      );
+      
+      const limit = 10;
+      const totalCount = filtered.length;
+      const totalPages = Math.ceil(totalCount / limit) || 1;
+      
+      const startIdx = (page - 1) * limit;
+      const paginated = filtered.slice(startIdx, startIdx + limit);
+      
+      setCheckpoints(paginated);
+      setTotal(totalCount);
+      setPages(totalPages);
+    } catch (err) {
+      addToast('Failed to fetch checkpoints', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCheckpoints();
+  }, [search, page]);
+
+  const handleAddSubmit = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setIsSaving(true);
+    try {
+      await api.post('/admin/checkpoints', {
+        name: name.trim(),
+        description: description.trim() || null
+      });
+      addToast('Attendance Slot created successfully!', 'success');
+      setName('');
+      setDescription('');
+      setShowAddModal(false);
+      fetchCheckpoints();
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to create Attendance Slot', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setIsSaving(true);
+    try {
+      await api.patch(`/admin/checkpoints/${cpId}`, {
+        name: name.trim(),
+        description: description.trim() || null
+      });
+      addToast('Attendance Slot updated successfully!', 'success');
+      setCpId('');
+      setName('');
+      setDescription('');
+      setShowEditModal(false);
+      fetchCheckpoints();
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to update Attendance Slot', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await api.delete(`/admin/checkpoints/${cpId}`);
+      addToast('Attendance Slot deleted successfully!', 'success');
+      setCpId('');
+      setShowDeleteConfirm(false);
+      fetchCheckpoints();
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to delete Attendance Slot', 'error');
+    }
+  };
+
+  const openEditModal = (cp) => {
+    setCpId(cp.id);
+    setName(cp.name);
+    setDescription(cp.description || '');
+    setShowEditModal(true);
+  };
+
+  const openDeleteConfirm = (cp) => {
+    setCpId(cp.id);
+    setName(cp.name);
+    setShowDeleteConfirm(true);
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+        <div>
+          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Attendance Slots</h1>
+          <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
+            Configure and manage checkpoints (check-in, lunch, workshops) that volunteers can verify.
+          </p>
+        </div>
+        <button onClick={() => setShowAddModal(true)} className="btn btn-primary">
+          + Add Attendance Slot
+        </button>
+      </div>
+
+      <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px', position: 'relative' }}>
+        <Search size={18} style={{ position: 'absolute', left: '36px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+        <input
+          type="text"
+          placeholder="Search Attendance Slots..."
+          className="form-input"
+          style={{ paddingLeft: '48px', width: '100%' }}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      <DataTable
+        columns={[
+          {
+            header: 'Slot Name',
+            accessor: 'name',
+            render: (c) => <div style={{ fontWeight: 600 }}>{c.name}</div>
+          },
+          {
+            header: 'Description',
+            accessor: 'description',
+            render: (c) => <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{c.description || 'No description provided'}</span>
+          },
+          {
+            header: '',
+            align: 'right',
+            width: '120px',
+            render: (c) => (
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => openEditModal(c)}
+                  className="btn btn-secondary"
+                  style={{ padding: '6px 10px', minHeight: 'auto' }}
+                  title="Edit Slot"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => openDeleteConfirm(c)}
+                  className="btn btn-secondary"
+                  style={{ padding: '6px 10px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)', minHeight: 'auto' }}
+                  title="Delete Slot"
+                >
+                  Delete
+                </button>
+              </div>
+            )
+          }
+        ]}
+        data={checkpoints}
+        page={page}
+        pages={pages}
+        totalCount={total}
+        onPageChange={setPage}
+        loading={loading}
+        emptyState={
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+            <CheckCircle size={32} style={{ marginBottom: '12px' }} />
+            <p>No Attendance Slots match your search.</p>
+          </div>
+        }
+      />
+
+      {/* Add Slot Modal */}
+      <Modal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        title="Add Attendance Slot"
+        maxWidth="440px"
+      >
+        <form onSubmit={handleAddSubmit}>
+          <div className="form-group">
+            <label className="form-label">Slot Name</label>
+            <input
+              type="text"
+              placeholder="e.g. Day 2 Lunch"
+              className="form-input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              disabled={isSaving}
+            />
+          </div>
+
+          <div className="form-group" style={{ marginBottom: '24px' }}>
+            <label className="form-label">Description (Optional)</label>
+            <textarea
+              placeholder="Provide context for volunteers..."
+              className="form-input"
+              style={{ minHeight: '80px', resize: 'vertical' }}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              disabled={isSaving}
+            />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+            <button type="button" onClick={() => setShowAddModal(false)} className="btn btn-secondary" disabled={isSaving}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={isSaving}>
+              {isSaving ? <span className="spinner"></span> : 'Add Slot'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Slot Modal */}
+      <Modal
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        title="Edit Attendance Slot"
+        maxWidth="440px"
+      >
+        <form onSubmit={handleEditSubmit}>
+          <div className="form-group">
+            <label className="form-label">Slot Name</label>
+            <input
+              type="text"
+              placeholder="e.g. Day 2 Lunch"
+              className="form-input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              disabled={isSaving}
+            />
+          </div>
+
+          <div className="form-group" style={{ marginBottom: '24px' }}>
+            <label className="form-label">Description (Optional)</label>
+            <textarea
+              placeholder="Provide context for volunteers..."
+              className="form-input"
+              style={{ minHeight: '80px', resize: 'vertical' }}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              disabled={isSaving}
+            />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+            <button type="button" onClick={() => setShowEditModal(false)} className="btn btn-secondary" disabled={isSaving}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={isSaving}>
+              {isSaving ? <span className="spinner"></span> : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Delete Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Attendance Slot"
+        message={`Are you sure you want to delete the Attendance Slot '${name}'? This cannot be undone.`}
+        confirmLabel="Delete Slot"
+        danger={true}
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
+    </div>
   );
 };
 
@@ -2817,10 +3465,22 @@ const PSTeamsModal = ({ ps, onClose }) => {
           <X size={20} />
         </button>
 
-        <h2 style={{ fontSize: '1.75rem', marginBottom: '4px' }}>[{ps.code}] {ps.title} Selections</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '24px' }}>
-          Teams that locked in this Problem Statement.
-        </p>
+        <h2 style={{ fontSize: '1.5rem', marginBottom: '4px', fontWeight: 700 }}>[{ps.code}] {ps.title} Selections</h2>
+        
+        <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-light)', marginBottom: '20px', marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div>
+            <h4 style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>Description</h4>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.4, whiteSpace: 'pre-wrap', margin: 0 }}>
+              {ps.description}
+            </p>
+          </div>
+          <div>
+            <h4 style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>Requirements</h4>
+            <p style={{ fontSize: '0.85rem', color: ps.requirements ? 'var(--text-secondary)' : 'var(--text-muted)', lineHeight: 1.4, whiteSpace: 'pre-wrap', margin: 0 }}>
+              {ps.requirements || 'No specific requirements provided.'}
+            </p>
+          </div>
+        </div>
 
         <DataTable
           columns={[

@@ -5,6 +5,8 @@ import {
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const formatContact = (contactStr) => {
   if (!contactStr) return { email: '', phone: '' };
@@ -25,6 +27,8 @@ const LeaderDashboard = () => {
   const [teamInfo, setTeamInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('team'); // 'team', 'ps', 'settings'
+  const [viewingPS, setViewingPS] = useState(null);
+  const [selectConfirmState, setSelectConfirmState] = useState(null);
   
   // Change password states
   const [oldPassword, setOldPassword] = useState('');
@@ -160,24 +164,24 @@ const LeaderDashboard = () => {
     return () => clearInterval(timer);
   }, [psReleaseAt, isReleased, clockDrift]);
 
-  const handleSelectPS = async (psId, psCode, psTitle) => {
-    if (!window.confirm(`Confirm locking in selection for [${psCode}] ${psTitle}? Once submitted, it cannot be changed.`)) {
-      return;
-    }
-
+  const executeSelectPS = async () => {
+    if (!selectConfirmState) return;
+    const { psId, psCode, psTitle } = selectConfirmState;
     setIsSelecting(true);
     try {
       await api.post('/leader/select-ps', { psId });
       addToast(`Successfully locked in: [${psCode}] ${psTitle}!`, 'success');
-      // Reload dashboard to show locked selection
+      setSelectConfirmState(null);
       fetchTeamData();
     } catch (err) {
       const detail = err.response?.data?.detail;
       if (detail === 'PS_FULL') {
         addToast('Conflict: This problem statement just filled up! Pick another.', 'error');
-        fetchProblemStatements(); // refresh capacities
+        setSelectConfirmState(null);
+        fetchProblemStatements();
       } else if (detail === 'ALREADY_SELECTED') {
         addToast('Conflict: Your team has already locked in a selection.', 'error');
+        setSelectConfirmState(null);
         fetchTeamData();
       } else {
         addToast(detail || 'Selection failed. Check connection.', 'error');
@@ -352,6 +356,13 @@ const LeaderDashboard = () => {
                   <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
                     {teamInfo.psSelection.description}
                   </p>
+                  <button 
+                    onClick={() => setViewingPS(teamInfo.psSelection)} 
+                    className="btn btn-secondary" 
+                    style={{ marginTop: '12px', padding: '8px 16px', fontSize: '0.8rem', minHeight: 'auto' }}
+                  >
+                    View Details & Requirements
+                  </button>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '16px', borderTop: '1px solid var(--border-light)', paddingTop: '12px' }}>
                     Topic Locked At: {new Date(teamInfo.psSelection.selectedAt).toLocaleString()}
                   </div>
@@ -443,11 +454,18 @@ const LeaderDashboard = () => {
                                 <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
                                   {s.description}
                                 </p>
+                                <button 
+                                  onClick={() => setViewingPS(s)} 
+                                  className="btn btn-secondary" 
+                                  style={{ marginTop: '8px', padding: '6px 12px', fontSize: '0.8rem', minHeight: 'auto' }}
+                                >
+                                  View Details & Requirements
+                                </button>
                               </div>
 
                               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
                                 <button
-                                  onClick={() => handleSelectPS(s.id, s.code, s.title)}
+                                  onClick={() => setSelectConfirmState({ psId: s.id, psCode: s.code, psTitle: s.title })}
                                   disabled={isSoldOut || isSelecting}
                                   className="btn btn-primary"
                                   style={{ minHeight: 0, padding: '10px 24px', fontSize: '0.85rem' }}
@@ -558,6 +576,56 @@ const LeaderDashboard = () => {
           color: var(--danger);
         }
       `}</style>
+
+      {viewingPS && (
+        <Modal
+          isOpen={true}
+          onClose={() => setViewingPS(null)}
+          title={`Problem Statement details: ${viewingPS.code}`}
+          maxWidth="640px"
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div>
+              <span style={{ fontSize: '0.75rem', background: 'var(--primary-glow)', color: 'var(--primary)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                {viewingPS.code}
+              </span>
+              <h3 style={{ fontSize: '1.4rem', fontWeight: 700, margin: '8px 0 4px 0' }}>{viewingPS.title}</h3>
+            </div>
+            
+            <div>
+              <h4 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>Description</h4>
+              <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                {viewingPS.description}
+              </p>
+            </div>
+            
+            <div>
+              <h4 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>Detailed Requirements</h4>
+              <p style={{ fontSize: '0.9rem', color: viewingPS.requirements ? 'var(--text-secondary)' : 'var(--text-muted)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                {viewingPS.requirements || 'No specific requirements provided.'}
+              </p>
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
+              <button onClick={() => setViewingPS(null)} className="btn btn-primary" style={{ minHeight: 'auto', padding: '10px 24px' }}>
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {selectConfirmState && (
+        <ConfirmDialog
+          isOpen={true}
+          title="Lock In Problem Statement"
+          message={`Are you sure you want to lock in the problem statement selection for [${selectConfirmState.psCode}] ${selectConfirmState.psTitle}? Once submitted, this selection is final and cannot be changed.`}
+          confirmLabel="Lock Selection"
+          danger={false}
+          onConfirm={executeSelectPS}
+          onCancel={() => setSelectConfirmState(null)}
+        />
+      )}
     </div>
   );
 };

@@ -116,6 +116,10 @@ class CheckpointTypeCreate(BaseModel):
     name: str
     description: Optional[str] = None
 
+class CheckpointTypeUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
 class CheckpointTypeResponse(CheckpointTypeCreate):
     id: str
     eventId: str
@@ -147,6 +151,7 @@ class ProblemStatementResponse(BaseModel):
     capacity: int
     selectedCount: int
     remainingCapacity: int = 0
+    requirements: Optional[str] = None
 
     class Config:
         from_attributes = True

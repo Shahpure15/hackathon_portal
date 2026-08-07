@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import (
     Column, String, Integer, Boolean, DateTime, ForeignKey, 
-    Enum, JSON, Index, UniqueConstraint, func
+    Enum, JSON, Index, UniqueConstraint, func, Text
 )
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -191,6 +191,7 @@ class ProblemStatement(Base):
     description = Column(String(1000), nullable=False)
     capacity = Column(Integer, nullable=False)
     selectedCount = Column(Integer, default=0, nullable=False)
+    requirements = Column(Text, nullable=True)
 
     # Relationships
     event = relationship("Event", back_populates="problemStatements")
