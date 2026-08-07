@@ -119,7 +119,7 @@ const AdminDashboard = () => {
             <button
               onClick={() => handleTabClick('teams')}
               className={`btn ${activeTab === 'teams' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'teams' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px' }}
+              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'teams' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px', color: activeTab === 'teams' ? undefined : 'var(--text-secondary)' }}
               title="Teams"
             >
               <Users size={18} />
@@ -128,7 +128,7 @@ const AdminDashboard = () => {
             <button
               onClick={() => handleTabClick('pods')}
               className={`btn ${activeTab === 'pods' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'pods' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px' }}
+              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'pods' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px', color: activeTab === 'pods' ? undefined : 'var(--text-secondary)' }}
               title="POD Groups"
             >
               <Layers size={18} />
@@ -137,7 +137,7 @@ const AdminDashboard = () => {
             <button
               onClick={() => handleTabClick('volunteers')}
               className={`btn ${activeTab === 'volunteers' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'volunteers' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px' }}
+              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'volunteers' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px', color: activeTab === 'volunteers' ? undefined : 'var(--text-secondary)' }}
               title="Volunteers"
             >
               <UserCheck size={18} />
@@ -146,7 +146,7 @@ const AdminDashboard = () => {
             <button
               onClick={() => handleTabClick('checkpoints')}
               className={`btn ${activeTab === 'checkpoints' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'checkpoints' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px' }}
+              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'checkpoints' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px', color: activeTab === 'checkpoints' ? undefined : 'var(--text-secondary)' }}
               title="Attendance Slots"
             >
               <CheckCircle size={18} />
@@ -155,7 +155,7 @@ const AdminDashboard = () => {
             <button
               onClick={() => handleTabClick('ps')}
               className={`btn ${activeTab === 'ps' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'ps' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px' }}
+              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'ps' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px', color: activeTab === 'ps' ? undefined : 'var(--text-secondary)' }}
               title="Problem Statements"
             >
               <FileText size={18} />
