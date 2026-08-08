@@ -132,28 +132,7 @@ const VolunteerDashboard = () => {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-main)', position: 'relative' }}>
       {/* Floating Glass Notch Navigation */}
-      <div 
-        className="glass-card" 
-        style={{
-          position: 'fixed',
-          top: '16px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: 'calc(100% - 32px)',
-          maxWidth: '1200px',
-          height: '64px',
-          borderRadius: '999px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 24px',
-          zIndex: 1000,
-          border: '1px solid rgba(255, 255, 255, 0.4)',
-          borderTopColor: 'rgba(255, 255, 255, 0.6)',
-          background: 'rgba(253, 251, 247, 0.75)',
-          boxShadow: '0 10px 30px -10px rgba(43, 33, 24, 0.15)',
-        }}
-      >
+      <div className="floating-nav">
         {/* Logo / Title */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontWeight: 800, fontSize: '0.95rem', letterSpacing: '0.5px' }} className="text-gradient">

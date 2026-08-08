@@ -70,7 +70,7 @@ def reset_db():
             if settings.ENVIRONMENT == "development":
                 admin_password = "AdminPassword123!"
             else:
-                admin_password = generate_random_password()
+                admin_password = "MitAdmin@123"
 
         admin = User(
             eventId=event.id,
@@ -87,7 +87,7 @@ def reset_db():
             if settings.ENVIRONMENT == "development":
                 volunteer_password = "VolunteerPassword123!"
             else:
-                volunteer_password = generate_random_password()
+                volunteer_password = "MitVolunteer@123"
 
         # Create volunteer profile linked to user
         vol_profile = Volunteer(

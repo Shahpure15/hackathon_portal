@@ -76,28 +76,7 @@ const AdminDashboard = () => {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-main)', position: 'relative' }}>
       {/* Floating Glass Notch Navigation */}
-      <div 
-        className="glass-card" 
-        style={{
-          position: 'fixed',
-          top: '16px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: 'calc(100% - 32px)',
-          maxWidth: '1200px',
-          height: '64px',
-          borderRadius: '999px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 24px',
-          zIndex: 1000,
-          border: '1px solid rgba(255, 255, 255, 0.4)',
-          borderTopColor: 'rgba(255, 255, 255, 0.6)',
-          background: 'rgba(253, 251, 247, 0.75)',
-          boxShadow: '0 10px 30px -10px rgba(43, 33, 24, 0.15)',
-        }}
-      >
+      <div className="floating-nav">
         {/* Logo / Title */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontWeight: 800, fontSize: '0.95rem', letterSpacing: '0.5px' }} className="text-gradient">
@@ -118,39 +97,39 @@ const AdminDashboard = () => {
 
         {/* Tabs for Desktop */}
         {!isMobile ? (
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+          <div className="floating-nav-tabs">
             <button
               onClick={() => handleTabClick('teams')}
               className={`btn ${activeTab === 'teams' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'teams' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'teams' ? undefined : 'var(--text-secondary)' }}
+              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'teams' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'teams' ? undefined : 'var(--text-secondary)', flexShrink: 0 }}
             >
               Teams
             </button>
             <button
               onClick={() => handleTabClick('pods')}
               className={`btn ${activeTab === 'pods' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'pods' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'pods' ? undefined : 'var(--text-secondary)' }}
+              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'pods' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'pods' ? undefined : 'var(--text-secondary)', flexShrink: 0 }}
             >
               POD Groups
             </button>
             <button
               onClick={() => handleTabClick('volunteers')}
               className={`btn ${activeTab === 'volunteers' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'volunteers' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'volunteers' ? undefined : 'var(--text-secondary)' }}
+              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'volunteers' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'volunteers' ? undefined : 'var(--text-secondary)', flexShrink: 0 }}
             >
               Volunteers
             </button>
             <button
               onClick={() => handleTabClick('checkpoints')}
               className={`btn ${activeTab === 'checkpoints' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'checkpoints' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'checkpoints' ? undefined : 'var(--text-secondary)' }}
+              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'checkpoints' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'checkpoints' ? undefined : 'var(--text-secondary)', flexShrink: 0 }}
             >
               Attendance Slots
             </button>
             <button
               onClick={() => handleTabClick('ps')}
               className={`btn ${activeTab === 'ps' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'ps' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'ps' ? undefined : 'var(--text-secondary)' }}
+              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'ps' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'ps' ? undefined : 'var(--text-secondary)', flexShrink: 0 }}
             >
               Problem Statements
             </button>
