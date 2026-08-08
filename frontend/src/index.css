@@ -513,7 +513,10 @@ select.form-input option {
   }
   
   .main-content {
-    padding: 16px !important;
+    padding-right: 16px !important;
+    padding-bottom: 16px !important;
+    padding-left: 16px !important;
+    /* Do NOT override padding-top — the fixed floating navbar needs ~100px clearance */
     height: calc(100vh - 56px);
   }
 
@@ -721,6 +724,7 @@ a:focus-visible {
     0 2px 8px -2px rgba(185, 111, 56, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.85),
     inset 0 -1px 0 rgba(185, 111, 56, 0.08);
+  overflow: hidden;
 }
 
 .floating-nav-tabs {
