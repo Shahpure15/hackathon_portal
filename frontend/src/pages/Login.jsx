@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Lock, User } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import logoMitIndia from '../assets/logo_mitindia.jpg';
 
 const Login = () => {
   const [username, setUsername] = useState('');
@@ -49,9 +50,11 @@ const Login = () => {
     <div className="auth-wrapper">
       <div className="glass-card" style={{ width: '100%', maxWidth: '420px', padding: '40px' }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <h1 style={{ fontSize: '2rem', marginBottom: '8px' }} className="text-gradient">
-            Event Portal
-          </h1>
+          <img 
+            src={logoMitIndia} 
+            alt="MIT India Hackathon Logo" 
+            style={{ height: '70px', objectFit: 'contain', marginBottom: '16px', borderRadius: '4px' }}
+          />
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
             Sign in to access your dashboard
           </p>

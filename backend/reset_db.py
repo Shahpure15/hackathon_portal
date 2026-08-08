@@ -48,7 +48,7 @@ def reset_db():
 
         # 1. Create the Active Event
         event = Event(
-            name="Infinity Hackathon 2026",
+            name="MIT India Hackathon 2026",
             startDate=datetime.utcnow(),
             endDate=datetime.utcnow() + timedelta(days=2),
             isActive=True
@@ -94,7 +94,7 @@ def reset_db():
             eventId=event.id,
             name="Default Volunteer",
             type="FACULTY",
-            contact="volunteer@infinity.com"
+            contact="volunteer@mitindia.com"
         )
         db.add(vol_profile)
         db.flush()

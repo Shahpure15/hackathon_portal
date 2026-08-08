@@ -29,7 +29,7 @@ def seed_db():
 
         # 1. Create the Active Event
         event = Event(
-            name="Infinity Hackathon 2026",
+            name="MIT India Hackathon 2026",
             startDate=datetime.utcnow(),
             endDate=datetime.utcnow() + timedelta(days=2),
             isActive=True

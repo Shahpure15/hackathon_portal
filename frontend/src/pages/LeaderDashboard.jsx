@@ -28,7 +28,18 @@ const LeaderDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem('leaderActiveTab') || 'team'); // 'team', 'ps', 'settings'
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 1000);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 1000);
+      if (window.innerWidth >= 1000) {
+        setMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const [viewingPS, setViewingPS] = useState(null);
   const [selectConfirmState, setSelectConfirmState] = useState(null);
 
@@ -217,100 +228,161 @@ const LeaderDashboard = () => {
   const hasSelection = !!teamInfo?.psSelection;
 
   return (
-    <div className="dashboard-layout">
-      {/* Mobile Header */}
-      <div className="mobile-header">
-        <button
-          onClick={() => setMobileMenuOpen(true)}
-          className="mobile-menu-toggle"
-          title="Open Menu"
-        >
-          <Menu size={24} />
-        </button>
-        <span style={{ fontWeight: 800, fontSize: '1.25rem' }} className="text-gradient">
-          MIT India Leader
-        </span>
-        <div style={{ width: 44 }}></div>
-      </div>
-
-      {mobileMenuOpen && (
-        <div className="mobile-backdrop" onClick={() => setMobileMenuOpen(false)}></div>
-      )}
-
-      {/* Sidebar Navigation */}
+    <div style={{ minHeight: '100vh', background: 'var(--bg-main)', position: 'relative' }}>
+      {/* Floating Glass Notch Navigation */}
       <div 
-        className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}
-        style={{ 
-          display: 'flex', 
-          flexDirection: 'column', 
-          height: '100vh', 
-          justifyContent: 'space-between', 
-          padding: '24px 0',
-          width: sidebarCollapsed ? '80px' : '260px',
-          transition: 'width 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-          overflow: 'hidden'
+        className="glass-card" 
+        style={{
+          position: 'fixed',
+          top: '16px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 'calc(100% - 32px)',
+          maxWidth: '1200px',
+          height: '64px',
+          borderRadius: '999px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 24px',
+          zIndex: 1000,
+          border: '1px solid rgba(255, 255, 255, 0.4)',
+          borderTopColor: 'rgba(255, 255, 255, 0.6)',
+          background: 'rgba(253, 251, 247, 0.75)',
+          boxShadow: '0 10px 30px -10px rgba(43, 33, 24, 0.15)',
         }}
       >
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : 'space-between', padding: sidebarCollapsed ? '0 12px 32px 12px' : '0 24px 32px 24px', transition: 'padding 0.25s' }}>
-            {!sidebarCollapsed && (
-              <div>
-                <h2 style={{ fontSize: '1.5rem', fontWeight: 800 }} className="text-gradient">
-                  MIT India
-                </h2>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Leader Workspace</span>
-              </div>
-            )}
-            <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: '6px' }}
-              title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-            >
-              {sidebarCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
-            </button>
-          </div>
+        {/* Logo / Title */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontWeight: 800, fontSize: '0.95rem', letterSpacing: '0.5px' }} className="text-gradient">
+            MIT India Hackathon
+          </span>
+          <span style={{ 
+            fontSize: '0.7rem', 
+            background: 'var(--primary-glow)', 
+            color: 'var(--primary)', 
+            padding: '2px 8px', 
+            borderRadius: '999px', 
+            fontWeight: 700,
+            textTransform: 'uppercase'
+          }}>
+            Leader
+          </span>
+        </div>
 
-          <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: sidebarCollapsed ? '0 8px' : '0 12px', transition: 'padding 0.25s' }}>
+        {/* Tabs for Desktop */}
+        {!isMobile ? (
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
             <button 
               onClick={() => handleTabClick('team')} 
               className={`btn ${activeTab === 'team' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'team' ? undefined : 'transparent', width: '100%', cursor: 'pointer', minHeight: 'auto', height: '48px' }}
-              title="Team Roster"
+              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'team' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'team' ? undefined : 'var(--text-secondary)' }}
             >
-              <Users size={18} />
-              {!sidebarCollapsed && <span style={{ marginLeft: '12px', textTransform: 'none', letterSpacing: 'normal' }}>Team Roster</span>}
+              Team Roster
             </button>
             <button 
               onClick={() => handleTabClick('ps')} 
               className={`btn ${activeTab === 'ps' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'ps' ? undefined : 'transparent', width: '100%', cursor: 'pointer', minHeight: 'auto', height: '48px' }}
-              title="Select Topic"
+              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'ps' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'ps' ? undefined : 'var(--text-secondary)' }}
             >
-              <FileText size={18} />
-              {!sidebarCollapsed && <span style={{ marginLeft: '12px', textTransform: 'none', letterSpacing: 'normal' }}>Select Topic</span>}
+              Select Topic
             </button>
             <button 
               onClick={() => handleTabClick('settings')} 
               className={`btn ${activeTab === 'settings' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'settings' ? undefined : 'transparent', width: '100%', cursor: 'pointer', minHeight: 'auto', height: '48px' }}
-              title="Change Password"
+              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'settings' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'settings' ? undefined : 'var(--text-secondary)' }}
             >
-              <Lock size={18} />
-              {!sidebarCollapsed && <span style={{ marginLeft: '12px', textTransform: 'none', letterSpacing: 'normal' }}>Change Password</span>}
+              Change Password
             </button>
-          </nav>
-        </div>
+          </div>
+        ) : null}
 
-        <div style={{ padding: sidebarCollapsed ? '0 8px' : '0 24px', transition: 'padding 0.25s' }}>
-          <button onClick={logout} className="btn btn-secondary" style={{ width: '100%', padding: sidebarCollapsed ? '12px' : '12px 16px', justifyContent: 'center', minHeight: 'auto', height: '48px' }} title="Logout">
-            <LogOut size={16} />
-            {!sidebarCollapsed && <span style={{ marginLeft: '8px', textTransform: 'none', letterSpacing: 'normal' }}>Logout</span>}
+        {/* Right side: Logout (Desktop) or Hamburger (Mobile) */}
+        {!isMobile ? (
+          <button
+            onClick={logout}
+            className="btn btn-secondary"
+            style={{ padding: '6px 16px', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.8rem' }}
+          >
+            Logout
           </button>
-        </div>
+        ) : (
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="btn btn-secondary"
+            style={{ padding: '6px', minHeight: 'auto', height: '36px', width: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
+          </button>
+        )}
       </div>
 
+      {/* Mobile Menu Dropdown */}
+      {isMobile && mobileMenuOpen && (
+        <div 
+          className="glass-card"
+          style={{
+            position: 'fixed',
+            top: '90px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: 'calc(100% - 32px)',
+            maxWidth: '400px',
+            background: 'rgba(253, 251, 247, 0.95)',
+            border: '1px solid rgba(255, 255, 255, 0.5)',
+            borderRadius: '24px',
+            boxShadow: '0 15px 35px -10px rgba(43, 33, 24, 0.25)',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+            zIndex: 999,
+            animation: 'scaleInModal 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
+          }}
+        >
+          <button
+            onClick={() => handleTabClick('team')}
+            className={`btn ${activeTab === 'team' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ width: '100%', padding: '10px 16px', border: 'none', background: activeTab === 'team' ? undefined : 'transparent', minHeight: 'auto', height: '40px', borderRadius: '12px', textAlign: 'left', justifyContent: 'flex-start', color: activeTab === 'team' ? undefined : 'var(--text-secondary)' }}
+          >
+            Team Roster
+          </button>
+          <button
+            onClick={() => handleTabClick('ps')}
+            className={`btn ${activeTab === 'ps' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ width: '100%', padding: '10px 16px', border: 'none', background: activeTab === 'ps' ? undefined : 'transparent', minHeight: 'auto', height: '40px', borderRadius: '12px', textAlign: 'left', justifyContent: 'flex-start', color: activeTab === 'ps' ? undefined : 'var(--text-secondary)' }}
+          >
+            Select Topic
+          </button>
+          <button
+            onClick={() => handleTabClick('settings')}
+            className={`btn ${activeTab === 'settings' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ width: '100%', padding: '10px 16px', border: 'none', background: activeTab === 'settings' ? undefined : 'transparent', minHeight: 'auto', height: '40px', borderRadius: '12px', textAlign: 'left', justifyContent: 'flex-start', color: activeTab === 'settings' ? undefined : 'var(--text-secondary)' }}
+          >
+            Change Password
+          </button>
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border-light)', margin: '8px 0' }} />
+          <button
+            onClick={logout}
+            className="btn btn-secondary"
+            style={{ width: '100%', padding: '10px 16px', minHeight: 'auto', height: '40px', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            Logout
+          </button>
+        </div>
+      )}
+
       {/* Main Content Area */}
-      <div className="main-content" style={{ backgroundColor: 'var(--bg-main)', overflowY: 'auto' }}>
+      <div 
+        className="main-content" 
+        style={{ 
+          padding: '110px 24px 40px 24px', 
+          maxWidth: '1280px', 
+          margin: '0 auto',
+          width: '100%',
+          boxSizing: 'border-box'
+        }}
+      >
         {/* Header Block */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
           <div>
@@ -439,7 +511,7 @@ const LeaderDashboard = () => {
                         <ShieldAlert size={48} style={{ color: 'var(--text-muted)', marginBottom: '16px', marginLeft: 'auto', marginRight: 'auto' }} />
                         <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>Selection Closed</h2>
                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginTop: '8px' }}>
-                          Problem statement selection is currently locked by the administrator.
+                          Problem statement selection timeline has passed away.
                         </p>
                       </>
                     ) : (

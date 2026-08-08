@@ -670,23 +670,26 @@ async def export_teams(
 ):
     teams = db.query(Team).filter(Team.eventId == current_user.eventId).order_by(Team.registrationId).all()
     
-    # Generate CSV stream response
     import io
     output = io.StringIO()
     writer = csv.writer(output)
     
-    # Headers
-    writer.writerow([
+    headers = [
         "Team Code", "Team Name", "Leader Name", "Leader Email", "Leader Phone", 
         "College Name", "Status", "POD Grouping", "Selected PS Code", "Selected PS Title"
-    ])
+    ]
+    for i in range(1, 6):
+        headers.extend([
+            f"Member {i} Name", f"Member {i} Email", f"Member {i} Phone", f"Member {i} ID Verified"
+        ])
+    writer.writerow(headers)
     
     for team in teams:
         pod_name = team.pod.name if team.pod else "Unassigned"
         ps_code = team.psSelection.ps.code if team.psSelection else "None"
         ps_title = team.psSelection.ps.title if team.psSelection else "None"
         
-        writer.writerow([
+        row = [
             team.registrationId,
             team.name,
             team.leaderName,
@@ -697,16 +700,24 @@ async def export_teams(
             pod_name,
             ps_code,
             ps_title
-        ])
+        ]
+        
+        members = team.members
+        for i in range(5):
+            if i < len(members):
+                m = members[i]
+                row.extend([m.name, m.email, m.phone, "Yes" if m.idVerified else "No"])
+            else:
+                row.extend(["", "", "", ""])
+                
+        writer.writerow(row)
         
     output.seek(0)
     
-    # Set headers for file download
     headers = {
         'Content-Disposition': 'attachment; filename="teams_roster_export.csv"',
         'Content-Type': 'text/csv'
     }
-    
     return StreamingResponse(iter([output.getvalue()]), headers=headers)
 
 
@@ -953,6 +964,171 @@ async def assign_teams_to_pod(
             
     return {"message": msg}
 
+@router.get("/pods/export")
+async def export_pods(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    pods = db.query(Pod).options(
+        joinedload(Pod.teams),
+        joinedload(Pod.volunteers)
+    ).filter(Pod.eventId == current_user.eventId).order_by(Pod.name).all()
+    
+    import io
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    writer.writerow([
+        "POD Name", "Capacity Limit", "Current Team Count", 
+        "Assigned Faculty", "Assigned Student Volunteers", "Assigned Teams"
+    ])
+    
+    for p in pods:
+        faculty = [v.name for v in p.volunteers if v.type == VolunteerType.FACULTY]
+        students = [v.name for v in p.volunteers if v.type == VolunteerType.STUDENT]
+        teams_list = [t.name for t in p.teams]
+        
+        writer.writerow([
+            p.name,
+            p.capacity if p.capacity is not None else "",
+            len(p.teams),
+            ", ".join(faculty),
+            ", ".join(students),
+            ", ".join(teams_list)
+        ])
+        
+    output.seek(0)
+    
+    headers = {
+        'Content-Disposition': 'attachment; filename="pods_export.csv"',
+        'Content-Type': 'text/csv'
+    }
+    return StreamingResponse(iter([output.getvalue()]), headers=headers)
+
+
+@router.post("/pods/import/preview")
+async def import_pods_preview(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Invalid file type. Only CSV files allowed.")
+        
+    contents = await file.read()
+    if len(contents) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File exceeds 2MB limit.")
+        
+    try:
+        from io import StringIO
+        csv_data = StringIO(contents.decode('utf-8'))
+        df = pd.read_csv(csv_data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error parsing CSV: {str(e)}")
+        
+    required = ["name"]
+    for col in required:
+        if col not in df.columns:
+            raise HTTPException(status_code=400, detail=f"Missing column: {col}")
+            
+    preview_data = {
+        "new": [],
+        "invalid": []
+    }
+    
+    unique_names = set()
+    
+    for index, row_series in df.iterrows():
+        row = row_series.to_dict()
+        row_num = index + 1
+        
+        name = str(row.get("name", "")).strip()
+        capacity_raw = row.get("capacity")
+        
+        if not name or name.lower() == "nan":
+            preview_data["invalid"].append({"row": row_num, "reason": "Missing POD Name"})
+            continue
+            
+        if name.lower() in unique_names:
+            preview_data["invalid"].append({"row": row_num, "reason": f"Duplicate POD name '{name}' inside the CSV itself"})
+            continue
+        unique_names.add(name.lower())
+        
+        existing_pod = db.query(Pod).filter(Pod.name.ilike(name), Pod.eventId == current_user.eventId).first()
+        if existing_pod:
+            preview_data["invalid"].append({"row": row_num, "reason": f"POD Group '{name}' already exists in database"})
+            continue
+            
+        capacity = None
+        if capacity_raw is not None and pd.notna(capacity_raw) and str(capacity_raw).strip() != "":
+            try:
+                capacity = int(capacity_raw)
+                if capacity <= 0:
+                    raise ValueError()
+            except (ValueError, TypeError):
+                preview_data["invalid"].append({"row": row_num, "reason": f"Capacity must be a positive integer. Got '{capacity_raw}'"})
+                continue
+                
+        preview_data["new"].append({
+            "name": name,
+            "capacity": capacity,
+            "row": row_num
+        })
+        
+    pending = PendingImport(
+        eventId=current_user.eventId,
+        type="pod",
+        payload={"new": preview_data["new"]}
+    )
+    db.add(pending)
+    db.commit()
+    
+    return {
+        "importId": pending.id,
+        "summary": {
+            "new": len(preview_data["new"]),
+            "invalid": len(preview_data["invalid"])
+        },
+        "details": {
+            "invalid": preview_data["invalid"]
+        }
+    }
+
+
+@router.post("/pods/import/confirm")
+async def import_pods_confirm(
+    importId: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    pending = db.query(PendingImport).filter(
+        PendingImport.id == importId,
+        PendingImport.eventId == current_user.eventId
+    ).first()
+    
+    if not pending or pending.type != "pod":
+        raise HTTPException(status_code=404, detail="Pending import not found")
+        
+    payload = pending.payload
+    new_pods = payload.get("new", [])
+    
+    try:
+        for row in new_pods:
+            pod = Pod(
+                eventId=current_user.eventId,
+                name=row["name"],
+                capacity=row.get("capacity")
+            )
+            db.add(pod)
+            
+        db.delete(pending)
+        db.commit()
+        return {"message": f"Successfully imported {len(new_pods)} POD groups"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database write error: {str(e)}")
+
+
 @router.get("/pods/{pod_id}/export")
 async def export_pod_roster(
     pod_id: str,
@@ -999,6 +1175,61 @@ async def export_pod_roster(
 # ==========================================
 # VOLUNTEERS MANAGEMENT
 # ==========================================
+
+@router.get("/volunteers/export")
+async def export_volunteers(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    volunteers = db.query(Volunteer).options(
+        joinedload(Volunteer.pod),
+        joinedload(Volunteer.user)
+    ).filter(Volunteer.eventId == current_user.eventId).order_by(Volunteer.name).all()
+    
+    import io
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    writer.writerow([
+        "Name", "Type", "Email", "Phone", "Assigned POD Group", "Login Access Created", "Username"
+    ])
+    
+    for v in volunteers:
+        pod_name = v.pod.name if v.pod else "Unassigned"
+        
+        email = ""
+        phone = ""
+        if v.contact:
+            if " | " in v.contact:
+                parts = v.contact.split(" | ")
+                email = parts[0]
+                phone = parts[1]
+            elif "@" in v.contact:
+                email = v.contact
+            else:
+                phone = v.contact
+                
+        has_login = "Yes" if v.user else "No"
+        username = v.user.username if v.user else ""
+        
+        writer.writerow([
+            v.name,
+            v.type.value,
+            email,
+            phone,
+            pod_name,
+            has_login,
+            username
+        ])
+        
+    output.seek(0)
+    
+    headers = {
+        'Content-Disposition': 'attachment; filename="volunteers_export.csv"',
+        'Content-Type': 'text/csv'
+    }
+    return StreamingResponse(iter([output.getvalue()]), headers=headers)
+
 
 @router.get("/volunteers")
 async def get_volunteers(
@@ -1525,6 +1756,50 @@ async def get_problem_statements(
             requirements=s.requirements
         ) for s in statements
     ]
+
+@router.get("/problem-statements/export")
+async def export_problem_statements(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    statements = db.query(ProblemStatement).options(
+        joinedload(ProblemStatement.selections).joinedload(PSSelection.team)
+    ).filter(ProblemStatement.eventId == current_user.eventId).order_by(ProblemStatement.code).all()
+    
+    import io
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    writer.writerow([
+        "Code", "Title", "Description", "Capacity", "Slots Remaining", "Assigned Teams", "Selection Times"
+    ])
+    
+    for s in statements:
+        team_names = []
+        selection_times = []
+        for sel in s.selections:
+            team_names.append(f"{sel.team.name} ({sel.team.registrationId})")
+            sel_time = sel.selectedAt.strftime("%Y-%m-%d %H:%M:%S") if sel.selectedAt else ""
+            selection_times.append(f"{sel.team.name}: {sel_time}")
+            
+        writer.writerow([
+            s.code,
+            s.title,
+            s.description,
+            s.capacity,
+            s.capacity - len(s.selections),
+            "; ".join(team_names),
+            "; ".join(selection_times)
+        ])
+        
+    output.seek(0)
+    
+    headers = {
+        'Content-Disposition': 'attachment; filename="problem_statements_export.csv"',
+        'Content-Type': 'text/csv'
+    }
+    return StreamingResponse(iter([output.getvalue()]), headers=headers)
+
 
 @router.post("/problem-statements/import/preview")
 async def import_problem_statements_preview(

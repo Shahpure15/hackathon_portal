@@ -27,15 +27,27 @@ const formatContact = (contactStr) => {
 
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem('adminActiveTab') || 'teams');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 1000);
   const { addToast } = useToast();
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 1000);
+      if (window.innerWidth >= 1000) {
+        setMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Custom Reset Password states
   const [resetPasswordState, setResetPasswordState] = useState(null);
   const [customPasswordValue, setCustomPasswordValue] = useState('');
   const [showResetPasswordInput, setShowResetPasswordInput] = useState(false);
   const [isSavingReset, setIsSavingReset] = useState(false);
+  const [parentCredentialsToShow, setParentCredentialsToShow] = useState(null);
 
   const handleTabClick = (tabName) => {
     setActiveTab(tabName);
@@ -62,109 +74,91 @@ const AdminDashboard = () => {
   }, [activeTab]);
 
   return (
-    <div className="dashboard-layout">
-      {/* Mobile Header */}
-      <div className="mobile-header">
-        <button
-          onClick={() => setMobileMenuOpen(true)}
-          className="mobile-menu-toggle"
-          title="Open Menu"
-        >
-          <Menu size={24} />
-        </button>
-        <span style={{ fontWeight: 800, fontSize: '1.25rem' }} className="text-gradient">
-          MIT India Admin
-        </span>
-        <div style={{ width: 44 }}></div>
-      </div>
-
-      {mobileMenuOpen && (
-        <div className="mobile-backdrop" onClick={() => setMobileMenuOpen(false)}></div>
-      )}
-
-      {/* Sidebar Navigation */}
-      <div
-        className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}
+    <div style={{ minHeight: '100vh', background: 'var(--bg-main)', position: 'relative' }}>
+      {/* Floating Glass Notch Navigation */}
+      <div 
+        className="glass-card" 
         style={{
+          position: 'fixed',
+          top: '16px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 'calc(100% - 32px)',
+          maxWidth: '1200px',
+          height: '64px',
+          borderRadius: '999px',
           display: 'flex',
-          flexDirection: 'column',
-          height: '100%',
+          alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '24px 0',
-          width: sidebarCollapsed ? '80px' : '260px',
-          transition: 'width 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-          overflow: 'hidden'
+          padding: '0 24px',
+          zIndex: 1000,
+          border: '1px solid rgba(255, 255, 255, 0.4)',
+          borderTopColor: 'rgba(255, 255, 255, 0.6)',
+          background: 'rgba(253, 251, 247, 0.75)',
+          boxShadow: '0 10px 30px -10px rgba(43, 33, 24, 0.15)',
         }}
       >
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : 'space-between', padding: sidebarCollapsed ? '0 12px 32px 12px' : '0 24px 32px 24px', transition: 'padding 0.25s' }}>
-            {!sidebarCollapsed && (
-              <div>
-                <h2 style={{ fontSize: '1.5rem', fontWeight: 800 }} className="text-gradient">
-                  Event Portal
-                </h2>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Admin Panel</span>
-              </div>
-            )}
-            <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: '6px' }}
-              title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-            >
-              {sidebarCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
-            </button>
-          </div>
+        {/* Logo / Title */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontWeight: 800, fontSize: '0.95rem', letterSpacing: '0.5px' }} className="text-gradient">
+            MIT India Hackathon
+          </span>
+          <span style={{ 
+            fontSize: '0.7rem', 
+            background: 'var(--primary-glow)', 
+            color: 'var(--primary)', 
+            padding: '2px 8px', 
+            borderRadius: '999px', 
+            fontWeight: 700,
+            textTransform: 'uppercase'
+          }}>
+            Admin
+          </span>
+        </div>
 
-          <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: sidebarCollapsed ? '0 8px' : '0 12px', transition: 'padding 0.25s' }}>
+        {/* Tabs for Desktop */}
+        {!isMobile ? (
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
             <button
               onClick={() => handleTabClick('teams')}
               className={`btn ${activeTab === 'teams' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'teams' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px', color: activeTab === 'teams' ? undefined : 'var(--text-secondary)' }}
-              title="Teams"
+              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'teams' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'teams' ? undefined : 'var(--text-secondary)' }}
             >
-              <Users size={18} />
-              {!sidebarCollapsed && <span style={{ marginLeft: '12px', textTransform: 'none', letterSpacing: 'normal' }}>Teams</span>}
+              Teams
             </button>
             <button
               onClick={() => handleTabClick('pods')}
               className={`btn ${activeTab === 'pods' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'pods' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px', color: activeTab === 'pods' ? undefined : 'var(--text-secondary)' }}
-              title="POD Groups"
+              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'pods' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'pods' ? undefined : 'var(--text-secondary)' }}
             >
-              <Layers size={18} />
-              {!sidebarCollapsed && <span style={{ marginLeft: '12px', textTransform: 'none', letterSpacing: 'normal' }}>POD Groups</span>}
+              POD Groups
             </button>
             <button
               onClick={() => handleTabClick('volunteers')}
               className={`btn ${activeTab === 'volunteers' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'volunteers' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px', color: activeTab === 'volunteers' ? undefined : 'var(--text-secondary)' }}
-              title="Volunteers"
+              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'volunteers' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'volunteers' ? undefined : 'var(--text-secondary)' }}
             >
-              <UserCheck size={18} />
-              {!sidebarCollapsed && <span style={{ marginLeft: '12px', textTransform: 'none', letterSpacing: 'normal' }}>Volunteers</span>}
+              Volunteers
             </button>
             <button
               onClick={() => handleTabClick('checkpoints')}
               className={`btn ${activeTab === 'checkpoints' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'checkpoints' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px', color: activeTab === 'checkpoints' ? undefined : 'var(--text-secondary)' }}
-              title="Attendance Slots"
+              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'checkpoints' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'checkpoints' ? undefined : 'var(--text-secondary)' }}
             >
-              <CheckCircle size={18} />
-              {!sidebarCollapsed && <span style={{ marginLeft: '12px', textTransform: 'none', letterSpacing: 'normal' }}>Attendance Slots</span>}
+              Attendance Slots
             </button>
             <button
               onClick={() => handleTabClick('ps')}
               className={`btn ${activeTab === 'ps' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ justifyContent: sidebarCollapsed ? 'center' : 'flex-start', padding: sidebarCollapsed ? '12px' : '12px 16px', border: 'none', background: activeTab === 'ps' ? undefined : 'transparent', width: '100%', minHeight: 'auto', height: '48px', color: activeTab === 'ps' ? undefined : 'var(--text-secondary)' }}
-              title="Problem Statements"
+              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'ps' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'ps' ? undefined : 'var(--text-secondary)' }}
             >
-              <FileText size={18} />
-              {!sidebarCollapsed && <span style={{ marginLeft: '12px', textTransform: 'none', letterSpacing: 'normal' }}>Problem Statements</span>}
+              Problem Statements
             </button>
-          </nav>
-        </div>
+          </div>
+        ) : null}
 
-        <div style={{ padding: sidebarCollapsed ? '0 8px' : '0 24px', transition: 'padding 0.25s' }}>
+        {/* Right side: Logout (Desktop) or Hamburger (Mobile) */}
+        {!isMobile ? (
           <button
             onClick={async () => {
               localStorage.removeItem('adminActiveTab');
@@ -173,19 +167,119 @@ const AdminDashboard = () => {
               window.location.href = '/login';
             }}
             className="btn btn-secondary"
-            style={{ width: '100%', padding: sidebarCollapsed ? '12px' : '12px 16px', justifyContent: 'center', minHeight: 'auto', height: '48px' }}
-            title="Logout"
+            style={{ padding: '6px 16px', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.8rem' }}
           >
-            <LogOut size={18} />
-            {!sidebarCollapsed && <span style={{ marginLeft: '8px', textTransform: 'none', letterSpacing: 'normal' }}>Logout</span>}
+            Logout
           </button>
-        </div>
+        ) : (
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="btn btn-secondary"
+            style={{ padding: '6px', minHeight: 'auto', height: '36px', width: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
+          </button>
+        )}
       </div>
 
+      {/* Mobile Menu Dropdown */}
+      {isMobile && mobileMenuOpen && (
+        <div 
+          className="glass-card"
+          style={{
+            position: 'fixed',
+            top: '90px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: 'calc(100% - 32px)',
+            maxWidth: '400px',
+            background: 'rgba(253, 251, 247, 0.95)',
+            border: '1px solid rgba(255, 255, 255, 0.5)',
+            borderRadius: '24px',
+            boxShadow: '0 15px 35px -10px rgba(43, 33, 24, 0.25)',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+            zIndex: 999,
+            animation: 'scaleInModal 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
+          }}
+        >
+          <button
+            onClick={() => handleTabClick('teams')}
+            className={`btn ${activeTab === 'teams' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ width: '100%', padding: '10px 16px', border: 'none', background: activeTab === 'teams' ? undefined : 'transparent', minHeight: 'auto', height: '40px', borderRadius: '12px', textAlign: 'left', justifyContent: 'flex-start', color: activeTab === 'teams' ? undefined : 'var(--text-secondary)' }}
+          >
+            Teams
+          </button>
+          <button
+            onClick={() => handleTabClick('pods')}
+            className={`btn ${activeTab === 'pods' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ width: '100%', padding: '10px 16px', border: 'none', background: activeTab === 'pods' ? undefined : 'transparent', minHeight: 'auto', height: '40px', borderRadius: '12px', textAlign: 'left', justifyContent: 'flex-start', color: activeTab === 'pods' ? undefined : 'var(--text-secondary)' }}
+          >
+            POD Groups
+          </button>
+          <button
+            onClick={() => handleTabClick('volunteers')}
+            className={`btn ${activeTab === 'volunteers' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ width: '100%', padding: '10px 16px', border: 'none', background: activeTab === 'volunteers' ? undefined : 'transparent', minHeight: 'auto', height: '40px', borderRadius: '12px', textAlign: 'left', justifyContent: 'flex-start', color: activeTab === 'volunteers' ? undefined : 'var(--text-secondary)' }}
+          >
+            Volunteers
+          </button>
+          <button
+            onClick={() => handleTabClick('checkpoints')}
+            className={`btn ${activeTab === 'checkpoints' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ width: '100%', padding: '10px 16px', border: 'none', background: activeTab === 'checkpoints' ? undefined : 'transparent', minHeight: 'auto', height: '40px', borderRadius: '12px', textAlign: 'left', justifyContent: 'flex-start', color: activeTab === 'checkpoints' ? undefined : 'var(--text-secondary)' }}
+          >
+            Attendance Slots
+          </button>
+          <button
+            onClick={() => handleTabClick('ps')}
+            className={`btn ${activeTab === 'ps' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ width: '100%', padding: '10px 16px', border: 'none', background: activeTab === 'ps' ? undefined : 'transparent', minHeight: 'auto', height: '40px', borderRadius: '12px', textAlign: 'left', justifyContent: 'flex-start', color: activeTab === 'ps' ? undefined : 'var(--text-secondary)' }}
+          >
+            Problem Statements
+          </button>
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border-light)', margin: '8px 0' }} />
+          <button
+            onClick={async () => {
+              localStorage.removeItem('adminActiveTab');
+              localStorage.removeItem('leaderActiveTab');
+              await api.post('/auth/logout');
+              window.location.href = '/login';
+            }}
+            className="btn btn-secondary"
+            style={{ width: '100%', padding: '10px 16px', minHeight: 'auto', height: '40px', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            Logout
+          </button>
+        </div>
+      )}
+
       {/* Main Content Area */}
-      <div className="main-content" style={{ backgroundColor: 'var(--bg-main)' }}>
+      <div 
+        className="main-content" 
+        style={{ 
+          padding: '110px 24px 40px 24px', 
+          maxWidth: '1280px', 
+          margin: '0 auto',
+          width: '100%',
+          boxSizing: 'border-box'
+        }}
+      >
         <div style={{ display: activeTab === 'teams' ? 'block' : 'none' }} className="fade-in-up">
-          <TeamsView pods={pods} fetchPodsPool={fetchPodsPool} />
+          <TeamsView 
+            pods={pods} 
+            fetchPodsPool={fetchPodsPool} 
+            onResetPassword={(teamId, teamName) => {
+              setResetPasswordState({
+                isOpen: true,
+                targetId: teamId,
+                targetName: teamName,
+                type: 'team'
+              });
+            }}
+          />
         </div>
         <div style={{ display: activeTab === 'pods' ? 'block' : 'none' }} className="fade-in-up">
           <PodsView pods={pods} fetchPodsPool={fetchPodsPool} />
@@ -219,7 +313,7 @@ const AdminDashboard = () => {
                 : `/admin/volunteers/${resetPasswordState.targetId}/reset-password`;
               const res = await api.post(url, payload);
               addToast(`Password reset successfully!`, 'success');
-              setCredentialsToShow({
+              setParentCredentialsToShow({
                 title: `Password Reset for ${resetPasswordState.targetName}`,
                 username: res.data.username,
                 password: res.data.password
@@ -230,7 +324,8 @@ const AdminDashboard = () => {
                 fetchVolunteers();
               }
             } catch (err) {
-              addToast(err.response?.data?.detail || 'Failed to reset password', 'error');
+              console.error("Password reset failure:", err);
+              addToast(err.response?.data?.detail || err.message || 'Failed to reset password', 'error');
             } finally {
               setIsSavingReset(false);
             }
@@ -271,6 +366,16 @@ const AdminDashboard = () => {
           </form>
         </Modal>
       )}
+
+      {parentCredentialsToShow && (
+        <CredentialDialog
+          isOpen={true}
+          onClose={() => setParentCredentialsToShow(null)}
+          title={parentCredentialsToShow.title}
+          username={parentCredentialsToShow.username}
+          password={parentCredentialsToShow.password}
+        />
+      )}
     </div>
   );
 };
@@ -290,7 +395,7 @@ const PlaceholderView = ({ title, description }) => (
 // ==========================================
 // TEAMS TAB VIEW
 // ==========================================
-const TeamsView = ({ pods, fetchPodsPool }) => {
+const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
   const { addToast } = useToast();
   const [teams, setTeams] = useState([]);
   const [total, setTotal] = useState(0);
@@ -469,7 +574,7 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
       {/* Top Header Row */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
         <div>
-          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Teams Directory</h1>
+          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Teams <span className="font-accent">Directory</span></h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
             Roster of {total} registered teams, statuses, and pod groupings.
           </p>
@@ -492,7 +597,7 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
       </div>
 
       {selectedTeamIds.length > 0 && (
-        <div className="glass-panel" style={{ padding: '16px 24px', marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(99, 102, 241, 0.05)', borderColor: 'rgba(99, 102, 241, 0.2)' }}>
+        <div className="glass-panel" style={{ padding: '16px 24px', marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(185, 111, 56, 0.05)', borderColor: 'rgba(185, 111, 56, 0.2)' }}>
           <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>
             <span style={{ color: 'var(--primary)' }}>{selectedTeamIds.length}</span> teams selected
           </div>
@@ -502,7 +607,7 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
                 setSelectedTeamIds([]);
               }}
               className="btn btn-secondary"
-              style={{ minHeight: 'auto', padding: '8px 16px', fontSize: '0.85rem' }}
+              style={{ minHeight: '38px', height: '38px', padding: '6px 16px', fontSize: '0.85rem' }}
             >
               Cancel Selection
             </button>
@@ -512,7 +617,7 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
                 setShowBulkPodModal(true);
               }}
               className="btn btn-primary"
-              style={{ minHeight: 'auto', padding: '8px 16px', fontSize: '0.85rem' }}
+              style={{ minHeight: '38px', height: '38px', padding: '6px 16px', fontSize: '0.85rem' }}
             >
               Assign to POD Group
             </button>
@@ -540,7 +645,7 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
               value={filters.status || ''}
               onChange={(e) => onFilterChange('status', e.target.value)}
               className="form-input"
-              style={{ width: '100%', padding: '10px' }}
+              style={{ width: '100%' }}
             >
               <option value="">All Statuses</option>
               <option value="REGISTERED">Registered</option>
@@ -555,7 +660,7 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
               value={filters.podId || ''}
               onChange={(e) => onFilterChange('podId', e.target.value)}
               className="form-input"
-              style={{ width: '100%', padding: '10px' }}
+              style={{ width: '100%' }}
             >
               <option value="">All POD Groups</option>
               {pods.map((p) => (
@@ -571,7 +676,7 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
               value={filters.hasPod || ''}
               onChange={(e) => onFilterChange('hasPod', e.target.value)}
               className="form-input"
-              style={{ width: '180px', padding: '8px 12px', fontSize: '0.85rem' }}
+              style={{ width: '180px' }}
             >
               <option value="">All POD Statuses</option>
               <option value="true">Assigned to POD</option>
@@ -582,7 +687,7 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
               value={filters.hasPs || ''}
               onChange={(e) => onFilterChange('hasPs', e.target.value)}
               className="form-input"
-              style={{ width: '200px', padding: '8px 12px', fontSize: '0.85rem' }}
+              style={{ width: '200px' }}
             >
               <option value="">All PS Statuses</option>
               <option value="true">Selected a PS</option>
@@ -595,7 +700,7 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
               type="button"
               onClick={clearFilters}
               className="btn btn-secondary"
-              style={{ padding: '6px 12px', minHeight: 'auto', fontSize: '0.8rem' }}
+              style={{ minHeight: '38px', height: '38px', padding: '6px 16px', fontSize: '0.85rem' }}
             >
               Clear Filters
             </button>
@@ -665,7 +770,7 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
             accessor: 'podName',
             render: (t) => (
               t.podName ? (
-                <span style={{ fontSize: '0.85rem', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary)', padding: '4px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                <span style={{ fontSize: '0.85rem', background: 'rgba(185, 111, 56, 0.12)', color: 'var(--primary)', padding: '4px 8px', borderRadius: '6px', fontWeight: 600 }}>
                   {t.podName}
                 </span>
               ) : (
@@ -678,7 +783,7 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
             accessor: 'selectedPsCode',
             render: (t) => (
               t.selectedPsCode ? (
-                <span style={{ fontSize: '0.85rem', color: 'var(--accent-blue)', fontWeight: 600 }}>
+                <span style={{ fontSize: '0.85rem', background: 'rgba(62, 125, 71, 0.12)', color: 'var(--success)', padding: '4px 8px', borderRadius: '6px', fontWeight: 600 }}>
                   {t.selectedPsCode}
                 </span>
               ) : (
@@ -703,7 +808,7 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
               <button
                 onClick={() => setSelectedTeam(t)}
                 className="btn btn-secondary"
-                style={{ padding: '8px', borderRadius: '8px' }}
+                style={{ padding: '0', borderRadius: '999px', minHeight: '36px', height: '36px', width: '36px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                 title="Edit Team"
               >
                 <Edit2 size={14} />
@@ -731,6 +836,7 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
           team={selectedTeam}
           pods={pods}
           fetchPodsPool={fetchPodsPool}
+          onResetPassword={onResetPassword}
           onClose={() => {
             setSelectedTeam(null);
             fetchTeams();
@@ -782,25 +888,25 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
                 type="button" 
                 onClick={() => setShowInlineBulkPod(true)}
                 className="btn btn-secondary"
-                style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 'auto', height: 'auto' }}
+                style={{ padding: '6px 14px', fontSize: '0.75rem', minHeight: '32px', height: '32px' }}
               >
                 + Create new POD Group
               </button>
             ) : (
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-light)', marginTop: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', background: 'rgba(185, 111, 56, 0.02)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-strong)', marginTop: '8px' }}>
                 <input
                   type="text"
                   placeholder="New POD Name"
                   className="form-input"
                   value={inlineBulkPodName}
                   onChange={(e) => setInlineBulkPodName(e.target.value)}
-                  style={{ flex: 1, padding: '6px 12px', minHeight: '34px', fontSize: '0.85rem' }}
+                  style={{ flex: 1, minHeight: '38px', height: '38px', padding: '6px 12px', fontSize: '0.85rem' }}
                 />
                 <button
                   type="button"
                   onClick={handleCreateInlineBulkPod}
                   className="btn btn-primary"
-                  style={{ padding: '6px 12px', minHeight: '34px', fontSize: '0.85rem' }}
+                  style={{ minHeight: '38px', height: '38px', padding: '6px 16px', fontSize: '0.85rem' }}
                   disabled={isCreatingInlinePod || !inlineBulkPodName.trim()}
                 >
                   Create
@@ -812,7 +918,7 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
                     setInlineBulkPodName('');
                   }}
                   className="btn btn-secondary"
-                  style={{ padding: '6px 12px', minHeight: '34px', fontSize: '0.85rem' }}
+                  style={{ minHeight: '38px', height: '38px', padding: '6px 16px', fontSize: '0.85rem' }}
                 >
                   Cancel
                 </button>
@@ -830,7 +936,7 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
             type="button"
             onClick={() => setShowBulkPodModal(false)}
             className="btn btn-secondary"
-            style={{ minHeight: 'auto' }}
+            style={{ minHeight: '38px', height: '38px', padding: '6px 16px', fontSize: '0.85rem' }}
             disabled={isAssigningBulk}
           >
             Cancel
@@ -839,7 +945,7 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
             type="button"
             onClick={() => handleBulkAssign(false)}
             className="btn btn-primary"
-            style={{ minHeight: 'auto' }}
+            style={{ minHeight: '38px', height: '38px', padding: '6px 16px', fontSize: '0.85rem' }}
             disabled={isAssigningBulk}
           >
             {isAssigningBulk ? <span className="spinner"></span> : 'Assign POD'}
@@ -930,7 +1036,7 @@ const TeamsView = ({ pods, fetchPodsPool }) => {
 // ==========================================
 // TEAM DETAILS MODAL COMPONENT
 // ==========================================
-const TeamDetailsModal = ({ team, pods, fetchPodsPool, onClose }) => {
+const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose }) => {
   const { addToast } = useToast();
   const [status, setStatus] = useState(team.status);
   const [podId, setPodId] = useState(team.podId || '');
@@ -947,12 +1053,7 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onClose }) => {
   const modalRef = useRef();
 
   const handleResetTeamPassword = () => {
-    setResetPasswordState({
-      isOpen: true,
-      targetId: team.id,
-      targetName: team.name,
-      type: 'team'
-    });
+    onResetPassword(team.id, team.name);
   };
 
   useEffect(() => {
@@ -1041,8 +1142,8 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onClose }) => {
           <X size={20} />
         </button>
 
-        <h2 style={{ fontSize: '1.75rem', marginBottom: '4px' }}>{team.name}</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '16px' }}>
+        <h2 className="panel-title" style={{ fontSize: '1.75rem', marginBottom: '4px' }}>{team.name}</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '16px', paddingLeft: '16px' }}>
           Registration Code: {team.registrationId} | Synced from CSV
         </p>
 
@@ -1056,18 +1157,18 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onClose }) => {
             {/* Left column: read-only summaries & forms */}
             <div>
               <div className="modal-grid-3" style={{ marginBottom: '16px' }}>
-                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+                <div style={{ background: 'var(--cream)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border-strong)' }}>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', textTransform: 'uppercase' }}>Leader Contact</span>
                   <div style={{ fontWeight: 600, marginTop: '4px' }}>{team.leaderName}</div>
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>{team.leaderEmail}</div>
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{team.leaderPhone}</div>
                 </div>
-                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+                <div style={{ background: 'var(--cream)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border-strong)' }}>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', textTransform: 'uppercase' }}>College</span>
                   <div style={{ fontWeight: 600, marginTop: '4px', fontSize: '0.85rem', lineHeight: '1.4' }}>{team.collegeName}</div>
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>Locked from CSV source</div>
                 </div>
-                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div style={{ background: 'var(--cream)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border-strong)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                   <div>
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', textTransform: 'uppercase' }}>Leader Account</span>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>Username: <code>{team.registrationId.toLowerCase()}</code></div>
@@ -1075,7 +1176,7 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onClose }) => {
                   <button
                     onClick={handleResetTeamPassword}
                     className="btn btn-secondary"
-                    style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 0, height: 'auto', marginTop: '6px', alignSelf: 'flex-start' }}
+                    style={{ padding: '6px 14px', fontSize: '0.75rem', minHeight: '32px', height: '32px', marginTop: '6px', alignSelf: 'flex-start' }}
                   >
                     Reset Password
                   </button>
@@ -1113,7 +1214,7 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onClose }) => {
                         value={inlinePodName}
                         onChange={(e) => setInlinePodName(e.target.value)}
                       />
-                      <button type="submit" className="btn btn-primary" style={{ padding: '8px 16px' }}>Save</button>
+                      <button type="submit" className="btn btn-primary" style={{ minHeight: '38px', height: '38px', padding: '6px 16px', fontSize: '0.85rem' }}>Save</button>
                     </form>
                   ) : (
                     <select value={podId} onChange={(e) => setPodId(e.target.value)} className="form-input">
@@ -1143,20 +1244,20 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onClose }) => {
 
             {/* Right column: member lists */}
             <div style={{ display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--border-light)', paddingLeft: '24px' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '16px' }}>Team Roster</h3>
+              <h3 className="panel-title" style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '16px' }}>Team Roster</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto', maxHeight: '340px', paddingRight: '4px' }}>
                 {members.map((m) => (
-                  <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderRadius: '8px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-light)' }}>
+                  <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderRadius: '8px', background: 'var(--cream)', border: '1px solid var(--border-strong)' }}>
                     <div>
                       <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{m.name}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>{m.email}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{m.phone}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>{m.email}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{m.phone}</div>
                     </div>
                     <div>
                       {m.idVerified ? (
-                        <span style={{ color: 'var(--success)', fontSize: '0.75rem', fontWeight: 600, background: 'rgba(16, 185, 129, 0.1)', padding: '4px 8px', borderRadius: '6px' }}>✓ Verified</span>
+                        <span style={{ color: 'var(--success)', fontSize: '0.75rem', fontWeight: 600, background: 'var(--success-glow)', padding: '4px 8px', borderRadius: '6px' }}>✓ Verified</span>
                       ) : (
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', background: 'rgba(255, 255, 255, 0.03)', padding: '4px 8px', borderRadius: '6px' }}>Awaiting Venue Check-in</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', background: 'var(--card-2)', padding: '4px 8px', borderRadius: '6px' }}>Awaiting Venue Check-in</span>
                       )}
                     </div>
                   </div>
@@ -1324,29 +1425,29 @@ const CsvImportModal = ({ onClose }) => {
           </button>
         )}
 
-        <h2 style={{ fontSize: '1.75rem', marginBottom: '8px' }} className="text-gradient">
+        <h2 className="panel-title text-gradient" style={{ fontSize: '1.75rem', marginBottom: '8px' }}>
           CSV Team Importer
         </h2>
 
         {/* Step progress header */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', fontSize: '0.85rem' }}>
-          <span style={{ fontWeight: step === 1 ? '700' : 'normal', color: step === 1 ? 'var(--primary)' : 'var(--text-muted)' }}>1. Upload</span>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '28px', fontSize: '0.85rem', alignItems: 'center', flexWrap: 'wrap', paddingLeft: '16px' }}>
+          <span style={{ display: 'inline-flex', padding: '6px 12px', borderRadius: '999px', background: step === 1 ? 'var(--primary-glow)' : 'transparent', color: step === 1 ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 600 }}>1. Upload</span>
           <span style={{ color: 'var(--text-muted)' }}>➔</span>
-          <span style={{ fontWeight: step === 2 ? '700' : 'normal', color: step === 2 ? 'var(--primary)' : 'var(--text-muted)' }}>2. Review & Resolve</span>
+          <span style={{ display: 'inline-flex', padding: '6px 12px', borderRadius: '999px', background: step === 2 ? 'var(--primary-glow)' : 'transparent', color: step === 2 ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 600 }}>2. Review & Resolve</span>
           <span style={{ color: 'var(--text-muted)' }}>➔</span>
-          <span style={{ fontWeight: step === 3 ? '700' : 'normal', color: step === 3 ? 'var(--primary)' : 'var(--text-muted)' }}>3. Leader Credentials</span>
+          <span style={{ display: 'inline-flex', padding: '6px 12px', borderRadius: '999px', background: step === 3 ? 'var(--primary-glow)' : 'transparent', color: step === 3 ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 600 }}>3. Leader Credentials</span>
         </div>
 
         {/* STEP 1: UPLOAD */}
         {step === 1 && (
           <div>
-            <div style={{ border: '2px dashed var(--border-light)', borderRadius: '12px', padding: '48px 24px', textAlign: 'center', marginBottom: '24px', cursor: 'pointer', background: 'rgba(255,255,255,0.01)' }} onClick={() => document.getElementById('csvFile').click()}>
+            <div style={{ border: '2px dashed var(--border-strong)', borderRadius: '12px', padding: '48px 24px', textAlign: 'center', marginBottom: '24px', cursor: 'pointer', background: 'rgba(185, 111, 56, 0.02)', transition: 'border-color var(--transition-fast)' }} onClick={() => document.getElementById('csvFile').click()}>
               <Upload size={36} style={{ color: 'var(--text-muted)', marginBottom: '16px' }} />
               <p style={{ fontWeight: 600 }}>Click to browse registration CSV</p>
               <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>CSV format only, max 2MB</p>
 
               {file && (
-                <div style={{ marginTop: '16px', background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.2)', display: 'inline-flex', padding: '6px 12px', borderRadius: '8px', fontSize: '0.85rem', color: 'var(--primary)', gap: '8px', alignItems: 'center' }}>
+                <div style={{ marginTop: '16px', background: 'var(--primary-glow)', border: '1px solid var(--border-focus)', display: 'inline-flex', padding: '6px 12px', borderRadius: '999px', fontSize: '0.85rem', color: 'var(--primary)', gap: '8px', alignItems: 'center' }}>
                   <span>{file.name} ({(file.size / 1024).toFixed(1)} KB)</span>
                 </div>
               )}
@@ -1374,19 +1475,19 @@ const CsvImportModal = ({ onClose }) => {
           <div>
             {/* Counts dashboard */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '24px' }}>
-              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-light)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+              <div style={{ background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-strong)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>New Teams</span>
                 <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--primary)', marginTop: '4px' }}>{summary.new}</div>
               </div>
-              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-light)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+              <div style={{ background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-strong)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Changes</span>
                 <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--warning)', marginTop: '4px' }}>{summary.changed}</div>
               </div>
-              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-light)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+              <div style={{ background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-strong)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Unchanged</span>
                 <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-secondary)', marginTop: '4px' }}>{summary.unchanged}</div>
               </div>
-              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-light)', borderRadius: '8px', padding: '12px', textAlign: 'center', borderColor: summary.invalid > 0 ? 'rgba(239, 68, 68, 0.2)' : undefined }}>
+              <div style={{ background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-strong)', borderRadius: '8px', padding: '12px', textAlign: 'center', borderColor: summary.invalid > 0 ? 'var(--danger)' : undefined }}>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Invalid</span>
                 <div style={{ fontSize: '1.5rem', fontWeight: 700, color: summary.invalid > 0 ? 'var(--danger)' : 'var(--text-muted)', marginTop: '4px' }}>{summary.invalid}</div>
               </div>
@@ -1406,7 +1507,7 @@ const CsvImportModal = ({ onClose }) => {
             )}
 
             {/* Scrollable list of Diffs and validation failures */}
-            <div style={{ maxHeight: '320px', overflowY: 'auto', border: '1px solid var(--border-light)', borderRadius: '10px', padding: '16px', marginBottom: '24px', background: 'rgba(0,0,0,0.1)' }}>
+            <div style={{ maxHeight: '320px', overflowY: 'auto', border: '1px solid var(--border-light)', borderRadius: '10px', padding: '16px', marginBottom: '24px', background: 'rgba(0,0,0,0.05)' }}>
               {/* Invalid Rows Details */}
               {invalidRows.length > 0 && (
                 <div style={{ marginBottom: '24px' }}>
@@ -1415,7 +1516,7 @@ const CsvImportModal = ({ onClose }) => {
                   </h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {invalidRows.map((err, i) => (
-                      <div key={i} style={{ fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.05)', padding: '8px 12px', borderRadius: '6px', borderLeft: '3px solid var(--danger)' }}>
+                      <div key={i} style={{ fontSize: '0.8rem', background: 'rgba(178, 58, 42, 0.05)', padding: '8px 12px', borderRadius: '6px', borderLeft: '3px solid var(--danger)' }}>
                         Row {err.row}: <strong>{err.reason}</strong>
                       </div>
                     ))}
@@ -1438,7 +1539,7 @@ const CsvImportModal = ({ onClose }) => {
                             type="button"
                             onClick={() => handleDecisionToggle(row.registrationId)}
                             className={`btn ${decisions[row.registrationId] === 'update' ? 'btn-primary' : 'btn-secondary'}`}
-                            style={{ padding: '4px 10px', fontSize: '0.75rem', borderRadius: '6px' }}
+                            style={{ padding: '0 16px', fontSize: '0.75rem', borderRadius: '999px', minHeight: '28px', height: '28px' }}
                           >
                             {decisions[row.registrationId] === 'update' ? 'Will Update' : 'Will Skip'}
                           </button>
@@ -1514,7 +1615,7 @@ const CsvImportModal = ({ onClose }) => {
                       <td style={{ padding: '10px 16px', fontWeight: 600 }}>{c.teamName}</td>
                       <td style={{ padding: '10px 16px' }}>{c.registrationId}</td>
                       <td style={{ padding: '10px 16px', fontFamily: 'monospace' }}>{c.username}</td>
-                      <td style={{ padding: '10px 16px', fontFamily: 'monospace', color: 'var(--accent-blue)', fontWeight: 600 }}>{c.password}</td>
+                      <td style={{ padding: '10px 16px', fontFamily: 'monospace', color: 'var(--primary)', fontWeight: 600 }}>{c.password}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1543,6 +1644,7 @@ const PodsView = ({ pods, fetchPodsPool }) => {
   const { addToast } = useToast();
   const [loading, setLoading] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [selectedPod, setSelectedPod] = useState(null);
   const [deleteConfirmPod, setDeleteConfirmPod] = useState(null);
 
@@ -1552,7 +1654,7 @@ const PodsView = ({ pods, fetchPodsPool }) => {
   const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
-    if (showCreateModal) {
+    if (showCreateModal || showImportModal) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
@@ -1560,7 +1662,7 @@ const PodsView = ({ pods, fetchPodsPool }) => {
     return () => {
       document.body.style.overflow = '';
     };
-  }, [showCreateModal]);
+  }, [showCreateModal, showImportModal]);
 
   const handleCreatePodSubmit = async (e) => {
     e.preventDefault();
@@ -1597,6 +1699,40 @@ const PodsView = ({ pods, fetchPodsPool }) => {
     }
   };
 
+  const handleDownloadPodsTemplate = () => {
+    const headers = ["name", "capacity"];
+    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" +
+      "POD Alpha,6\n" +
+      "POD Beta,8\n";
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "pods_import_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportPods = async () => {
+    addToast('Preparing PODs download...', 'info');
+    try {
+      const response = await api.get('/admin/pods/export', {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'pods_export.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      addToast('PODs list downloaded successfully!', 'success');
+    } catch (err) {
+      addToast('Failed to download PODs list', 'error');
+    }
+  };
+
   const handleExportRoster = async (id, name) => {
     addToast(`Preparing roster download for ${name}...`, 'info');
     try {
@@ -1621,14 +1757,28 @@ const PodsView = ({ pods, fetchPodsPool }) => {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
         <div>
-          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>POD Groupings</h1>
+          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>POD <span className="font-accent">Groupings</span></h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
             Groupings for mentor assignments and team checkpoints.
           </p>
         </div>
-        <button onClick={() => setShowCreateModal(true)} className="btn btn-primary">
-          + Create POD Group
-        </button>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button onClick={handleDownloadPodsTemplate} className="btn btn-secondary" title="Download PODs Import Template CSV">
+            <Download size={16} />
+            Template CSV
+          </button>
+          <button onClick={() => setShowImportModal(true)} className="btn btn-secondary">
+            <Upload size={16} />
+            Import CSV
+          </button>
+          <button onClick={handleExportPods} className="btn btn-secondary">
+            <Download size={16} />
+            Export CSV
+          </button>
+          <button onClick={() => setShowCreateModal(true)} className="btn btn-primary">
+            + Create POD Group
+          </button>
+        </div>
       </div>
 
       {/* Grid of Pod Tiles */}
@@ -1766,6 +1916,16 @@ const PodsView = ({ pods, fetchPodsPool }) => {
           danger={true}
           onConfirm={executeDeletePod}
           onCancel={() => setDeleteConfirmPod(null)}
+        />
+      )}
+
+      {/* POD Import Modal */}
+      {showImportModal && (
+        <PodImportModal
+          onClose={() => {
+            setShowImportModal(false);
+            fetchPodsPool();
+          }}
         />
       )}
     </div>
@@ -2485,6 +2645,26 @@ const VolunteersView = ({ pods, fetchPodsPool }) => {
     }
   };
 
+  const handleExportVolunteers = async () => {
+    addToast('Preparing volunteers download...', 'info');
+    try {
+      const response = await api.get('/admin/volunteers/export', {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'volunteers_export.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      addToast('Volunteers list downloaded successfully!', 'success');
+    } catch (err) {
+      addToast('Failed to download volunteers list', 'error');
+    }
+  };
+
   const handleDownloadVolunteersTemplate = () => {
     const headers = ["name", "type", "contact"];
     const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" +
@@ -2503,7 +2683,7 @@ const VolunteersView = ({ pods, fetchPodsPool }) => {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
         <div>
-          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Volunteers Pool</h1>
+          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Volunteers <span className="font-accent">Pool</span></h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
             Faculty and student volunteers to monitor pods and physical check-ins.
           </p>
@@ -2517,6 +2697,10 @@ const VolunteersView = ({ pods, fetchPodsPool }) => {
           <button onClick={() => setShowImportModal(true)} className="btn btn-secondary">
             <Upload size={16} />
             Import CSV
+          </button>
+          <button onClick={handleExportVolunteers} className="btn btn-secondary">
+            <Download size={16} />
+            Export CSV
           </button>
           <button onClick={() => setShowAddModal(true)} className="btn btn-primary">
             + Add Volunteer
@@ -3199,7 +3383,7 @@ const CheckpointsView = () => {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
         <div>
-          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Attendance Slots</h1>
+          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Attendance <span className="font-accent">Slots</span></h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
             Configure and manage checkpoints (check-in, lunch, workshops) that volunteers can verify.
           </p>
@@ -3473,6 +3657,26 @@ const PSView = () => {
     return d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', timeZoneName: 'short' });
   };
 
+  const handleExportPS = async () => {
+    addToast('Preparing problem statements download...', 'info');
+    try {
+      const response = await api.get('/admin/problem-statements/export', {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'problem_statements_export.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      addToast('Problem Statements downloaded successfully!', 'success');
+    } catch (err) {
+      addToast('Failed to download problem statements', 'error');
+    }
+  };
+
   const handleDownloadPSTemplate = () => {
     const headers = ["code", "title", "description", "capacity", "requirements"];
     const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" +
@@ -3491,7 +3695,7 @@ const PSView = () => {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
         <div>
-          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Problem Statements</h1>
+          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Problem <span className="font-accent">Statements</span></h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
             Upload challenges and manage leader selection schedules.
           </p>
@@ -3501,9 +3705,13 @@ const PSView = () => {
             <Download size={16} />
             Template CSV
           </button>
-          <button onClick={() => setShowImportModal(true)} className="btn btn-primary">
+          <button onClick={() => setShowImportModal(true)} className="btn btn-secondary">
             <Upload size={16} />
             Import PS CSV
+          </button>
+          <button onClick={handleExportPS} className="btn btn-primary">
+            <Download size={16} />
+            Export CSV
           </button>
         </div>
       </div>
@@ -3795,8 +4003,8 @@ const PSImportModal = ({ onClose }) => {
     }
   };
 
-  return (
-    <div className="modal-overlay-fade" style={{ background: 'rgba(0,0,0,0)' }}>
+  return createPortal(
+    <div className="modal-overlay-fade">
       <div className="glass-card modal-scale-up" style={{ width: '100%', maxWidth: '600px', padding: '32px', position: 'relative' }}>
         <button onClick={onClose} style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
           <X size={20} />
@@ -3847,33 +4055,33 @@ const PSImportModal = ({ onClose }) => {
           <div>
             {invalidRows.length > 0 ? (
               <div className="toast toast-error" style={{ position: 'static', width: '100%', maxWidth: 'none', margin: '0 0 20px 0', borderLeft: '4px solid var(--danger)' }}>
-                <AlertCircle size={20} style={{ color: 'var(--danger)' }} />
                 <div>
-                  <h4 style={{ fontWeight: 700 }}>Validation errors found</h4>
+                  <h4 style={{ fontWeight: 700 }}>Invalid Rows Found!</h4>
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    CSV contains {invalidRows.length} invalid entries. Fix errors in source and upload again.
+                    Please correct the following errors in your CSV file and try importing again.
                   </p>
                 </div>
               </div>
             ) : (
               <div className="toast toast-success" style={{ position: 'static', width: '100%', maxWidth: 'none', margin: '0 0 20px 0', borderLeft: '4px solid var(--success)' }}>
-                <CheckCircle size={20} style={{ color: 'var(--success)' }} />
                 <div>
-                  <h4 style={{ fontWeight: 700 }}>Roster is clean!</h4>
+                  <h4 style={{ fontWeight: 700 }}>CSV File Validated!</h4>
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    Ready to import {newCount} new Problem Statements.
+                    The CSV contains {newCount} new problem statements to be imported.
                   </p>
                 </div>
               </div>
             )}
 
             {invalidRows.length > 0 && (
-              <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--border-light)', padding: '12px', borderRadius: '8px', marginBottom: '24px', background: 'rgba(0,0,0,0.1)' }}>
-                {invalidRows.map((err, i) => (
-                  <div key={i} style={{ fontSize: '0.8rem', color: 'var(--danger)', marginBottom: '4px' }}>
-                    Row {err.row}: {err.reason}
-                  </div>
-                ))}
+              <div style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '8px', padding: '16px', marginBottom: '24px', maxHeight: '200px', overflowY: 'auto' }}>
+                <ul style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {invalidRows.map((err, i) => (
+                    <li key={i} style={{ fontSize: '0.85rem', color: 'var(--danger)' }}>
+                      Row {err.row}: {err.errors.join(', ')}
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 
@@ -3891,7 +4099,184 @@ const PSImportModal = ({ onClose }) => {
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
+  );
+};
+
+
+// ==========================================
+// POD GROUP CSV IMPORT MODAL WIZARD
+// ==========================================
+const PodImportModal = ({ onClose }) => {
+  const { addToast } = useToast();
+  const [step, setStep] = useState(1);
+  const [file, setFile] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+
+  const [importId, setImportId] = useState(null);
+  const [newCount, setNewCount] = useState(0);
+  const [invalidRows, setInvalidRows] = useState([]);
+
+  const handleDownloadTemplate = () => {
+    const csvContent = "name,capacity\n" +
+      "POD Alpha,6\n" +
+      "POD Beta,8\n";
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "pods_import_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleFileChange = (e) => {
+    const selected = e.target.files[0];
+    if (!selected) return;
+
+    if (!selected.name.endsWith('.csv')) {
+      addToast('Select a .csv file', 'error');
+      return;
+    }
+    setFile(selected);
+  };
+
+  const handleAnalyze = async () => {
+    if (!file) return;
+    setIsAnalyzing(true);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await api.post('/admin/pods/import/preview', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setImportId(res.data.importId);
+      setNewCount(res.data.summary.new);
+      setInvalidRows(res.data.details.invalid || []);
+      setStep(2);
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to analyze CSV file', 'error');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleConfirm = async () => {
+    setIsConfirming(true);
+    try {
+      await api.post('/admin/pods/import/confirm', null, { params: { importId } });
+      addToast('POD Groups successfully imported!', 'success');
+      onClose();
+    } catch (err) {
+      addToast('Failed to confirm POD Groups import', 'error');
+    } finally {
+      setIsConfirming(false);
+    }
+  };
+
+  return createPortal(
+    <div className="modal-overlay-fade">
+      <div className="glass-card modal-scale-up" style={{ width: '100%', maxWidth: '600px', padding: '32px', position: 'relative' }}>
+        <button onClick={onClose} style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+          <X size={20} />
+        </button>
+
+        <h2 style={{ fontSize: '1.75rem', marginBottom: '8px' }} className="text-gradient">Import POD Groups</h2>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', fontSize: '0.85rem' }}>
+          <span style={{ fontWeight: step === 1 ? '700' : 'normal', color: step === 1 ? 'var(--primary)' : 'var(--text-muted)' }}>1. Upload CSV</span>
+          <span style={{ color: 'var(--text-muted)' }}>➔</span>
+          <span style={{ fontWeight: step === 2 ? '700' : 'normal', color: step === 2 ? 'var(--primary)' : 'var(--text-muted)' }}>2. Review Details</span>
+        </div>
+
+        {step === 1 && (
+          <div>
+            <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={handleDownloadTemplate}
+                className="btn btn-secondary"
+                style={{ minHeight: 0, padding: '6px 14px', fontSize: '0.75rem', textTransform: 'none', letterSpacing: 'normal' }}
+              >
+                Download Template CSV
+              </button>
+            </div>
+            <div style={{ border: '2px dashed var(--border-light)', borderRadius: '12px', padding: '40px 20px', textAlign: 'center', marginBottom: '24px', cursor: 'pointer', background: 'rgba(255,255,255,0.01)' }} onClick={() => document.getElementById('podCsvFile').click()}>
+              <Upload size={32} style={{ color: 'var(--text-muted)', marginBottom: '12px' }} />
+              <p style={{ fontWeight: 600 }}>Click to browse POD CSV file</p>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>Columns: name, capacity</p>
+
+              {file && (
+                <div style={{ marginTop: '16px', background: 'rgba(99, 102, 241, 0.1)', padding: '6px 12px', borderRadius: '8px', fontSize: '0.85rem', color: 'var(--primary)' }}>
+                  {file.name}
+                </div>
+              )}
+              <input id="podCsvFile" type="file" accept=".csv" onChange={handleFileChange} style={{ display: 'none' }} />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
+              <button type="button" onClick={handleAnalyze} className="btn btn-primary" disabled={!file || isAnalyzing}>
+                {isAnalyzing ? <span className="spinner"></span> : 'Analyze CSV'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div>
+            {invalidRows.length > 0 ? (
+              <div className="toast toast-error" style={{ position: 'static', width: '100%', maxWidth: 'none', margin: '0 0 20px 0', borderLeft: '4px solid var(--danger)' }}>
+                <div>
+                  <h4 style={{ fontWeight: 700 }}>Invalid Rows Found!</h4>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    Please correct the following errors in your CSV file and try importing again.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="toast toast-success" style={{ position: 'static', width: '100%', maxWidth: 'none', margin: '0 0 20px 0', borderLeft: '4px solid var(--success)' }}>
+                <div>
+                  <h4 style={{ fontWeight: 700 }}>CSV File Validated!</h4>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    The CSV contains {newCount} new POD groups to be imported.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {invalidRows.length > 0 && (
+              <div style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '8px', padding: '16px', marginBottom: '24px', maxHeight: '200px', overflowY: 'auto' }}>
+                <ul style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {invalidRows.map((err, i) => (
+                    <li key={i} style={{ fontSize: '0.85rem', color: 'var(--danger)' }}>
+                      Row {err.row}: {err.reason}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <button type="button" onClick={() => setStep(1)} className="btn btn-secondary">Back</button>
+              <button
+                type="button"
+                onClick={handleConfirm}
+                className="btn btn-primary"
+                disabled={invalidRows.length > 0 || isConfirming}
+              >
+                {isConfirming ? <span className="spinner"></span> : 'Confirm Import'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body
   );
 };
 

@@ -118,12 +118,12 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .glass-card {
-  background: rgba(253, 251, 247, 0.55);
-  backdrop-filter: blur(18px) saturate(180%);
-  -webkit-backdrop-filter: blur(18px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  border-top-color: rgba(255, 255, 255, 0.7);
-  box-shadow: 0 8px 32px -12px rgba(43, 33, 24, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  background: rgba(253, 251, 247, 0.82); /* Increased opacity for richer color presentation */
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  border-top-color: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 16px 40px -16px rgba(33, 26, 19, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.9);
   border-radius: var(--radius);
   transition: transform var(--transition-normal) var(--ease-spring), box-shadow var(--transition-normal) var(--ease-spring), border-color var(--transition-normal);
 }
@@ -166,6 +166,16 @@ h1, h2, h3, h4, h5, h6 {
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
   appearance: none;
   -webkit-appearance: none;
+}
+
+/* Prevent blue/yellow background on browser autofill */
+.form-input:-webkit-autofill,
+.form-input:-webkit-autofill:hover, 
+.form-input:-webkit-autofill:focus, 
+.form-input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px var(--cream) inset !important;
+  -webkit-text-fill-color: var(--ink) !important;
+  transition: background-color 5000s ease-in-out 0s;
 }
 
 select.form-input {
@@ -424,20 +434,16 @@ select.form-input option {
 @keyframes fadeInOverlay {
   from {
     background-color: rgba(0, 0, 0, 0);
-    backdrop-filter: blur(0px);
-    -webkit-backdrop-filter: blur(0px);
   }
   to {
-    background-color: rgba(43, 33, 24, 0.45);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    background-color: rgba(33, 26, 19, 0.45);
   }
 }
 
 .modal-scale-up {
   animation: scaleInModal 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-  border: none !important;
-  box-shadow: 0 25px 50px -12px rgba(43, 33, 24, 0.35) !important;
+  border: 1px solid rgba(185, 111, 56, 0.22) !important; /* Beautiful themed terracotta glass outline */
+  box-shadow: 0 24px 60px -16px rgba(43, 33, 24, 0.32), inset 0 1px 1px rgba(255, 255, 255, 0.85) !important;
   margin: auto;
 }
 
