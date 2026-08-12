@@ -1,6 +1,7 @@
+import asyncio
 from datetime import datetime
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, func
 from sqlalchemy.exc import IntegrityError
@@ -8,15 +9,26 @@ from sqlalchemy.exc import IntegrityError
 from app.database import get_db
 from app.models import Role, Team, TeamMember, CheckpointType, AttendanceRecord
 from app.auth import require_role, CurrentUser
+from app.websocket_manager import manager
 
 router = APIRouter(prefix="/volunteer", tags=["volunteer"])
+
+def _broadcast_checkin_update(event_id: str, member_id: str, checkpoint_id: str):
+    try:
+        asyncio.run(manager.broadcast(event_id, {
+            "type": "checkin_update",
+            "teamMemberId": member_id,
+            "checkpointTypeId": checkpoint_id
+        }))
+    except Exception:
+        pass
 
 # Helper: Escape SQL LIKE wildcards
 def escape_like_string(s: str) -> str:
     return s.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
 
 @router.get("/checkpoints")
-async def get_checkpoints(
+def get_checkpoints(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.VOLUNTEER))
 ):
@@ -25,16 +37,19 @@ async def get_checkpoints(
         CheckpointType.eventId == current_user.eventId
     ).order_by(CheckpointType.name).all()
     
-    return [
-        {
-            "id": cp.id,
-            "name": cp.name,
-            "description": cp.description
-        } for cp in checkpoints
-    ]
+    return {
+        "eventId": current_user.eventId,
+        "checkpoints": [
+            {
+                "id": cp.id,
+                "name": cp.name,
+                "description": cp.description
+            } for cp in checkpoints
+        ]
+    }
 
 @router.get("/teams")
-async def get_volunteer_teams(
+def get_volunteer_teams(
     search: Optional[str] = None,
     page: int = 1,
     limit: int = 20,
@@ -85,7 +100,7 @@ async def get_volunteer_teams(
     }
 
 @router.get("/teams/{team_id}")
-async def get_volunteer_team_detail(
+def get_volunteer_team_detail(
     team_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.VOLUNTEER))
@@ -128,6 +143,7 @@ async def get_volunteer_team_detail(
             "email": m.email,
             "phone": m.phone,
             "idVerified": m.idVerified,
+            "isTeamLeader": m.isTeamLeader,
             "checkpoints": checkpoints_status
         })
         
@@ -140,8 +156,9 @@ async def get_volunteer_team_detail(
     }
 
 @router.post("/checkin")
-async def mark_attendance_checkin(
+def mark_attendance_checkin(
     payload: Dict[str, Any],
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.VOLUNTEER))
 ):
@@ -189,6 +206,13 @@ async def mark_attendance_checkin(
         member.idVerified = True
         
         db.commit()
+
+        background_tasks.add_task(
+            _broadcast_checkin_update,
+            current_user.eventId,
+            member_id,
+            checkpoint_id
+        )
     except IntegrityError:
         db.rollback()
         raise HTTPException(

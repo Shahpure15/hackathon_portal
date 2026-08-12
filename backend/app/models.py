@@ -53,9 +53,11 @@ class EventConfig(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), unique=True, nullable=False)
     psReleaseAt = Column(DateTime, nullable=True)
+    psGateCheckpointTypeId = Column(String(36), ForeignKey("checkpoint_types.id", ondelete="SET NULL"), nullable=True)
 
     # Relationships
     event = relationship("Event", back_populates="config")
+    psGateCheckpointType = relationship("CheckpointType")
 
 class User(Base):
     __tablename__ = "users"
@@ -115,6 +117,7 @@ class TeamMember(Base):
     email = Column(String(255), nullable=False)
     phone = Column(String(50), nullable=False)
     idVerified = Column(Boolean, default=False, nullable=False)
+    isTeamLeader = Column(Boolean, default=False, nullable=False)
 
     # Relationships
     team = relationship("Team", back_populates="members")

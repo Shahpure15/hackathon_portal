@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Lock, User } from 'lucide-react';
+import { Eye, EyeOff, Lock, User, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { useTheme } from '../contexts/ThemeContext';
+import IconButton from '../components/IconButton';
+import AmbientCursorGlow from '../components/AmbientCursorGlow';
 import logoMitIndia from '../assets/logo_mitindia.jpg';
 
 const Login = () => {
@@ -14,6 +17,7 @@ const Login = () => {
 
   const { login } = useAuth();
   const { addToast } = useToast();
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
 
   const handleTogglePassword = () => {
@@ -36,10 +40,6 @@ const Login = () => {
 
     if (result.success) {
       addToast('Logged in successfully!', 'success');
-      // Redirect based on role in auth context
-      // Note: We'll read the role directly from the result or context.
-      // We will perform navigation in App.jsx or route dynamically here.
-      // Let's redirect to `/` which will dynamically render based on role.
       navigate('/');
     } else {
       addToast(result.error, 'error');
@@ -48,7 +48,19 @@ const Login = () => {
 
   return (
     <div className="auth-wrapper">
-      <div className="glass-card" style={{ width: '100%', maxWidth: '420px', padding: '40px' }}>
+      <AmbientCursorGlow />
+      <div className="glass-card" style={{ width: '100%', maxWidth: '420px', padding: '40px', position: 'relative' }}>
+        <div style={{ position: 'absolute', top: '16px', right: '16px' }}>
+          <IconButton
+            size="34px"
+            onClick={toggleTheme}
+            title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
+            aria-label="Toggle Theme"
+            style={{ borderRadius: '999px', background: 'transparent' }}
+          >
+            {theme === 'dark' ? <Sun size={16} color="var(--primary)" /> : <Moon size={16} color="var(--text-secondary)" />}
+          </IconButton>
+        </div>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <img 
             src={logoMitIndia} 

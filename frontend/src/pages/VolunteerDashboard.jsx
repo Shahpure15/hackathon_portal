@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Users, UserCheck, Search, X, CheckCircle, ChevronLeft, ChevronRight, LogOut, Info, QrCode, Menu
 } from 'lucide-react';
@@ -7,6 +7,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import DataTable from '../components/DataTable';
 import useTableQuery from '../components/useTableQuery';
+import Navbar from '../components/Navbar';
+import Skeleton from '../components/Skeleton';
+import IconButton from '../components/IconButton';
+import useCheckinWebSocket from '../hooks/useCheckinWebSocket';
 
 const VolunteerDashboard = () => {
   const { logout } = useAuth();
@@ -15,6 +19,7 @@ const VolunteerDashboard = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1000);
   const [checkpoints, setCheckpoints] = useState([]);
+  const [eventId, setEventId] = useState(null);
   const [activeCheckpointId, setActiveCheckpointId] = useState('');
   const [markingMemberId, setMarkingMemberId] = useState('');
 
@@ -50,14 +55,48 @@ const VolunteerDashboard = () => {
   const fetchCheckpoints = async () => {
     try {
       const res = await api.get('/volunteer/checkpoints');
-      setCheckpoints(res.data || []);
-      if (res.data.length > 0) {
-        setActiveCheckpointId(res.data[0].id);
+      const data = res.data;
+      // API now returns { eventId, checkpoints: [...] }
+      const cps = data.checkpoints || data; // backward compat if old format
+      setCheckpoints(cps);
+      if (data.eventId) setEventId(data.eventId);
+      if (cps.length > 0) {
+        setActiveCheckpointId(cps[0].id);
       }
     } catch (err) {
       addToast('Failed to fetch checkpoints list', 'error');
     }
   };
+
+  // Silent refresh for WebSocket-triggered updates (no loading flash)
+  const silentRefreshTeams = useCallback(async () => {
+    try {
+      const res = await api.get('/volunteer/teams', {
+        params: { page, limit: 10, search: search || undefined }
+      });
+      setTeams(res.data.results || []);
+      setTotal(res.data.total);
+      setPages(res.data.pages);
+    } catch (_) {}
+  }, [page, search]);
+
+  // WebSocket: live check-in updates from other volunteers on the same event
+  const handleWsMessage = useCallback((data) => {
+    if (data.type === 'checkin_update') {
+      silentRefreshTeams();
+      // If the affected team is open in the modal, refresh it too
+      if (selectedTeam) {
+        fetchDetailedTeam(selectedTeam.id);
+      }
+    }
+  }, [silentRefreshTeams, selectedTeam]);
+
+  useCheckinWebSocket({
+    eventId,
+    token: localStorage.getItem('access_token'),
+    onMessage: handleWsMessage,
+    enabled: !!eventId
+  });
 
   const fetchTeams = async () => {
     setLoading(true);
@@ -131,95 +170,15 @@ const VolunteerDashboard = () => {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-main)', position: 'relative' }}>
-      {/* Floating Glass Notch Navigation */}
-      <div className="floating-nav">
-        {/* Logo / Title */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontWeight: 800, fontSize: '0.95rem', letterSpacing: '0.5px' }} className="text-gradient">
-            MIT India Hackathon
-          </span>
-          <span style={{ 
-            fontSize: '0.7rem', 
-            background: 'var(--primary-glow)', 
-            color: 'var(--primary)', 
-            padding: '2px 8px', 
-            borderRadius: '999px', 
-            fontWeight: 700,
-            textTransform: 'uppercase'
-          }}>
-            Volunteer
-          </span>
-          <span style={{ 
-            fontSize: '0.7rem', 
-            background: 'rgba(6, 182, 212, 0.1)', 
-            color: 'var(--accent-blue)', 
-            padding: '2px 8px', 
-            borderRadius: '999px', 
-            fontWeight: 700,
-            textTransform: 'uppercase'
-          }}>
-            Check-in Desk
-          </span>
-        </div>
-
-        {/* Tab for Desktop (Empty for single view) */}
-        {!isMobile ? (
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-          </div>
-        ) : null}
-
-        {/* Right side: Logout (Desktop) or Hamburger (Mobile) */}
-        {!isMobile ? (
-          <button
-            onClick={logout}
-            className="btn btn-secondary"
-            style={{ padding: '6px 16px', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.8rem' }}
-          >
-            Logout
-          </button>
-        ) : (
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="btn btn-secondary"
-            style={{ padding: '6px', minHeight: 'auto', height: '36px', width: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
-          </button>
-        )}
-      </div>
-
-      {/* Mobile Menu Dropdown */}
-      {isMobile && mobileMenuOpen && (
-        <div 
-          className="glass-card"
-          style={{
-            position: 'fixed',
-            top: '90px',
-            right: '16px',
-            left: '16px',
-            background: 'rgba(253, 251, 247, 0.97)',
-            backdropFilter: 'blur(20px) saturate(180%)',
-            WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-            border: '1px solid rgba(255, 255, 255, 0.6)',
-            borderRadius: '24px',
-            boxShadow: '0 15px 35px -10px rgba(43, 33, 24, 0.25)',
-            padding: '16px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-            zIndex: 999,
-            animation: 'scaleInModal 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
-          }}
-        >
-          <button
-            onClick={logout}
-            className="btn btn-secondary"
-            style={{ width: '100%', padding: '10px 16px', minHeight: 'auto', height: '40px', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            Logout
-          </button>
-        </div>
-      )}
+      <Navbar
+        title="MIT India Hackathon"
+        user={{ username: 'Volunteer', role: 'Check-in Desk' }}
+        onLogout={logout}
+        navItems={[
+          { id: 'checkin', label: 'Check-in Desk', icon: <UserCheck size={16} /> }
+        ]}
+        activeTab="checkin"
+      />
 
       {/* Main Content Area */}
       <div 

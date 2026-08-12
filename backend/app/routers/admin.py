@@ -566,11 +566,13 @@ async def import_teams_confirm(
             
             # Create Team Members
             for member_data in row["members"]:
+                is_leader = (member_data.get("email", "").strip().lower() == team.leaderEmail.strip().lower())
                 member = TeamMember(
                     teamId=team.id,
                     name=member_data["name"],
                     email=member_data["email"],
-                    phone=member_data["phone"]
+                    phone=member_data["phone"],
+                    isTeamLeader=is_leader
                 )
                 db.add(member)
                 
@@ -621,11 +623,13 @@ async def import_teams_confirm(
             # Delete old team members and insert new ones
             db.query(TeamMember).filter(TeamMember.teamId == db_team.id).delete()
             for member_data in row["members"]:
+                is_leader = (member_data.get("email", "").strip().lower() == db_team.leaderEmail.strip().lower())
                 member = TeamMember(
                     teamId=db_team.id,
                     name=member_data["name"],
                     email=member_data["email"],
-                    phone=member_data["phone"]
+                    phone=member_data["phone"],
+                    isTeamLeader=is_leader
                 )
                 db.add(member)
                 
@@ -1971,7 +1975,7 @@ async def get_ps_selected_teams(
 # ==========================================
 
 @router.get("/config")
-async def get_event_config(
+def get_event_config(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
@@ -1984,11 +1988,12 @@ async def get_event_config(
         db.refresh(config)
         
     return {
-        "psReleaseAt": config.psReleaseAt.replace(tzinfo=timezone.utc) if config.psReleaseAt else None
+        "psReleaseAt": config.psReleaseAt.replace(tzinfo=timezone.utc) if config.psReleaseAt else None,
+        "psGateCheckpointTypeId": config.psGateCheckpointTypeId
     }
 
 @router.patch("/config/ps-release-at")
-async def update_ps_release_time(
+def update_ps_release_time(
     payload: Dict[str, Any],
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
@@ -1999,41 +2004,67 @@ async def update_ps_release_time(
         db.add(config)
         db.flush()
         
-    release_at_raw = payload.get("psReleaseAt")
-    
-    if release_at_raw:
-        try:
-            # Parse ISO string (FastAPI/Pydantic or general parsing)
-            # Remove Z suffix if present to read with datetime
-            clean_str = str(release_at_raw).replace("Z", "+00:00")
-            release_at = datetime.fromisoformat(clean_str)
-            # Convert to naive UTC for db standard if it has tzinfo
-            if release_at.tzinfo:
-                release_at = release_at.astimezone(timezone.utc).replace(tzinfo=None)
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid date format. Provide ISO 8601 string.")
-            
-        # Validate: Cannot be in the past relative to server time
-        now = datetime.utcnow()
-        if release_at < now - timedelta(minutes=5): # 5 min leeway for clock drift
-            raise HTTPException(
-                status_code=400, 
-                detail="Release time cannot be set in the past."
-            )
-            
-        # Logging Audit Log
-        diff = {"psReleaseAt": {"from": config.psReleaseAt, "to": release_at}}
-        config.psReleaseAt = release_at
-    else:
-        diff = {"psReleaseAt": {"from": config.psReleaseAt, "to": None}}
-        config.psReleaseAt = None
+    diff = {}
+    if "psGateCheckpointTypeId" in payload:
+        new_gate_id = payload.get("psGateCheckpointTypeId")
+        diff["psGateCheckpointTypeId"] = {"from": config.psGateCheckpointTypeId, "to": new_gate_id}
+        config.psGateCheckpointTypeId = new_gate_id
+
+    if "psReleaseAt" in payload:
+        release_at_raw = payload.get("psReleaseAt")
+        if release_at_raw:
+            try:
+                clean_str = str(release_at_raw).replace("Z", "+00:00")
+                release_at = datetime.fromisoformat(clean_str)
+                if release_at.tzinfo:
+                    release_at = release_at.astimezone(timezone.utc).replace(tzinfo=None)
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid date format. Provide ISO 8601 string.")
+                
+            now = datetime.utcnow()
+            if release_at < now - timedelta(minutes=5):
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Release time cannot be set in the past."
+                )
+                
+            diff["psReleaseAt"] = {"from": config.psReleaseAt, "to": release_at}
+            config.psReleaseAt = release_at
+        else:
+            diff["psReleaseAt"] = {"from": config.psReleaseAt, "to": None}
+            config.psReleaseAt = None
         
-    log_audit(db, current_user.id, "config.ps_release_change", "EventConfig", config.id, diff)
+    log_audit(db, current_user.id, "config.update", "EventConfig", config.id, diff)
     db.commit()
     
     return {
-        "message": "Problem statement release time configured successfully!",
-        "psReleaseAt": config.psReleaseAt.replace(tzinfo=timezone.utc) if config.psReleaseAt else None
+        "message": "Event config updated successfully!",
+        "psReleaseAt": config.psReleaseAt.replace(tzinfo=timezone.utc) if config.psReleaseAt else None,
+        "psGateCheckpointTypeId": config.psGateCheckpointTypeId
+    }
+
+@router.get("/teams/unresolved-leaders")
+def get_unresolved_leaders_report(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    teams = db.query(Team).filter(Team.eventId == current_user.eventId).all()
+    unresolved = []
+    for t in teams:
+        has_leader = db.query(TeamMember).filter(
+            TeamMember.teamId == t.id,
+            TeamMember.isTeamLeader == True
+        ).first() is not None
+        if not has_leader:
+            unresolved.append({
+                "teamId": t.id,
+                "name": t.name,
+                "registrationId": t.registrationId,
+                "leaderEmail": t.leaderEmail
+            })
+    return {
+        "totalUnresolved": len(unresolved),
+        "teams": unresolved
     }
 
 
@@ -2123,6 +2154,7 @@ async def update_checkpoint(
 @router.delete("/checkpoints/{id}")
 async def delete_checkpoint(
     id: str,
+    force: bool = False,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
@@ -2134,11 +2166,20 @@ async def delete_checkpoint(
         raise HTTPException(status_code=404, detail="Checkpoint not found")
 
     has_records = db.query(AttendanceRecord).filter(AttendanceRecord.checkpointTypeId == id).first()
-    if has_records:
+    if has_records and not force:
         raise HTTPException(
             status_code=400,
             detail="Cannot delete checkpoint because it has logged attendance records. Delete or clear the attendance records first."
         )
+
+    if has_records and force:
+        # Cascade delete all attendance records first
+        record_count = db.query(AttendanceRecord).filter(AttendanceRecord.checkpointTypeId == id).count()
+        db.query(AttendanceRecord).filter(AttendanceRecord.checkpointTypeId == id).delete()
+        log_audit(db, current_user.id, "checkpoint.clear_records", "CheckpointType", cp.id, {
+            "name": cp.name,
+            "recordsDeleted": record_count
+        })
 
     log_audit(db, current_user.id, "checkpoint.delete", "CheckpointType", cp.id, {
         "name": cp.name,
@@ -2147,5 +2188,34 @@ async def delete_checkpoint(
     db.delete(cp)
     db.commit()
     return {"message": "Checkpoint deleted successfully"}
+
+
+@router.delete("/checkpoints/{id}/records")
+async def clear_checkpoint_records(
+    id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    """Clear all attendance records for a specific checkpoint without deleting the checkpoint itself."""
+    cp = db.query(CheckpointType).filter(
+        CheckpointType.id == id,
+        CheckpointType.eventId == current_user.eventId
+    ).first()
+    if not cp:
+        raise HTTPException(status_code=404, detail="Checkpoint not found")
+
+    record_count = db.query(AttendanceRecord).filter(AttendanceRecord.checkpointTypeId == id).count()
+    db.query(AttendanceRecord).filter(AttendanceRecord.checkpointTypeId == id).delete()
+
+    # Also reset idVerified on TeamMembers whose only verification was this checkpoint
+    # (We leave idVerified as-is since it may be set by other checkpoints too — admin can re-verify)
+
+    log_audit(db, current_user.id, "checkpoint.clear_records", "CheckpointType", cp.id, {
+        "name": cp.name,
+        "recordsCleared": record_count
+    })
+    db.commit()
+    return {"message": f"Cleared {record_count} attendance record(s) for checkpoint '{cp.name}'", "count": record_count}
+
 
 

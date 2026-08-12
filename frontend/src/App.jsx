@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 
 // Pages
 import Login from './pages/Login';
@@ -62,47 +63,49 @@ const Home = () => {
 
 const App = () => {
   return (
-    <ToastProvider>
-      <AuthProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            
-            {/* Dynamic Root Redirection */}
-            <Route path="/" element={<Home />} />
-            
-            {/* Protected Role Routes */}
-            <Route
-              path="/admin/*"
-              element={
-                <ProtectedRoute allowedRole="ADMIN">
-                  <AdminDashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/volunteer/*"
-              element={
-                <ProtectedRoute allowedRole="VOLUNTEER">
-                  <VolunteerDashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/leader/*"
-              element={
-                <ProtectedRoute allowedRole="LEADER">
-                  <LeaderDashboard />
-                </ProtectedRoute>
-              }
-            />
+    <ThemeProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              
+              {/* Dynamic Root Redirection */}
+              <Route path="/" element={<Home />} />
+              
+              {/* Protected Role Routes */}
+              <Route
+                path="/admin/*"
+                element={
+                  <ProtectedRoute allowedRole="ADMIN">
+                    <AdminDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/volunteer/*"
+                element={
+                  <ProtectedRoute allowedRole="VOLUNTEER">
+                    <VolunteerDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/leader/*"
+                element={
+                  <ProtectedRoute allowedRole="LEADER">
+                    <LeaderDashboard />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Catch-all redirection */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
-      </AuthProvider>
-    </ToastProvider>
+              {/* Catch-all redirection */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </BrowserRouter>
+        </AuthProvider>
+      </ToastProvider>
+    </ThemeProvider>
   );
 };
 

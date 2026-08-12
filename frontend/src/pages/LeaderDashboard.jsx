@@ -7,6 +7,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import Navbar from '../components/Navbar';
+import Skeleton from '../components/Skeleton';
+import IconButton from '../components/IconButton';
+import AmbientCursorGlow from '../components/AmbientCursorGlow';
+import usePsWebSocket from '../hooks/usePsWebSocket';
 
 const formatContact = (contactStr) => {
   if (!contactStr) return { email: '', phone: '' };
@@ -97,6 +102,14 @@ const LeaderDashboard = () => {
   const [countdownText, setCountdownText] = useState('');
   const [configLoaded, setConfigLoaded] = useState(false);
 
+  // Verification / Check-in gating state
+  const [verificationStatus, setVerificationStatus] = useState({
+    verified: true,
+    gatingEnabled: false,
+    resolvedMemberName: null
+  });
+  const [updatedPsId, setUpdatedPsId] = useState(null);
+
   // Problem statements listing
   const [statements, setStatements] = useState([]);
   const [statementsLoading, setStatementsLoading] = useState(false);
@@ -105,7 +118,45 @@ const LeaderDashboard = () => {
   useEffect(() => {
     fetchTeamData();
     fetchConfig();
+    fetchVerificationStatus();
   }, []);
+
+  const fetchVerificationStatus = async () => {
+    try {
+      const res = await api.get('/leader/verification-status');
+      setVerificationStatus(res.data);
+    } catch (e) {
+      console.error('Failed to fetch verification status', e);
+    }
+  };
+
+  const handleWsMessage = React.useCallback((data) => {
+    if (data.type === 'ps_capacity_update') {
+      setUpdatedPsId(data.psId);
+      setStatements((prev) =>
+        prev.map((s) => {
+          if (s.id === data.psId) {
+            return {
+              ...s,
+              selectedCount: data.selectedCount,
+              remainingCapacity: data.remainingCapacity
+            };
+          }
+          return s;
+        })
+      );
+      setTimeout(() => setUpdatedPsId(null), 800);
+    } else if (data.type === 'checkin_update') {
+      fetchVerificationStatus();
+    }
+  }, []);
+
+  usePsWebSocket({
+    eventId: teamInfo?.eventId,
+    token: localStorage.getItem('access_token'),
+    onMessage: handleWsMessage,
+    enabled: !!teamInfo
+  });
 
   const fetchTeamData = async () => {
     try {
@@ -145,14 +196,12 @@ const LeaderDashboard = () => {
     }
   };
 
-
   const fetchProblemStatements = async () => {
     setStatementsLoading(true);
     try {
       const res = await api.get('/leader/problem-statements');
       setStatements(res.data || []);
     } catch (err) {
-      // If 403, it's not released yet
       if (err.response?.status === 403) {
         setIsReleased(false);
       } else {
@@ -209,6 +258,10 @@ const LeaderDashboard = () => {
         addToast('Conflict: Your team has already locked in a selection.', 'error');
         setSelectConfirmState(null);
         fetchTeamData();
+      } else if (detail === 'NOT_CHECKED_IN') {
+        addToast('Check-in required — please complete verification at the help desk to select your problem statement.', 'error');
+        setSelectConfirmState(null);
+        fetchVerificationStatus();
       } else {
         addToast(detail || 'Selection failed. Check connection.', 'error');
       }
@@ -219,137 +272,33 @@ const LeaderDashboard = () => {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center' }}>
-        <span className="spinner" style={{ width: '40px', height: '40px' }}></span>
+      <div style={{ minHeight: '100vh', background: 'var(--bg-main)', position: 'relative' }}>
+        <AmbientCursorGlow />
+        <div style={{ padding: '120px 24px 40px', maxWidth: '1280px', margin: '0 auto' }}>
+          <Skeleton variant="card" count={3} style={{ marginBottom: '16px' }} />
+        </div>
       </div>
     );
   }
 
   const hasSelection = !!teamInfo?.psSelection;
 
+  const psGated = verificationStatus.gatingEnabled && !verificationStatus.verified;
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-main)', position: 'relative' }}>
-      {/* Floating Glass Notch Navigation */}
-      <div className="floating-nav">
-        {/* Logo / Title */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontWeight: 800, fontSize: '0.95rem', letterSpacing: '0.5px' }} className="text-gradient">
-            MIT India Hackathon
-          </span>
-          <span style={{ 
-            fontSize: '0.7rem', 
-            background: 'var(--primary-glow)', 
-            color: 'var(--primary)', 
-            padding: '2px 8px', 
-            borderRadius: '999px', 
-            fontWeight: 700,
-            textTransform: 'uppercase'
-          }}>
-            Leader
-          </span>
-        </div>
-
-        {/* Tabs for Desktop */}
-        {!isMobile ? (
-          <div className="floating-nav-tabs">
-            <button 
-              onClick={() => handleTabClick('team')} 
-              className={`btn ${activeTab === 'team' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'team' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'team' ? undefined : 'var(--text-secondary)', flexShrink: 0 }}
-            >
-              Team Roster
-            </button>
-            <button 
-              onClick={() => handleTabClick('ps')} 
-              className={`btn ${activeTab === 'ps' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'ps' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'ps' ? undefined : 'var(--text-secondary)', flexShrink: 0 }}
-            >
-              Select Topic
-            </button>
-            <button 
-              onClick={() => handleTabClick('settings')} 
-              className={`btn ${activeTab === 'settings' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'settings' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'settings' ? undefined : 'var(--text-secondary)', flexShrink: 0 }}
-            >
-              Change Password
-            </button>
-          </div>
-        ) : null}
-
-        {/* Right side: Logout (Desktop) or Hamburger (Mobile) */}
-        {!isMobile ? (
-          <button
-            onClick={logout}
-            className="btn btn-secondary"
-            style={{ padding: '6px 16px', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.8rem' }}
-          >
-            Logout
-          </button>
-        ) : (
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="btn btn-secondary"
-            style={{ padding: '6px', minHeight: 'auto', height: '36px', width: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
-          </button>
-        )}
-      </div>
-
-      {/* Mobile Menu Dropdown */}
-      {isMobile && mobileMenuOpen && (
-        <div 
-          className="glass-card"
-          style={{
-            position: 'fixed',
-            top: '90px',
-            right: '16px',
-            left: '16px',
-            background: 'rgba(253, 251, 247, 0.97)',
-            backdropFilter: 'blur(20px) saturate(180%)',
-            WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-            border: '1px solid rgba(255, 255, 255, 0.6)',
-            borderRadius: '24px',
-            boxShadow: '0 15px 35px -10px rgba(43, 33, 24, 0.25)',
-            padding: '16px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-            zIndex: 999,
-            animation: 'scaleInModal 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
-          }}
-        >
-          <button
-            onClick={() => handleTabClick('team')}
-            className={`btn ${activeTab === 'team' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ width: '100%', padding: '10px 16px', border: 'none', background: activeTab === 'team' ? undefined : 'transparent', minHeight: 'auto', height: '40px', borderRadius: '12px', textAlign: 'left', justifyContent: 'flex-start', color: activeTab === 'team' ? undefined : 'var(--text-secondary)' }}
-          >
-            Team Roster
-          </button>
-          <button
-            onClick={() => handleTabClick('ps')}
-            className={`btn ${activeTab === 'ps' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ width: '100%', padding: '10px 16px', border: 'none', background: activeTab === 'ps' ? undefined : 'transparent', minHeight: 'auto', height: '40px', borderRadius: '12px', textAlign: 'left', justifyContent: 'flex-start', color: activeTab === 'ps' ? undefined : 'var(--text-secondary)' }}
-          >
-            Select Topic
-          </button>
-          <button
-            onClick={() => handleTabClick('settings')}
-            className={`btn ${activeTab === 'settings' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ width: '100%', padding: '10px 16px', border: 'none', background: activeTab === 'settings' ? undefined : 'transparent', minHeight: 'auto', height: '40px', borderRadius: '12px', textAlign: 'left', justifyContent: 'flex-start', color: activeTab === 'settings' ? undefined : 'var(--text-secondary)' }}
-          >
-            Change Password
-          </button>
-          <hr style={{ border: 'none', borderTop: '1px solid var(--border-light)', margin: '8px 0' }} />
-          <button
-            onClick={logout}
-            className="btn btn-secondary"
-            style={{ width: '100%', padding: '10px 16px', minHeight: 'auto', height: '40px', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            Logout
-          </button>
-        </div>
-      )}
+      <Navbar
+        title="MIT India Hackathon"
+        user={{ username: teamInfo?.name || 'Leader', role: 'Team Leader' }}
+        onLogout={logout}
+        activeTab={activeTab}
+        onTabChange={handleTabClick}
+        navItems={[
+          { id: 'team', label: 'Team Roster', icon: <Users size={16} /> },
+          { id: 'ps', label: 'Select Topic', icon: <Layers size={16} /> },
+          { id: 'settings', label: 'Change Password', icon: <Lock size={16} /> }
+        ]}
+      />
 
       {/* Main Content Area */}
       <div 
@@ -484,7 +433,27 @@ const LeaderDashboard = () => {
               <div className="glass-panel" style={{ padding: '32px', marginBottom: '40px' }}>
                 {/* Countdown State */}
                 {!isReleased ? (
-                  <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                  <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                    {verificationStatus.gatingEnabled && !verificationStatus.verified && (
+                      <div style={{
+                        padding: '16px 20px',
+                        borderRadius: 'var(--radius, 8px)',
+                        background: 'rgba(224, 92, 26, 0.1)',
+                        border: '1px solid var(--warning)',
+                        color: 'var(--warning)',
+                        marginBottom: '24px',
+                        textAlign: 'left',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px'
+                      }}>
+                        <AlertTriangle size={24} style={{ flexShrink: 0 }} />
+                        <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>
+                          Complete check-in before the countdown ends — your team won't be able to select a problem statement until {verificationStatus.resolvedMemberName || 'a team member'} is verified at check-in.
+                        </span>
+                      </div>
+                    )}
+
                     {configLoaded && psReleaseAt === null ? (
                       <>
                         <ShieldAlert size={48} style={{ color: 'var(--text-muted)', marginBottom: '16px', marginLeft: 'auto', marginRight: 'auto' }} />
@@ -507,8 +476,8 @@ const LeaderDashboard = () => {
                           </div>
                         ) : (
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '10px 0' }}>
-                            <span className="spinner" style={{ width: '28px', height: '28px', marginBottom: '8px', marginLeft: 'auto', marginRight: 'auto' }}></span>
-                            <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Synchronizing timer...</span>
+                            <Skeleton variant="text" width="220px" height="48px" />
+                            <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '8px' }}>Synchronizing timer...</span>
                           </div>
                         )}
                         
@@ -524,6 +493,28 @@ const LeaderDashboard = () => {
                 ) : (
                   /* Selection Roster Board */
                   <div>
+                    {psGated && (
+                      <div style={{
+                        padding: '16px 20px',
+                        borderRadius: '10px',
+                        background: 'var(--danger-glow)',
+                        border: '1px solid var(--danger)',
+                        color: 'var(--danger)',
+                        marginBottom: '24px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '14px'
+                      }}>
+                        <ShieldAlert size={24} style={{ flexShrink: 0 }} />
+                        <div>
+                          <strong style={{ fontSize: '0.95rem', display: 'block', marginBottom: '2px' }}>Check-in Required</strong>
+                          <span style={{ fontSize: '0.85rem', opacity: 0.85 }}>
+                            {verificationStatus.resolvedMemberName || 'A team member'} must be verified at the check-in desk before your team can lock in a selection.
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
                       <div>
                         <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>Select Your Problem Statement</h2>
@@ -558,19 +549,21 @@ const LeaderDashboard = () => {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                         {statements.map((s) => {
                           const isSoldOut = s.remainingCapacity === 0;
+                          const isUpdated = s.id === updatedPsId;
                           
                           return (
                             <div 
                               key={s.id} 
-                              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px', borderRadius: '12px', background: 'var(--bg-surface)', border: isSoldOut ? '1px solid var(--border-light)' : '1px solid var(--border-light)', opacity: isSoldOut ? 0.7 : 1, flexWrap: 'wrap', gap: '16px' }}
+                              className={isUpdated ? 'ps-row-pulse' : ''}
+                              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px', borderRadius: '12px', background: 'var(--bg-surface)', border: '1px solid var(--border-light)', opacity: (isSoldOut || psGated) ? 0.7 : 1, flexWrap: 'wrap', gap: '16px', transition: 'all 0.3s ease' }}
                             >
                               <div style={{ flex: 1, minWidth: '240px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                                   <span style={{ fontSize: '0.75rem', background: 'var(--primary-glow)', color: 'var(--primary)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
                                     {s.code}
                                   </span>
-                                  <span style={{ fontSize: '0.75rem', background: isSoldOut ? 'var(--danger-glow)' : 'var(--success-glow)', color: isSoldOut ? 'var(--danger)' : 'var(--success)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                                    {isSoldOut ? 'Sold Out' : `${s.remainingCapacity} slots remaining`}
+                                  <span className={isUpdated ? 'ps-count-scale' : ''} style={{ fontSize: '0.75rem', background: isSoldOut ? 'var(--danger-glow)' : 'var(--success-glow)', color: isSoldOut ? 'var(--danger)' : 'var(--success)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600, transition: 'all 0.4s ease' }}>
+                                    {isSoldOut ? 'Fully Committed' : `${s.remainingCapacity} slots remaining`}
                                   </span>
                                 </div>
                                 <h3 style={{ fontSize: '1.15rem', fontWeight: 700, marginBottom: '6px' }}>{s.title}</h3>
@@ -582,18 +575,18 @@ const LeaderDashboard = () => {
                                   className="btn btn-secondary" 
                                   style={{ marginTop: '8px', padding: '6px 12px', fontSize: '0.8rem', minHeight: 'auto' }}
                                 >
-                                  View Details & Requirements
+                                  View Details &amp; Requirements
                                 </button>
                               </div>
 
                               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
                                 <button
                                   onClick={() => setSelectConfirmState({ psId: s.id, psCode: s.code, psTitle: s.title })}
-                                  disabled={isSoldOut || isSelecting}
+                                  disabled={isSoldOut || isSelecting || psGated}
                                   className="btn btn-primary"
                                   style={{ minHeight: 0, padding: '10px 24px', fontSize: '0.85rem' }}
                                 >
-                                  {isSelecting ? <span className="spinner"></span> : 'Select Topic'}
+                                  {isSelecting ? <span className="spinner"></span> : psGated ? 'Check-in Required' : 'Select Topic'}
                                 </button>
                                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
                                   Total capacity: {s.capacity} teams

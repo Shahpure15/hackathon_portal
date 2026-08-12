@@ -40,6 +40,7 @@ class TeamMemberResponse(TeamMemberBase):
     id: str
     teamId: str
     idVerified: bool
+    isTeamLeader: bool = False
 
     class Config:
         from_attributes = True
@@ -168,3 +169,17 @@ class AuditLogResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+# EventConfig Schemas
+class EventConfigResponse(BaseModel):
+    id: str
+    eventId: str
+    psReleaseAt: Optional[datetime] = None
+    psGateCheckpointTypeId: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class EventConfigUpdate(BaseModel):
+    psReleaseAt: Optional[datetime] = None
+    psGateCheckpointTypeId: Optional[str] = None

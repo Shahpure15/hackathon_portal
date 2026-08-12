@@ -12,6 +12,10 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import CredentialDialog from '../components/CredentialDialog';
 import DateTimePicker from '../components/DateTimePicker';
 import useTableQuery from '../components/useTableQuery';
+import Navbar from '../components/Navbar';
+import Skeleton from '../components/Skeleton';
+import IconButton from '../components/IconButton';
+import usePsWebSocket from '../hooks/usePsWebSocket';
 
 const formatContact = (contactStr) => {
   if (!contactStr) return { email: '', phone: '' };
@@ -73,167 +77,29 @@ const AdminDashboard = () => {
     fetchPodsPool();
   }, [activeTab]);
 
+  const handleLogout = async () => {
+    localStorage.removeItem('adminActiveTab');
+    localStorage.removeItem('leaderActiveTab');
+    await api.post('/auth/logout');
+    window.location.href = '/login';
+  };
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-main)', position: 'relative' }}>
-      {/* Floating Glass Notch Navigation */}
-      <div className="floating-nav">
-        {/* Logo / Title */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontWeight: 800, fontSize: '0.95rem', letterSpacing: '0.5px' }} className="text-gradient">
-            MIT India Hackathon
-          </span>
-          <span style={{ 
-            fontSize: '0.7rem', 
-            background: 'var(--primary-glow)', 
-            color: 'var(--primary)', 
-            padding: '2px 8px', 
-            borderRadius: '999px', 
-            fontWeight: 700,
-            textTransform: 'uppercase'
-          }}>
-            Admin
-          </span>
-        </div>
-
-        {/* Tabs for Desktop */}
-        {!isMobile ? (
-          <div className="floating-nav-tabs">
-            <button
-              onClick={() => handleTabClick('teams')}
-              className={`btn ${activeTab === 'teams' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'teams' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'teams' ? undefined : 'var(--text-secondary)', flexShrink: 0 }}
-            >
-              Teams
-            </button>
-            <button
-              onClick={() => handleTabClick('pods')}
-              className={`btn ${activeTab === 'pods' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'pods' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'pods' ? undefined : 'var(--text-secondary)', flexShrink: 0 }}
-            >
-              POD Groups
-            </button>
-            <button
-              onClick={() => handleTabClick('volunteers')}
-              className={`btn ${activeTab === 'volunteers' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'volunteers' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'volunteers' ? undefined : 'var(--text-secondary)', flexShrink: 0 }}
-            >
-              Volunteers
-            </button>
-            <button
-              onClick={() => handleTabClick('checkpoints')}
-              className={`btn ${activeTab === 'checkpoints' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'checkpoints' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'checkpoints' ? undefined : 'var(--text-secondary)', flexShrink: 0 }}
-            >
-              Attendance Slots
-            </button>
-            <button
-              onClick={() => handleTabClick('ps')}
-              className={`btn ${activeTab === 'ps' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '8px 16px', border: 'none', background: activeTab === 'ps' ? undefined : 'transparent', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.85rem', color: activeTab === 'ps' ? undefined : 'var(--text-secondary)', flexShrink: 0 }}
-            >
-              Problem Statements
-            </button>
-          </div>
-        ) : null}
-
-        {/* Right side: Logout (Desktop) or Hamburger (Mobile) */}
-        {!isMobile ? (
-          <button
-            onClick={async () => {
-              localStorage.removeItem('adminActiveTab');
-              localStorage.removeItem('leaderActiveTab');
-              await api.post('/auth/logout');
-              window.location.href = '/login';
-            }}
-            className="btn btn-secondary"
-            style={{ padding: '6px 16px', minHeight: 'auto', height: '36px', borderRadius: '999px', fontSize: '0.8rem' }}
-          >
-            Logout
-          </button>
-        ) : (
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="btn btn-secondary"
-            style={{ padding: '6px', minHeight: 'auto', height: '36px', width: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
-          </button>
-        )}
-      </div>
-
-      {/* Mobile Menu Dropdown */}
-      {isMobile && mobileMenuOpen && (
-        <div 
-          className="glass-card"
-          style={{
-            position: 'fixed',
-            top: '90px',
-            right: '16px',
-            left: '16px',
-            background: 'rgba(253, 251, 247, 0.97)',
-            backdropFilter: 'blur(20px) saturate(180%)',
-            WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-            border: '1px solid rgba(255, 255, 255, 0.6)',
-            borderRadius: '24px',
-            boxShadow: '0 15px 35px -10px rgba(43, 33, 24, 0.25)',
-            padding: '16px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-            zIndex: 999,
-            animation: 'scaleInModal 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
-          }}
-        >
-          <button
-            onClick={() => handleTabClick('teams')}
-            className={`btn ${activeTab === 'teams' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ width: '100%', padding: '10px 16px', border: 'none', background: activeTab === 'teams' ? undefined : 'transparent', minHeight: 'auto', height: '40px', borderRadius: '12px', textAlign: 'left', justifyContent: 'flex-start', color: activeTab === 'teams' ? undefined : 'var(--text-secondary)' }}
-          >
-            Teams
-          </button>
-          <button
-            onClick={() => handleTabClick('pods')}
-            className={`btn ${activeTab === 'pods' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ width: '100%', padding: '10px 16px', border: 'none', background: activeTab === 'pods' ? undefined : 'transparent', minHeight: 'auto', height: '40px', borderRadius: '12px', textAlign: 'left', justifyContent: 'flex-start', color: activeTab === 'pods' ? undefined : 'var(--text-secondary)' }}
-          >
-            POD Groups
-          </button>
-          <button
-            onClick={() => handleTabClick('volunteers')}
-            className={`btn ${activeTab === 'volunteers' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ width: '100%', padding: '10px 16px', border: 'none', background: activeTab === 'volunteers' ? undefined : 'transparent', minHeight: 'auto', height: '40px', borderRadius: '12px', textAlign: 'left', justifyContent: 'flex-start', color: activeTab === 'volunteers' ? undefined : 'var(--text-secondary)' }}
-          >
-            Volunteers
-          </button>
-          <button
-            onClick={() => handleTabClick('checkpoints')}
-            className={`btn ${activeTab === 'checkpoints' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ width: '100%', padding: '10px 16px', border: 'none', background: activeTab === 'checkpoints' ? undefined : 'transparent', minHeight: 'auto', height: '40px', borderRadius: '12px', textAlign: 'left', justifyContent: 'flex-start', color: activeTab === 'checkpoints' ? undefined : 'var(--text-secondary)' }}
-          >
-            Attendance Slots
-          </button>
-          <button
-            onClick={() => handleTabClick('ps')}
-            className={`btn ${activeTab === 'ps' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ width: '100%', padding: '10px 16px', border: 'none', background: activeTab === 'ps' ? undefined : 'transparent', minHeight: 'auto', height: '40px', borderRadius: '12px', textAlign: 'left', justifyContent: 'flex-start', color: activeTab === 'ps' ? undefined : 'var(--text-secondary)' }}
-          >
-            Problem Statements
-          </button>
-          <hr style={{ border: 'none', borderTop: '1px solid var(--border-light)', margin: '8px 0' }} />
-          <button
-            onClick={async () => {
-              localStorage.removeItem('adminActiveTab');
-              localStorage.removeItem('leaderActiveTab');
-              await api.post('/auth/logout');
-              window.location.href = '/login';
-            }}
-            className="btn btn-secondary"
-            style={{ width: '100%', padding: '10px 16px', minHeight: 'auto', height: '40px', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            Logout
-          </button>
-        </div>
-      )}
+      <Navbar
+        title="MIT India Hackathon"
+        user={{ username: 'Admin', role: 'Administrator' }}
+        onLogout={handleLogout}
+        activeTab={activeTab}
+        onTabChange={handleTabClick}
+        navItems={[
+          { id: 'teams', label: 'Teams', icon: <Users size={16} /> },
+          { id: 'pods', label: 'POD Groups', icon: <Layers size={16} /> },
+          { id: 'volunteers', label: 'Volunteers', icon: <UserCheck size={16} /> },
+          { id: 'checkpoints', label: 'Attendance Slots', icon: <FileText size={16} /> },
+          { id: 'ps', label: 'Problem Statements', icon: <Layers size={16} /> }
+        ]}
+      />
 
       {/* Main Content Area */}
       <div 
@@ -264,7 +130,11 @@ const AdminDashboard = () => {
           <PodsView pods={pods} fetchPodsPool={fetchPodsPool} />
         </div>
         <div style={{ display: activeTab === 'volunteers' ? 'block' : 'none' }} className="fade-in-up">
-          <VolunteersView pods={pods} fetchPodsPool={fetchPodsPool} />
+          <VolunteersView
+            pods={pods}
+            fetchPodsPool={fetchPodsPool}
+            onResetPassword={(volId, volName) => setResetPasswordState({ isOpen: true, targetId: volId, targetName: volName, type: 'volunteer' })}
+          />
         </div>
         <div style={{ display: activeTab === 'checkpoints' ? 'block' : 'none' }} className="fade-in-up">
           <CheckpointsView />
@@ -2449,7 +2319,7 @@ const PodRosterModal = ({ pod, onClose }) => {
 // ==========================================
 // VOLUNTEERS VIEW TAB COMPONENT
 // ==========================================
-const VolunteersView = ({ pods, fetchPodsPool }) => {
+const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
   const { addToast } = useToast();
   const [volunteers, setVolunteers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -2589,12 +2459,9 @@ const VolunteersView = ({ pods, fetchPodsPool }) => {
   };
 
   const handleResetVolunteerPassword = (volId, volName) => {
-    setResetPasswordState({
-      isOpen: true,
-      targetId: volId,
-      targetName: volName,
-      type: 'volunteer'
-    });
+    if (onResetPassword) {
+      onResetPassword(volId, volName);
+    }
   };
 
   const handleUpdatePodInline = async (volId, newPodId) => {
@@ -3239,12 +3106,16 @@ const CheckpointsView = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showForceDeleteConfirm, setShowForceDeleteConfirm] = useState(false);
+  const [hasRecordsError, setHasRecordsError] = useState(false);
 
   // Form states
   const [cpId, setCpId] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   // Table query state
   const {
@@ -3339,10 +3210,56 @@ const CheckpointsView = () => {
       addToast('Attendance Slot deleted successfully!', 'success');
       setCpId('');
       setShowDeleteConfirm(false);
+      setHasRecordsError(false);
+      fetchCheckpoints();
+    } catch (err) {
+      const detail = err.response?.data?.detail || '';
+      if (detail.includes('attendance records')) {
+        // Has records — offer to clear first or force delete
+        setShowDeleteConfirm(false);
+        setHasRecordsError(true);
+        setShowForceDeleteConfirm(true);
+      } else {
+        addToast(detail || 'Failed to delete Attendance Slot', 'error');
+      }
+    }
+  };
+
+  const handleForceDelete = async () => {
+    try {
+      await api.delete(`/admin/checkpoints/${cpId}?force=true`);
+      addToast('Attendance Slot and all its records deleted!', 'success');
+      setCpId('');
+      setShowForceDeleteConfirm(false);
+      setHasRecordsError(false);
       fetchCheckpoints();
     } catch (err) {
       addToast(err.response?.data?.detail || 'Failed to delete Attendance Slot', 'error');
     }
+  };
+
+  const handleClearRecords = async () => {
+    setIsClearing(true);
+    try {
+      const res = await api.delete(`/admin/checkpoints/${cpId}/records`);
+      addToast(res.data?.message || 'Records cleared successfully!', 'success');
+      setShowClearConfirm(false);
+      setShowForceDeleteConfirm(false);
+      setHasRecordsError(false);
+      // Now they can delete normally
+      setCpId('');
+      fetchCheckpoints();
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to clear records', 'error');
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
+  const openClearConfirm = (cp) => {
+    setCpId(cp.id);
+    setName(cp.name);
+    setShowClearConfirm(true);
   };
 
   const openEditModal = (cp) => {
@@ -3399,9 +3316,17 @@ const CheckpointsView = () => {
           {
             header: '',
             align: 'right',
-            width: '120px',
+            width: '200px',
             render: (c) => (
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => openClearConfirm(c)}
+                  className="btn btn-secondary"
+                  style={{ padding: '6px 10px', color: 'var(--warning)', borderColor: 'rgba(245, 158, 11, 0.2)', minHeight: 'auto', fontSize: '0.8rem' }}
+                  title="Clear all attendance records for this slot"
+                >
+                  Clear Records
+                </button>
                 <button
                   onClick={() => openEditModal(c)}
                   className="btn btn-secondary"
@@ -3530,6 +3455,63 @@ const CheckpointsView = () => {
         onConfirm={handleDelete}
         onCancel={() => setShowDeleteConfirm(false)}
       />
+
+      {/* Clear Records Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={showClearConfirm}
+        title="Clear Attendance Records"
+        message={`This will permanently erase ALL attendance records logged under '${name}'. The slot itself will remain. This cannot be undone.`}
+        confirmLabel={isClearing ? 'Clearing...' : 'Clear All Records'}
+        danger={true}
+        onConfirm={handleClearRecords}
+        onCancel={() => { setShowClearConfirm(false); setCpId(''); }}
+        loading={isClearing}
+      />
+
+      {/* Force Delete Confirm (triggered when delete blocked by records) */}
+      <Modal
+        isOpen={showForceDeleteConfirm}
+        onClose={() => { setShowForceDeleteConfirm(false); setCpId(''); setHasRecordsError(false); }}
+        title="Checkpoint Has Attendance Records"
+        maxWidth="460px"
+      >
+        <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '24px' }}>
+          <strong style={{ color: 'var(--text-primary)' }}>{name}</strong> has logged attendance records.
+          Choose how you want to proceed:
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <button
+            onClick={handleClearRecords}
+            className="btn btn-secondary"
+            disabled={isClearing}
+            style={{ justifyContent: 'flex-start', padding: '14px 18px', borderRadius: '10px', border: '1px solid rgba(245,158,11,0.3)', color: 'var(--warning)' }}
+          >
+            {isClearing ? <span className="spinner" style={{ width: '16px', height: '16px', marginRight: '8px' }} /> : null}
+            <div style={{ textAlign: 'left' }}>
+              <div style={{ fontWeight: 700, marginBottom: '2px' }}>Clear Records Only</div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Erase all attendance records but keep the slot</div>
+            </div>
+          </button>
+          <button
+            onClick={handleForceDelete}
+            className="btn btn-secondary"
+            disabled={isClearing}
+            style={{ justifyContent: 'flex-start', padding: '14px 18px', borderRadius: '10px', border: '1px solid rgba(239,68,68,0.3)', color: 'var(--danger)' }}
+          >
+            <div style={{ textAlign: 'left' }}>
+              <div style={{ fontWeight: 700, marginBottom: '2px' }}>Delete Slot + All Records</div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Permanently removes the slot and all its attendance data</div>
+            </div>
+          </button>
+          <button
+            onClick={() => { setShowForceDeleteConfirm(false); setCpId(''); setHasRecordsError(false); }}
+            className="btn btn-secondary"
+            style={{ marginTop: '4px' }}
+          >
+            Cancel
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 };
@@ -3543,6 +3525,8 @@ const PSView = () => {
   const [statements, setStatements] = useState([]);
   const [releaseTime, setReleaseTime] = useState('');
   const [inputReleaseTime, setInputReleaseTime] = useState('');
+  const [selectedGateCheckpointId, setSelectedGateCheckpointId] = useState('');
+  const [checkpoints, setCheckpoints] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isUpdatingConfig, setIsUpdatingConfig] = useState(false);
 
@@ -3552,14 +3536,23 @@ const PSView = () => {
   const [showReleaseModal, setShowReleaseModal] = useState(false);
   const [showLockConfirm, setShowLockConfirm] = useState(false);
 
-  // Sorting note: backend sorting is deferred for now, default sort is used
   const sortKey = '';
   const sortDir = 'asc';
 
   useEffect(() => {
     fetchPS();
     fetchConfig();
+    fetchCheckpointsList();
   }, []);
+
+  const fetchCheckpointsList = async () => {
+    try {
+      const res = await api.get('/admin/checkpoints');
+      setCheckpoints(res.data || []);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const fetchPS = async () => {
     setLoading(true);
@@ -3578,30 +3571,31 @@ const PSView = () => {
       const res = await api.get('/admin/config');
       if (res.data.psReleaseAt) {
         setReleaseTime(res.data.psReleaseAt);
-        // Format to ISO string for picker
         const localDate = new Date(res.data.psReleaseAt);
         setInputReleaseTime(localDate.toISOString());
       } else {
         setReleaseTime('');
         setInputReleaseTime('');
       }
+      setSelectedGateCheckpointId(res.data.psGateCheckpointTypeId || '');
     } catch (err) {
       console.error(err);
     }
   };
 
+  // Handle saving PS release schedule & check-in gate config
   const handleSaveConfig = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
-    if (!inputReleaseTime) return;
 
-    const utcDate = new Date(inputReleaseTime).toISOString();
+    const utcDate = inputReleaseTime ? new Date(inputReleaseTime).toISOString() : null;
 
     setIsUpdatingConfig(true);
     try {
       const res = await api.patch('/admin/config/ps-release-at', {
-        psReleaseAt: utcDate
+        psReleaseAt: utcDate,
+        psGateCheckpointTypeId: selectedGateCheckpointId || null
       });
-      addToast('PS release time updated successfully!', 'success');
+      addToast('Event config updated successfully!', 'success');
       setReleaseTime(res.data.psReleaseAt);
       setShowReleaseModal(false);
       fetchConfig();
@@ -3707,8 +3701,8 @@ const PSView = () => {
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
               Problem statement selections are currently <strong>locked</strong>. Set a future release time to allow teams to choose their statement.
             </p>
-            <form onSubmit={handleSaveConfig} style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-end', maxWidth: '600px' }}>
-              <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: '240px' }}>
+            <form onSubmit={handleSaveConfig} style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-end', maxWidth: '750px' }}>
+              <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: '220px' }}>
                 <label className="form-label">Release Date & Time (Local Time)</label>
                 <DateTimePicker
                   value={inputReleaseTime}
@@ -3718,8 +3712,25 @@ const PSView = () => {
                   disabled={isUpdatingConfig}
                 />
               </div>
-              <button type="submit" className="btn btn-primary" disabled={!inputReleaseTime || isUpdatingConfig} style={{ height: '42px', minHeight: 'auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {isUpdatingConfig ? <span className="spinner"></span> : 'Set Release Time'}
+              <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: '220px' }}>
+                <label className="form-label">Check-in Gate (Opt-in)</label>
+                <select
+                  className="form-input"
+                  value={selectedGateCheckpointId}
+                  onChange={(e) => setSelectedGateCheckpointId(e.target.value)}
+                  disabled={isUpdatingConfig}
+                  style={{ height: '48px' }}
+                >
+                  <option value="">None (Gating Off)</option>
+                  {checkpoints.map((cp) => (
+                    <option key={cp.id} value={cp.id}>
+                      {cp.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button type="submit" className="btn btn-primary" disabled={isUpdatingConfig} style={{ height: '48px', minHeight: 'auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {isUpdatingConfig ? <span className="spinner"></span> : 'Save Configuration'}
               </button>
             </form>
           </div>
@@ -3793,7 +3804,7 @@ const PSView = () => {
                       {s.code}
                     </span>
                     <span style={{ fontSize: '0.75rem', background: isFull ? 'var(--danger-glow)' : 'var(--success-glow)', color: isFull ? 'var(--danger)' : 'var(--success)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                      {isFull ? 'Sold Out' : `${s.remainingCapacity} Left`}
+                      {isFull ? 'Fully Committed' : `${s.remainingCapacity} Left`}
                     </span>
                   </div>
 
@@ -3853,6 +3864,26 @@ const PSView = () => {
             placeholder="Select Release Date & Time"
             disabled={isUpdatingConfig}
           />
+        </div>
+
+        <div style={{ marginBottom: '20px' }}>
+          <label className="form-label">Check-in Gate Checkpoint (Opt-in)</label>
+          <select
+            className="form-input"
+            value={selectedGateCheckpointId}
+            onChange={(e) => setSelectedGateCheckpointId(e.target.value)}
+            disabled={isUpdatingConfig}
+          >
+            <option value="">None (Check-in Gating Disabled)</option>
+            {checkpoints.map((cp) => (
+              <option key={cp.id} value={cp.id}>
+                {cp.name}
+              </option>
+            ))}
+          </select>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+            When set, team leaders must be checked in at this checkpoint before selecting a problem statement.
+          </span>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '28px' }}>

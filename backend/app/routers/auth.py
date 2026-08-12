@@ -21,7 +21,7 @@ DUMMY_HASH = "$argon2id$v=19$m=65536,t=3,p=4$2q1gXp5eF9S16aC07V0mDw$Z7u4D1Z258Yy
 
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("5/minute")
-async def login(
+def login(
     request: Request,
     login_data: UserLogin, 
     response: Response, 
@@ -90,7 +90,7 @@ async def login(
     )
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh(
+def refresh(
     request: Request,
     response: Response,
     db: Session = Depends(get_db)
@@ -147,7 +147,7 @@ async def refresh(
     )
 
 @router.post("/logout")
-async def logout(
+def logout(
     request: Request,
     response: Response,
     db: Session = Depends(get_db)
@@ -176,7 +176,7 @@ class ChangePasswordRequest(BaseModel):
     newPassword: str
 
 @router.post("/change-password")
-async def change_password(
+def change_password(
     data: ChangePasswordRequest,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user)

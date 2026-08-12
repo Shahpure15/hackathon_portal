@@ -1,20 +1,33 @@
+import asyncio
 from datetime import datetime, timezone
 from typing import Dict, Any, List
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
-from app.models import Role, Team, TeamMember, ProblemStatement, PSSelection, EventConfig, Volunteer
+from app.models import Role, Team, TeamMember, ProblemStatement, PSSelection, EventConfig, Volunteer, AttendanceRecord
 from app.auth import require_role, CurrentUser
 from app.schemas import ProblemStatementResponse
-from app.limiter import limiter
+from app.limiter import limiter, team_key_func
+from app.websocket_manager import manager
 
 router = APIRouter(prefix="/leader", tags=["leader"])
 
+def _broadcast_ps_update(event_id: str, ps_id: str, selected_count: int, capacity: int):
+    try:
+        asyncio.run(manager.broadcast(event_id, {
+            "type": "ps_capacity_update",
+            "psId": ps_id,
+            "selectedCount": selected_count,
+            "remainingCapacity": max(capacity - selected_count, 0)
+        }))
+    except Exception:
+        pass
+
 @router.get("/config")
-async def get_leader_config(
+def get_leader_config(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.LEADER))
 ):
@@ -24,11 +37,51 @@ async def get_leader_config(
     
     return {
         "psReleaseAt": release_at,
+        "psGateCheckpointTypeId": config.psGateCheckpointTypeId if config else None,
         "serverTime": datetime.utcnow().replace(tzinfo=timezone.utc)
     }
 
+@router.get("/verification-status")
+def get_leader_verification_status(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.LEADER))
+):
+    """Returns check-in verification status for the leader's team."""
+    if not current_user.teamId:
+        return {"verified": False, "gatingEnabled": False, "resolvedMemberName": None}
+        
+    config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
+    if not config or not config.psGateCheckpointTypeId:
+        return {"verified": True, "gatingEnabled": False, "resolvedMemberName": None}
+        
+    team = db.query(Team).filter(Team.id == current_user.teamId).first()
+    if not team:
+        return {"verified": False, "gatingEnabled": True, "resolvedMemberName": None}
+        
+    leader_member = db.query(TeamMember).filter(
+        TeamMember.teamId == team.id, TeamMember.isTeamLeader == True
+    ).first()
+    target_member = leader_member if leader_member else db.query(TeamMember).filter(TeamMember.teamId == team.id).first()
+    
+    if not target_member:
+        return {"verified": False, "gatingEnabled": True, "resolvedMemberName": None}
+        
+    verified = db.query(AttendanceRecord).filter(
+        AttendanceRecord.teamMemberId == target_member.id,
+        AttendanceRecord.checkpointTypeId == config.psGateCheckpointTypeId
+    ).first() is not None
+    
+    role_desc = "Team Leader" if target_member.isTeamLeader else "Team Member"
+    resolved_name = f"{target_member.name} ({role_desc})"
+    
+    return {
+        "verified": verified,
+        "gatingEnabled": True,
+        "resolvedMemberName": resolved_name
+    }
+
 @router.get("/me")
-async def get_leader_team_info(
+def get_leader_team_info(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.LEADER))
 ):
@@ -83,13 +136,14 @@ async def get_leader_team_info(
                 "name": m.name,
                 "email": m.email,
                 "phone": m.phone,
-                "idVerified": m.idVerified
+                "idVerified": m.idVerified,
+                "isTeamLeader": m.isTeamLeader
             } for m in team.members
         ]
     }
 
 @router.get("/problem-statements", response_model=List[ProblemStatementResponse])
-async def get_problem_statements_for_leaders(
+def get_problem_statements_for_leaders(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.LEADER))
 ):
@@ -120,10 +174,11 @@ async def get_problem_statements_for_leaders(
     ]
 
 @router.post("/select-ps")
-@limiter.limit("5/minute; 1/second")
-async def select_problem_statement(
+@limiter.limit("5/minute; 1/second", key_func=team_key_func)
+def select_problem_statement(
     request: Request,
     payload: Dict[str, Any],
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.LEADER))
 ):
@@ -141,6 +196,24 @@ async def select_problem_statement(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Problem statements have not been released yet"
         )
+
+    # 1b. Enforce Server-side check-in gate
+    if config and config.psGateCheckpointTypeId:
+        team = db.query(Team).filter(Team.id == current_user.teamId).first()
+        leader_member = db.query(TeamMember).filter(
+            TeamMember.teamId == team.id, TeamMember.isTeamLeader == True
+        ).first()
+        target_member = leader_member if leader_member else db.query(TeamMember).filter(TeamMember.teamId == team.id).first()
+
+        verified = False
+        if target_member:
+            verified = db.query(AttendanceRecord).filter(
+                AttendanceRecord.teamMemberId == target_member.id,
+                AttendanceRecord.checkpointTypeId == config.psGateCheckpointTypeId
+            ).first() is not None
+
+        if not verified:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="NOT_CHECKED_IN")
         
     # 2. Check if team already has a selection (TOCTOU guard)
     existing_selection = db.query(PSSelection).filter(PSSelection.teamId == current_user.teamId).first()
@@ -153,7 +226,6 @@ async def select_problem_statement(
     # 3. Perform atomic capacity increment and selection registration in a single transaction block
     try:
         # Conditional update: only increment if selectedCount < capacity
-        # This prevents over-allocation under high concurrent load
         result = db.execute(
             text("""
                 UPDATE problem_statements 
@@ -163,32 +235,37 @@ async def select_problem_statement(
             {"ps_id": ps_id, "event_id": current_user.eventId}
         )
         
-        # If no rows were modified, the PS is either full or doesn't exist
         if result.rowcount == 0:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="PS_FULL"
             )
             
-        # Create PSSelection row
         selection = PSSelection(
             teamId=current_user.teamId,
             psId=ps_id
         )
         db.add(selection)
-        
-        # Commit the transaction (if teamId unique constraint fails, it will raise IntegrityError)
         db.commit()
+
+        # Fetch updated PS for broadcast
+        ps_obj = db.query(ProblemStatement).filter(ProblemStatement.id == ps_id).first()
+        if ps_obj:
+            background_tasks.add_task(
+                _broadcast_ps_update,
+                current_user.eventId,
+                ps_id,
+                ps_obj.selectedCount,
+                ps_obj.capacity
+            )
         
     except IntegrityError:
         db.rollback()
-        # If unique constraint on teamId fails, it means team already selected a PS concurrently
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="ALREADY_SELECTED"
         )
     except HTTPException:
-        # Re-raise HTTP exceptions (like PS_FULL) directly
         raise
     except Exception as e:
         db.rollback()
@@ -197,7 +274,6 @@ async def select_problem_statement(
             detail=f"Selection failed due to a server error: {str(e)}"
         )
         
-    # Return selection details on success
     return {
         "message": "Problem statement locked in successfully!",
         "psId": ps_id

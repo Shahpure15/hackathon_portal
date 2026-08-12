@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Calendar as CalendarIcon, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const DateTimePicker = ({
@@ -13,8 +14,10 @@ const DateTimePicker = ({
   const [viewMonth, setViewMonth] = useState(new Date()); // Date object representing the month shown
   const [hours, setHours] = useState('12');
   const [minutes, setMinutes] = useState('00');
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 320 });
 
-  const containerRef = useRef(null);
+  const triggerRef = useRef(null);
+  const dropdownRef = useRef(null);
 
   useEffect(() => {
     if (value) {
@@ -28,15 +31,51 @@ const DateTimePicker = ({
     }
   }, [value]);
 
+  // Compute portal position relative to trigger button
+  const updatePosition = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const dropdownHeight = 360; // approximate max height of calendar
+    const dropdownWidth = 320;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUpward = spaceBelow < dropdownHeight + 16 && rect.top > dropdownHeight;
+
+    setDropdownPos({
+      top: openUpward ? rect.top + window.scrollY - dropdownHeight - 8 : rect.bottom + window.scrollY + 8,
+      left: Math.min(rect.left + window.scrollX, window.innerWidth + window.scrollX - dropdownWidth - 16),
+      width: Math.max(rect.width, dropdownWidth),
+    });
+  }, []);
+
+  const handleOpen = () => {
+    if (disabled) return;
+    updatePosition();
+    setIsOpen((prev) => !prev);
+  };
+
+  // Close on outside click
   useEffect(() => {
+    if (!isOpen) return;
     const handleClickOutside = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
-        setIsOpen(false);
-      }
+      const inTrigger = triggerRef.current && triggerRef.current.contains(e.target);
+      const inDropdown = dropdownRef.current && dropdownRef.current.contains(e.target);
+      if (!inTrigger && !inDropdown) setIsOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [isOpen]);
+
+  // Reposition on scroll/resize
+  useEffect(() => {
+    if (!isOpen) return;
+    const onScroll = () => updatePosition();
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [isOpen, updatePosition]);
 
   const getDaysInMonth = (date) => {
     const year = date.getFullYear();
@@ -86,7 +125,7 @@ const DateTimePicker = ({
     } else {
       newDate.setMinutes(cleanVal);
     }
-    
+
     if (minDateTime && newDate < minDateTime) {
       setSelectedDate(minDateTime);
       onChange(minDateTime.toISOString());
@@ -134,10 +173,128 @@ const DateTimePicker = ({
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
 
+  const dropdown = isOpen ? createPortal(
+    <div
+      ref={dropdownRef}
+      className="glass-card"
+      style={{
+        position: 'absolute',
+        top: dropdownPos.top,
+        left: dropdownPos.left,
+        zIndex: 9999,
+        padding: '16px',
+        width: `${dropdownPos.width}px`,
+        minWidth: '320px',
+        boxShadow: '0 20px 60px -12px rgba(0,0,0,0.35), 0 8px 24px -6px rgba(0,0,0,0.2)',
+        border: '1px solid var(--border-light)',
+        backgroundColor: 'var(--bg-surface)',
+        borderRadius: '16px',
+      }}
+    >
+      {/* Calendar Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', userSelect: 'none' }}>
+        <button
+          type="button"
+          onClick={() => handleMonthChange(-1)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', padding: '4px' }}
+        >
+          <ChevronLeft size={16} />
+        </button>
+        <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>
+          {monthsList[viewMonth.getMonth()]} {viewMonth.getFullYear()}
+        </span>
+        <button
+          type="button"
+          onClick={() => handleMonthChange(1)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', padding: '4px' }}
+        >
+          <ChevronRight size={16} />
+        </button>
+      </div>
+
+      {/* Weekday Labels */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', marginBottom: '6px', userSelect: 'none' }}>
+        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((w, idx) => (
+          <span key={idx} style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>{w}</span>
+        ))}
+      </div>
+
+      {/* Days Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', marginBottom: '16px', userSelect: 'none' }}>
+        {days.map((day, idx) => {
+          const disabledDay = isDayDisabled(day);
+          const sel = isDaySelected(day);
+
+          return (
+            <div
+              key={idx}
+              onClick={() => !disabledDay && handleDaySelect(day)}
+              style={{
+                fontSize: '0.85rem',
+                padding: '7px 0',
+                borderRadius: '6px',
+                cursor: disabledDay ? 'not-allowed' : 'pointer',
+                color: disabledDay ? 'var(--text-muted)' : sel ? '#fff' : 'var(--text-primary)',
+                backgroundColor: sel ? 'var(--primary)' : 'transparent',
+                fontWeight: sel ? 600 : 'normal',
+                opacity: disabledDay ? 0.35 : 1,
+                transition: 'all 0.15s ease'
+              }}
+            >
+              {day || ''}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Time Picker Row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderTop: '1px solid var(--border-light)', paddingTop: '12px' }}>
+        <Clock size={16} style={{ color: 'var(--text-muted)', marginRight: '4px' }} />
+        <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Time:</span>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, justifyContent: 'flex-end' }}>
+          <input
+            type="number"
+            min="0"
+            max="23"
+            value={hours}
+            onChange={(e) => handleTimeChange('hours', e.target.value)}
+            style={{ width: '54px', textAlign: 'center', padding: '6px 8px', fontSize: '0.9rem' }}
+            className="form-input"
+            title="Hours (24h)"
+          />
+          <span style={{ fontWeight: 700, fontSize: '1rem' }}>:</span>
+          <input
+            type="number"
+            min="0"
+            max="59"
+            value={minutes}
+            onChange={(e) => handleTimeChange('minutes', e.target.value)}
+            style={{ width: '54px', textAlign: 'center', padding: '6px 8px', fontSize: '0.9rem' }}
+            className="form-input"
+            title="Minutes"
+          />
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '4px' }}>24h</span>
+        </div>
+      </div>
+
+      {/* Close / Done button */}
+      <button
+        type="button"
+        onClick={() => setIsOpen(false)}
+        className="btn btn-primary"
+        style={{ width: '100%', marginTop: '14px', minHeight: '38px', fontSize: '0.85rem' }}
+      >
+        Done
+      </button>
+    </div>,
+    document.body
+  ) : null;
+
   return (
-    <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
-      <div 
-        onClick={() => !disabled && setIsOpen(!isOpen)}
+    <div ref={triggerRef} style={{ position: 'relative', width: '100%' }}>
+      <div
+        onClick={handleOpen}
         className="form-input"
         style={{
           display: 'flex',
@@ -156,108 +313,7 @@ const DateTimePicker = ({
         <CalendarIcon size={16} style={{ color: 'var(--text-muted)' }} />
       </div>
 
-      {isOpen && (
-        <div 
-          className="glass-card"
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 8px)',
-            left: 0,
-            zIndex: 1100,
-            padding: '16px',
-            width: '320px',
-            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)',
-            border: '1px solid var(--border-light)',
-            backgroundColor: 'var(--bg-surface)'
-          }}
-        >
-          {/* Calendar Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', userSelect: 'none' }}>
-            <button 
-              type="button"
-              onClick={() => handleMonthChange(-1)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-primary)', display: 'flex', alignItems: 'center' }}
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>
-              {monthsList[viewMonth.getMonth()]} {viewMonth.getFullYear()}
-            </span>
-            <button 
-              type="button"
-              onClick={() => handleMonthChange(1)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-primary)', display: 'flex', alignItems: 'center' }}
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-
-          {/* Weekday Labels */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', marginBottom: '6px', userSelect: 'none' }}>
-            {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((w, idx) => (
-              <span key={idx} style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>{w}</span>
-            ))}
-          </div>
-
-          {/* Days Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', marginBottom: '16px', userSelect: 'none' }}>
-            {days.map((day, idx) => {
-              const disabledDay = isDayDisabled(day);
-              const sel = isDaySelected(day);
-
-              return (
-                <div
-                  key={idx}
-                  onClick={() => !disabledDay && handleDaySelect(day)}
-                  style={{
-                    fontSize: '0.85rem',
-                    padding: '6px 0',
-                    borderRadius: '4px',
-                    cursor: disabledDay ? 'not-allowed' : 'pointer',
-                    color: disabledDay ? 'var(--text-muted)' : sel ? '#fff' : 'var(--text-primary)',
-                    backgroundColor: sel ? 'var(--primary)' : 'transparent',
-                    fontWeight: sel ? 600 : 'normal',
-                    opacity: disabledDay ? 0.35 : 1,
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  {day || ''}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Time Picker Row */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderTop: '1px solid var(--border-light)', paddingTop: '12px' }}>
-            <Clock size={16} style={{ color: 'var(--text-muted)', marginRight: '4px' }} />
-            <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Time:</span>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1, justifyContent: 'flex-end' }}>
-              <input
-                type="number"
-                min="0"
-                max="23"
-                value={hours}
-                onChange={(e) => handleTimeChange('hours', e.target.value)}
-                style={{ width: '48px', textAlign: 'center', padding: '4px 6px', fontSize: '0.85rem' }}
-                className="form-input"
-                title="Hours (24h)"
-              />
-              <span style={{ fontWeight: 600 }}>:</span>
-              <input
-                type="number"
-                min="0"
-                max="59"
-                value={minutes}
-                onChange={(e) => handleTimeChange('minutes', e.target.value)}
-                style={{ width: '48px', textAlign: 'center', padding: '4px 6px', fontSize: '0.85rem' }}
-                className="form-input"
-                title="Minutes"
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      {dropdown}
     </div>
   );
 };
