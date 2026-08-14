@@ -257,8 +257,12 @@ const VolunteerDashboard = () => {
               header: 'Team Name / College',
               accessor: 'name',
               render: (t) => (
-                <div>
-                  <div style={{ fontWeight: 600 }}>{t.name}</div>
+                <div 
+                  onClick={(e) => { e.stopPropagation(); setSelectedTeam(t); }}
+                  style={{ cursor: 'pointer' }}
+                  title="Click to view Team Check-in Roster"
+                >
+                  <div style={{ fontWeight: 700, color: 'var(--primary)' }}>{t.name}</div>
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{t.collegeName}</div>
                 </div>
               )
@@ -287,7 +291,7 @@ const VolunteerDashboard = () => {
               width: '160px',
               render: (t) => (
                 <button 
-                  onClick={() => setSelectedTeam(t)} 
+                  onClick={(e) => { e.stopPropagation(); setSelectedTeam(t); }} 
                   className="btn btn-secondary"
                   style={{ padding: '10px 16px', fontSize: '0.85rem', minHeight: '44px' }}
                 >
@@ -301,6 +305,7 @@ const VolunteerDashboard = () => {
           pages={pages}
           totalCount={total}
           onPageChange={setPage}
+          onRowClick={(t) => setSelectedTeam(t)}
           loading={loading}
           emptyState={
             <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>

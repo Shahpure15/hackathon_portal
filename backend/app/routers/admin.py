@@ -361,6 +361,7 @@ async def get_team_detail(
         ]
     )
 
+@router.put("/teams/{team_id}")
 @router.patch("/teams/{team_id}")
 def patch_team(
     team_id: str,
@@ -905,6 +906,7 @@ async def create_pod(
         volunteerCount=0
     )
 
+@router.put("/pods/{pod_id}", response_model=PodResponse)
 @router.patch("/pods/{pod_id}", response_model=PodResponse)
 async def update_pod(
     pod_id: str,
@@ -1393,6 +1395,7 @@ async def get_volunteers(
 ):
     query = db.query(Volunteer).options(
         joinedload(Volunteer.pod),
+        joinedload(Volunteer.problemStatement),
         joinedload(Volunteer.user)
     ).filter(Volunteer.eventId == current_user.eventId)
     
@@ -1420,6 +1423,9 @@ async def get_volunteers(
         results = []
         for v in volunteers:
             pod_name = v.pod.name if v.pod else None
+            ps_code = v.problemStatement.code if v.problemStatement else None
+            ps_title = v.problemStatement.title if v.problemStatement else None
+            team_name = v.team.name if v.team else None
             user_rec = v.user
             results.append({
                 "id": v.id,
@@ -1430,6 +1436,11 @@ async def get_volunteers(
                 "remarks": v.remarks,
                 "podId": v.podId,
                 "podName": pod_name,
+                "problemStatementId": v.problemStatementId,
+                "problemStatementCode": ps_code,
+                "problemStatementTitle": ps_title,
+                "teamId": v.teamId,
+                "teamName": team_name,
                 "username": user_rec.username if user_rec else None,
                 "hasLogin": user_rec is not None
             })
@@ -1447,6 +1458,9 @@ async def get_volunteers(
     results = []
     for v in volunteers:
         pod_name = v.pod.name if v.pod else None
+        ps_code = v.problemStatement.code if v.problemStatement else None
+        ps_title = v.problemStatement.title if v.problemStatement else None
+        team_name = v.team.name if v.team else None
         user_rec = v.user
         results.append({
             "id": v.id,
@@ -1457,17 +1471,39 @@ async def get_volunteers(
             "remarks": v.remarks,
             "podId": v.podId,
             "podName": pod_name,
+            "problemStatementId": v.problemStatementId,
+            "problemStatementCode": ps_code,
+            "problemStatementTitle": ps_title,
+            "teamId": v.teamId,
+            "teamName": team_name,
             "username": user_rec.username if user_rec else None,
             "hasLogin": user_rec is not None
         })
+    return results
+
 DEFAULT_PEOPLE_ROLES = [
-    "Faculty Lead",
-    "Judge / Evaluator",
-    "Student Coordinator",
-    "Volunteer / Monitor",
-    "Event Organizer",
-    "Student Assistant"
+    {"name": "Faculty Lead", "target": "pod"},
+    {"name": "Judge / Evaluator", "target": "ps"},
+    {"name": "Student Coordinator", "target": "pod"},
+    {"name": "Volunteer / Monitor", "target": "pod"},
+    {"name": "Event Organizer", "target": "pod"},
+    {"name": "Student Assistant", "target": "pod"}
 ]
+
+def normalize_people_roles(roles_list):
+    if not roles_list:
+        return DEFAULT_PEOPLE_ROLES
+    res = []
+    for r in roles_list:
+        if isinstance(r, dict):
+            res.append({
+                "name": r.get("name", ""),
+                "target": r.get("target", "pod")
+            })
+        elif isinstance(r, str):
+            target = "ps" if ("judge" in r.lower() or "evaluator" in r.lower()) else "pod"
+            res.append({"name": r, "target": target})
+    return res
 
 @router.get("/people-roles")
 def get_people_roles(
@@ -1476,7 +1512,7 @@ def get_people_roles(
 ):
     config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
     if config and config.peopleRoles:
-        return config.peopleRoles
+        return normalize_people_roles(config.peopleRoles)
     return DEFAULT_PEOPLE_ROLES
 
 @router.post("/people-roles")
@@ -1489,18 +1525,24 @@ def add_people_role(
     if not role_name:
         raise HTTPException(status_code=400, detail="Role name is required")
 
+    target = str(payload.get("target", "pod")).strip().lower()
+    if target not in ["pod", "ps", "team"]:
+        target = "pod"
+
     config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
     if not config:
         config = EventConfig(eventId=current_user.eventId, peopleRoles=DEFAULT_PEOPLE_ROLES)
         db.add(config)
         db.flush()
 
-    roles = list(config.peopleRoles or DEFAULT_PEOPLE_ROLES)
-    if role_name not in roles:
-        roles.append(role_name)
-        config.peopleRoles = roles
+    raw_roles = normalize_people_roles(config.peopleRoles or DEFAULT_PEOPLE_ROLES)
+    existing_names = [r["name"] for r in raw_roles]
+    
+    if role_name not in existing_names:
+        raw_roles.append({"name": role_name, "target": target})
+        config.peopleRoles = raw_roles
         db.commit()
-    return roles
+    return raw_roles
 
 @router.delete("/people-roles/{role_name}")
 def delete_people_role(
@@ -1514,12 +1556,11 @@ def delete_people_role(
         db.add(config)
         db.flush()
 
-    roles = list(config.peopleRoles or DEFAULT_PEOPLE_ROLES)
-    if role_name in roles:
-        roles.remove(role_name)
-        config.peopleRoles = roles
-        db.commit()
-    return roles
+    raw_roles = normalize_people_roles(config.peopleRoles or DEFAULT_PEOPLE_ROLES)
+    filtered = [r for r in raw_roles if r["name"] != role_name]
+    config.peopleRoles = filtered
+    db.commit()
+    return filtered
 
 @router.post("/volunteers", response_model=VolunteerResponse)
 async def create_volunteer(
@@ -1543,6 +1584,19 @@ async def create_volunteer(
         if not pod:
             raise HTTPException(status_code=404, detail="POD group not found")
             
+    ps_id = payload.get("problemStatementId")
+    team_id = payload.get("teamId")
+
+    if ps_id:
+        ps = db.query(ProblemStatement).filter(ProblemStatement.id == ps_id, ProblemStatement.eventId == current_user.eventId).first()
+        if not ps:
+            raise HTTPException(status_code=404, detail="Problem Statement not found")
+
+    if team_id:
+        t_rec = db.query(Team).filter(Team.id == team_id, Team.eventId == current_user.eventId).first()
+        if not t_rec:
+            raise HTTPException(status_code=404, detail="Team not found")
+
     generate_login = payload.get("generateLogin", True)
 
     volunteer = Volunteer(
@@ -1551,7 +1605,9 @@ async def create_volunteer(
         type=type_val,
         contact=contact,
         remarks=remarks,
-        podId=pod_id or None
+        podId=pod_id or None,
+        problemStatementId=ps_id or None,
+        teamId=team_id or None
     )
     db.add(volunteer)
     db.commit()
@@ -1575,6 +1631,10 @@ async def create_volunteer(
         db.refresh(volunteer)
     
     pod_name = volunteer.pod.name if volunteer.pod else None
+    ps_code = volunteer.problemStatement.code if volunteer.problemStatement else None
+    ps_title = volunteer.problemStatement.title if volunteer.problemStatement else None
+    team_name = volunteer.team.name if volunteer.team else None
+
     return VolunteerResponse(
         id=volunteer.id,
         eventId=volunteer.eventId,
@@ -1584,11 +1644,17 @@ async def create_volunteer(
         remarks=volunteer.remarks,
         podId=volunteer.podId,
         podName=pod_name,
+        problemStatementId=volunteer.problemStatementId,
+        problemStatementCode=ps_code,
+        problemStatementTitle=ps_title,
+        teamId=volunteer.teamId,
+        teamName=team_name,
         username=generated_username,
         hasLogin=generated_username is not None,
         generatedPassword=generated_password
     )
 
+@router.put("/volunteers/{volunteer_id}", response_model=VolunteerResponse)
 @router.patch("/volunteers/{volunteer_id}", response_model=VolunteerResponse)
 async def update_volunteer(
     volunteer_id: str,
@@ -1638,6 +1704,26 @@ async def update_volunteer(
         if volunteer.podId != pod_id:
             diff["podId"] = {"from": volunteer.podId, "to": pod_id}
             volunteer.podId = pod_id or None
+
+    if "problemStatementId" in payload:
+        ps_id = payload["problemStatementId"]
+        if ps_id:
+            ps = db.query(ProblemStatement).filter(ProblemStatement.id == ps_id, ProblemStatement.eventId == current_user.eventId).first()
+            if not ps:
+                raise HTTPException(status_code=404, detail="Problem Statement not found")
+        if volunteer.problemStatementId != ps_id:
+            diff["problemStatementId"] = {"from": volunteer.problemStatementId, "to": ps_id}
+            volunteer.problemStatementId = ps_id or None
+
+    if "teamId" in payload:
+        t_id = payload["teamId"]
+        if t_id:
+            t_rec = db.query(Team).filter(Team.id == t_id, Team.eventId == current_user.eventId).first()
+            if not t_rec:
+                raise HTTPException(status_code=404, detail="Team not found")
+        if volunteer.teamId != t_id:
+            diff["teamId"] = {"from": volunteer.teamId, "to": t_id}
+            volunteer.teamId = t_id or None
             
     if diff:
         log_audit(db, current_user.id, "volunteer.edit", "Volunteer", volunteer.id, diff)
@@ -1645,6 +1731,10 @@ async def update_volunteer(
         db.refresh(volunteer)
         
     pod_name = volunteer.pod.name if volunteer.pod else None
+    ps_code = volunteer.problemStatement.code if volunteer.problemStatement else None
+    ps_title = volunteer.problemStatement.title if volunteer.problemStatement else None
+    team_name = volunteer.team.name if volunteer.team else None
+
     return VolunteerResponse(
         id=volunteer.id,
         eventId=volunteer.eventId,
@@ -1653,7 +1743,12 @@ async def update_volunteer(
         contact=volunteer.contact,
         remarks=volunteer.remarks,
         podId=volunteer.podId,
-        podName=pod_name
+        podName=pod_name,
+        problemStatementId=volunteer.problemStatementId,
+        problemStatementCode=ps_code,
+        problemStatementTitle=ps_title,
+        teamId=volunteer.teamId,
+        teamName=team_name
     )
 
 @router.delete("/volunteers/{volunteer_id}")
@@ -2076,6 +2171,7 @@ def create_problem_statement(
         discipline=ps.discipline
     )
 
+@router.put("/problem-statements/{ps_id}", response_model=ProblemStatementResponse)
 @router.patch("/problem-statements/{ps_id}", response_model=ProblemStatementResponse)
 def update_problem_statement(
     ps_id: str,
@@ -2427,6 +2523,7 @@ def get_event_config(
         "psGateCheckpointTypeId": config.psGateCheckpointTypeId
     }
 
+@router.put("/config/ps-release-at")
 @router.patch("/config/ps-release-at")
 def update_ps_release_time(
     payload: Dict[str, Any],
@@ -2519,6 +2616,7 @@ async def create_checkpoint(
     db.commit()
     return cp
 
+@router.put("/checkpoints/{id}", response_model=CheckpointTypeResponse)
 @router.patch("/checkpoints/{id}", response_model=CheckpointTypeResponse)
 async def update_checkpoint(
     id: str,
@@ -2689,6 +2787,7 @@ def create_panel(
         problemStatementCode=ps_code
     )
 
+@router.put("/panels/{panel_id}", response_model=PanelResponse)
 @router.patch("/panels/{panel_id}", response_model=PanelResponse)
 def update_panel(
     panel_id: str,
@@ -2867,6 +2966,7 @@ def create_evaluation_round(
         createdAt=round_obj.createdAt
     )
 
+@router.put("/evaluation-rounds/{round_id}", response_model=EvaluationRoundResponse)
 @router.patch("/evaluation-rounds/{round_id}", response_model=EvaluationRoundResponse)
 def update_evaluation_round(
     round_id: str,
@@ -3326,8 +3426,6 @@ async def import_evaluation_rounds(
 
     db.commit()
     return {"message": f"Successfully imported evaluation rounds ({created_count} created)"}
-
-
 # ==========================================
 # ATTENDANCE SLOTS CSV EXPORT & IMPORT
 # ==========================================
@@ -3337,12 +3435,12 @@ def export_attendance_slots(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
-    slots = db.query(AttendanceSlot).filter(AttendanceSlot.eventId == current_user.eventId).order_by(AttendanceSlot.orderNumber).all()
+    slots = db.query(CheckpointType).filter(CheckpointType.eventId == current_user.eventId).order_by(CheckpointType.name).all()
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Slot Title", "Sequence Order", "Is Active"])
+    writer.writerow(["Slot Name", "Description"])
     for s in slots:
-        writer.writerow([s.title, s.orderNumber, "YES" if s.isActive else "NO"])
+        writer.writerow([s.name, s.description or ""])
 
     output.seek(0)
     return StreamingResponse(
@@ -3364,35 +3462,30 @@ async def import_attendance_slots(
     created_count = 0
 
     for index, row in df.iterrows():
-        title = str(row.get("Slot Title", "")).strip()
-        if not title or title.lower() == "nan":
+        name = str(row.get("Slot Name", row.get("Slot Title", ""))).strip()
+        if not name or name.lower() == "nan":
             continue
 
-        order_raw = str(row.get("Sequence Order", index + 1)).strip()
-        try:
-            order_num = int(order_raw)
-        except ValueError:
-            order_num = index + 1
+        desc = str(row.get("Description", "")).strip()
+        if desc.lower() == "nan":
+            desc = None
 
-        existing = db.query(AttendanceSlot).filter(
-            AttendanceSlot.eventId == current_user.eventId,
-            AttendanceSlot.orderNumber == order_num
+        existing = db.query(CheckpointType).filter(
+            CheckpointType.eventId == current_user.eventId,
+            CheckpointType.name == name
         ).first()
 
         if existing:
-            existing.title = title
+            if desc is not None:
+                existing.description = desc
         else:
-            new_s = AttendanceSlot(
+            cp = CheckpointType(
                 eventId=current_user.eventId,
-                title=title,
-                orderNumber=order_num,
-                isActive=False
+                name=name,
+                description=desc
             )
-            db.add(new_s)
+            db.add(cp)
             created_count += 1
 
     db.commit()
-    return {"message": f"Successfully imported attendance slots ({created_count} created)"}
-
-
-
+    return {"message": f"Successfully processed attendance slots. Created {created_count} new slot(s)."}

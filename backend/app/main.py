@@ -50,9 +50,11 @@ def startup_db_migration():
             conn.execute(text("ALTER TABLE submissions ADD COLUMN IF NOT EXISTS answers JSONB DEFAULT '{}'::jsonb;"))
             conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS remarks TEXT;"))
             conn.execute(text("ALTER TABLE volunteers ALTER COLUMN type TYPE VARCHAR(50);"))
+            conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS \"problemStatementId\" VARCHAR(36);"))
+            conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS \"teamId\" VARCHAR(36);"))
             conn.execute(text("ALTER TABLE event_configs ADD COLUMN IF NOT EXISTS \"peopleRoles\" JSONB DEFAULT '[]'::jsonb;"))
             conn.commit()
-            logger.info("Successfully executed startup schema migration for event_configs.peopleRoles")
+            logger.info("Successfully executed startup schema migration for volunteers.teamId, volunteers.problemStatementId and event_configs.peopleRoles")
     except Exception as e:
         logger.warning(f"Startup schema migration notice: {e}")
 

@@ -8,6 +8,7 @@ const DataTable = ({
   pages = 1,
   totalCount = 0,
   onPageChange,
+  onRowClick,
   sortKey: propSortKey,
   sortDir: propSortDir,
   onSortChange,
@@ -205,7 +206,16 @@ const DataTable = ({
               </thead>
               <tbody>
                 {sortedData.map((row, rowIdx) => (
-                  <tr key={row.id || rowIdx} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                  <tr
+                    key={row.id || rowIdx}
+                    onClick={() => onRowClick && onRowClick(row)}
+                    className={onRowClick ? 'clickable-row' : ''}
+                    style={{
+                      borderBottom: '1px solid var(--border-light)',
+                      cursor: onRowClick ? 'pointer' : 'default',
+                      transition: 'background-color 0.15s ease'
+                    }}
+                  >
                     {columns.map((col, colIdx) => (
                       <td
                         key={colIdx}

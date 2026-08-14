@@ -685,8 +685,12 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
             header: 'Team Info',
             accessor: 'name',
             render: (t) => (
-              <div>
-                <div style={{ fontWeight: 600, fontSize: '1rem' }}>{t.name}</div>
+              <div 
+                onClick={(e) => { e.stopPropagation(); setSelectedTeam(t); }} 
+                style={{ cursor: 'pointer' }}
+                title="Click to view Team Roster & Details"
+              >
+                <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--primary)', textDecoration: 'none' }}>{t.name}</div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
                   Code: <strong style={{ color: 'var(--text-secondary)' }}>{t.registrationId}</strong> | {t.collegeName}
                 </div>
@@ -762,10 +766,10 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
             width: '80px',
             render: (t) => (
               <button
-                onClick={() => setSelectedTeam(t)}
+                onClick={(e) => { e.stopPropagation(); setSelectedTeam(t); }}
                 className="btn btn-secondary"
                 style={{ padding: '0', borderRadius: '999px', minHeight: '36px', height: '36px', width: '36px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-                title="Edit Team"
+                title="Edit Team Roster & Info"
               >
                 <Edit2 size={14} />
               </button>
@@ -777,6 +781,7 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
         pages={pages}
         totalCount={total}
         onPageChange={setPage}
+        onRowClick={(t) => setSelectedTeam(t)}
         loading={loading}
         emptyState={
           <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
@@ -2100,6 +2105,8 @@ const PanelsView = () => {
   const [problemStatementId, setProblemStatementId] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
+  const [peopleList, setPeopleList] = useState([]);
+
   const fetchPanels = async () => {
     setLoading(true);
     try {
@@ -2125,12 +2132,29 @@ const PanelsView = () => {
     }
   };
 
+  const fetchPeopleList = async () => {
+    try {
+      const res = await api.get('/admin/volunteers', { params: { limit: 1000 } });
+      const raw = Array.isArray(res.data) 
+        ? res.data 
+        : (res.data?.results || res.data?.volunteers || []);
+      const validPeople = raw
+        .filter(p => p && p.name && p.name.trim())
+        .sort((a, b) => a.name.localeCompare(b.name));
+      setPeopleList(validPeople);
+    } catch (err) {
+      console.error("Failed to fetch people list for panels:", err);
+    }
+  };
+
   useEffect(() => {
     fetchPanels();
     fetchPSList();
+    fetchPeopleList();
   }, []);
 
   const openCreateModal = () => {
+    fetchPeopleList();
     setEditingPanel(null);
     setName(`Panel ${panels.length + 1}`);
     setFacultyMemberName('');
@@ -2140,6 +2164,7 @@ const PanelsView = () => {
   };
 
   const openEditModal = (p) => {
+    fetchPeopleList();
     setEditingPanel(p);
     setName(p.name);
     setFacultyMemberName(p.facultyMemberName || '');
@@ -2178,7 +2203,7 @@ const PanelsView = () => {
 
     try {
       if (editingPanel) {
-        await api.put(`/admin/panels/${editingPanel.id}`, payload);
+        await api.patch(`/admin/panels/${editingPanel.id}`, payload);
         addToast('Panel updated successfully!', 'success');
       } else {
         await api.post('/admin/panels', payload);
@@ -2390,13 +2415,30 @@ const PanelsView = () => {
           </div>
 
           <div>
-            <label className="form-label">Faculty Member Name</label>
-            <input type="text" className="form-input touch-target" placeholder="Dr. John Doe" value={facultyMemberName} onChange={(e) => setFacultyMemberName(e.target.value)} />
+            <label className="form-label">Faculty Lead / Member (From Database)</label>
+            <select
+              className="form-input touch-target"
+              value={facultyMemberName}
+              onChange={(e) => setFacultyMemberName(e.target.value)}
+            >
+              <option value="">-- Select Faculty Lead from DB --</option>
+              {peopleList.map((p) => {
+                const roleLabel = p.type ? ` (${p.type.replace(/_/g, ' ')})` : '';
+                return (
+                  <option key={p.id} value={p.name}>
+                    {p.name}{roleLabel} {p.contact ? `- ${p.contact}` : ''}
+                  </option>
+                );
+              })}
+              {facultyMemberName && !peopleList.some(p => p.name === facultyMemberName) && (
+                <option value={facultyMemberName}>{facultyMemberName} (Current)</option>
+              )}
+            </select>
           </div>
 
           <div>
             <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>Panel Judges / Evaluators</span>
+              <span>Panel Judges / Evaluators (From Database)</span>
               <button type="button" onClick={handleAddJudge} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
                 + Add Judge
               </button>
@@ -2404,13 +2446,24 @@ const PanelsView = () => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
               {memberNames.map((judge, idx) => (
                 <div key={idx} style={{ display: 'flex', gap: '8px' }}>
-                  <input
-                    type="text"
+                  <select
                     className="form-input touch-target"
-                    placeholder={`Judge ${idx + 1} Name`}
                     value={judge}
                     onChange={(e) => handleJudgeChange(idx, e.target.value)}
-                  />
+                  >
+                    <option value="">-- Select Judge {idx + 1} from DB --</option>
+                    {peopleList.map((p) => {
+                      const roleLabel = p.type ? ` (${p.type.replace(/_/g, ' ')})` : '';
+                      return (
+                        <option key={p.id} value={p.name}>
+                          {p.name}{roleLabel} {p.contact ? `- ${p.contact}` : ''}
+                        </option>
+                      );
+                    })}
+                    {judge && !peopleList.some(p => p.name === judge) && (
+                      <option value={judge}>{judge} (Current)</option>
+                    )}
+                  </select>
                   {memberNames.length > 1 && (
                     <button type="button" onClick={() => handleRemoveJudge(idx)} className="btn btn-secondary touch-target" style={{ color: 'var(--danger)', padding: '0 12px' }}>
                       <X size={16} />
@@ -3684,8 +3737,12 @@ const PodRosterModal = ({ pod, onClose }) => {
                     header: 'Team Info',
                     accessor: 'name',
                     render: (t) => (
-                      <div>
-                        <div style={{ fontWeight: 600 }}>{t.name}</div>
+                      <div 
+                        onClick={(e) => { e.stopPropagation(); setSelectedTeam(t); }} 
+                        style={{ cursor: 'pointer' }}
+                        title="Click to view Team Roster & Details"
+                      >
+                        <div style={{ fontWeight: 700, color: 'var(--primary)' }}>{t.name}</div>
                         <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '2px' }}>Code: {t.registrationId}</div>
                       </div>
                     )
@@ -3710,7 +3767,7 @@ const PodRosterModal = ({ pod, onClose }) => {
                     align: 'right',
                     render: (t) => (
                       <button
-                        onClick={() => handleRemoveTeam(t.id)}
+                        onClick={(e) => { e.stopPropagation(); handleRemoveTeam(t.id); }}
                         className="btn btn-secondary"
                         style={{ padding: '4px 8px', fontSize: '0.75rem', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)', minHeight: 'auto', height: '24px' }}
                         disabled={isActionSaving}
@@ -3721,6 +3778,7 @@ const PodRosterModal = ({ pod, onClose }) => {
                   }
                 ]}
                 data={teams}
+                onRowClick={(t) => setSelectedTeam(t)}
                 loading={loading}
                 hideTopPagination={true}
                 emptyState={<p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No teams assigned to this POD yet.</p>}
@@ -3784,21 +3842,89 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
   const [deleteConfirmState, setDeleteConfirmState] = useState(null);
 
   const [peopleRoles, setPeopleRoles] = useState([
-    "Faculty Lead",
-    "Judge / Evaluator",
-    "Student Coordinator",
-    "Volunteer / Monitor",
-    "Event Organizer",
-    "Student Assistant"
+    { name: "Faculty Lead", target: "pod" },
+    { name: "Judge / Evaluator", target: "ps" },
+    { name: "Student Coordinator", target: "pod" },
+    { name: "Volunteer / Monitor", target: "pod" },
+    { name: "Event Organizer", target: "pod" },
+    { name: "Student Assistant", target: "pod" }
   ]);
   const [showManageRolesModal, setShowManageRolesModal] = useState(false);
   const [newRoleInput, setNewRoleInput] = useState('');
+  const [newRoleTarget, setNewRoleTarget] = useState('pod');
+  const [problemStatements, setProblemStatements] = useState([]);
+  const [allTeams, setAllTeams] = useState([]);
+  const [problemStatementId, setProblemStatementId] = useState('');
+  const [teamId, setTeamId] = useState('');
+
+  const normalizeRoles = (rolesData) => {
+    if (!Array.isArray(rolesData)) return peopleRoles;
+    return rolesData.map(r => {
+      if (typeof r === 'object' && r !== null) {
+        return { name: r.name || '', target: r.target || 'pod' };
+      }
+      const str = String(r);
+      const target = (str.toLowerCase().includes('judge') || str.toLowerCase().includes('evaluator')) ? 'ps' : 'pod';
+      return { name: str, target };
+    });
+  };
+
+  const getRoleTarget = (roleName) => {
+    if (!roleName) return 'pod';
+    const found = peopleRoles.find(r => {
+      const name = typeof r === 'object' && r !== null ? r.name : String(r);
+      return name.toLowerCase() === String(roleName).toLowerCase();
+    });
+    if (found && typeof found === 'object' && found.target) return found.target;
+    const lower = String(roleName).toLowerCase();
+    if (lower.includes('judge') || lower.includes('evaluator')) return 'ps';
+    if (lower.includes('team')) return 'team';
+    return 'pod';
+  };
+
+  const fetchPSList = async () => {
+    try {
+      const res = await api.get('/admin/problem-statements');
+      setProblemStatements(res.data || []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchAllTeams = async () => {
+    try {
+      const res = await api.get('/admin/teams', { params: { limit: 1000 } });
+      setAllTeams(res.data?.results || res.data || []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleUpdateAssignmentInline = async (volId, targetType, val) => {
+    try {
+      const payload = {
+        podId: targetType === 'pod' ? (val || null) : null,
+        problemStatementId: targetType === 'ps' ? (val || null) : null,
+        teamId: targetType === 'team' ? (val || null) : null
+      };
+      await api.patch(`/admin/volunteers/${volId}`, payload);
+      setVolunteers(prev => prev.map(v => v.id === volId ? {
+        ...v,
+        podId: payload.podId,
+        problemStatementId: payload.problemStatementId,
+        teamId: payload.teamId
+      } : v));
+      addToast('Assignment updated successfully!', 'success');
+    } catch (err) {
+      addToast('Failed to update assignment', 'error');
+    }
+  };
 
   const fetchPeopleRoles = async () => {
     try {
       const res = await api.get('/admin/people-roles');
       if (res.data && res.data.length > 0) {
-        setPeopleRoles(res.data);
+        setPeopleRoles(normalizeRoles(res.data));
       }
     } catch (err) {
       // Keep defaults
@@ -3807,16 +3933,19 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
 
   useEffect(() => {
     fetchPeopleRoles();
+    fetchPSList();
+    fetchAllTeams();
   }, []);
 
   const handleAddRole = async () => {
     const trimmed = newRoleInput.trim();
     if (!trimmed) return;
     try {
-      const res = await api.post('/admin/people-roles', { role: trimmed });
-      setPeopleRoles(res.data);
+      const res = await api.post('/admin/people-roles', { role: trimmed, target: newRoleTarget });
+      setPeopleRoles(normalizeRoles(res.data));
       setNewRoleInput('');
-      addToast(`Added role "${trimmed}"`, 'success');
+      setNewRoleTarget('pod');
+      addToast(`Added role "${trimmed}" [${newRoleTarget.toUpperCase()}]`, 'success');
     } catch (err) {
       addToast(err.response?.data?.detail || 'Failed to add role', 'error');
     }
@@ -3825,7 +3954,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
   const handleDeleteRole = async (roleName) => {
     try {
       const res = await api.delete(`/admin/people-roles/${encodeURIComponent(roleName)}`);
-      setPeopleRoles(res.data);
+      setPeopleRoles(normalizeRoles(res.data));
       addToast(`Removed role "${roleName}"`, 'success');
     } catch (err) {
       addToast(err.response?.data?.detail || 'Failed to delete role', 'error');
@@ -3878,12 +4007,14 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
   const handleOpenEditModal = (v) => {
     setEditingVolunteer(v);
     setName(v.name || '');
-    setType(v.type || 'VOLUNTEER');
+    setType(v.type || 'Volunteer / Monitor');
     const { email: parsedEmail, phone: parsedPhone } = formatContact(v.contact || '');
     setEmail(parsedEmail || v.contact || '');
     setPhone(parsedPhone || '');
     setRemarks(v.remarks || '');
     setPodId(v.podId || '');
+    setProblemStatementId(v.problemStatementId || '');
+    setTeamId(v.teamId || '');
     setShowEditModal(true);
   };
 
@@ -3894,13 +4025,17 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
     setIsSaving(true);
     try {
       const combinedContact = phone.trim() ? `${email.trim()} | ${phone.trim()}` : email.trim();
-      const res = await api.patch(`/admin/volunteers/${editingVolunteer.id}`, {
+      const target = getRoleTarget(type);
+      const payload = {
         name: name.trim(),
         type,
         contact: combinedContact,
         remarks: remarks.trim() || null,
-        podId: podId || null
-      });
+        podId: target === 'pod' ? (podId || null) : null,
+        problemStatementId: target === 'ps' ? (problemStatementId || null) : null,
+        teamId: target === 'team' ? (teamId || null) : null
+      };
+      const res = await api.patch(`/admin/volunteers/${editingVolunteer.id}`, payload);
       addToast('Updated details successfully!', 'success');
       setShowEditModal(false);
       setEditingVolunteer(null);
@@ -3922,14 +4057,18 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
     setIsSaving(true);
     try {
       const combinedContact = `${email.trim()} | ${phone.trim()}`;
-      const res = await api.post('/admin/volunteers', {
+      const target = getRoleTarget(type);
+      const payload = {
         name: name.trim(),
         type,
         contact: combinedContact,
         remarks: remarks.trim() || null,
-        podId: podId || null,
+        podId: target === 'pod' ? (podId || null) : null,
+        problemStatementId: target === 'ps' ? (problemStatementId || null) : null,
+        teamId: target === 'team' ? (teamId || null) : null,
         generateLogin: generateLogin
-      });
+      };
+      const res = await api.post('/admin/volunteers', payload);
       addToast('Added successfully!', 'success');
       if (res.data.username && res.data.generatedPassword) {
         setCredentialsToShow({
@@ -3943,6 +4082,8 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
       setPhone('');
       setRemarks('');
       setPodId('');
+      setProblemStatementId('');
+      setTeamId('');
       setGenerateLogin(true);
       setShowAddModal(false);
 
@@ -4139,9 +4280,10 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
               style={{ width: '100%', padding: '10px' }}
             >
               <option value="">All Roles</option>
-              {peopleRoles.map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
+              {peopleRoles.map((r) => {
+                const rName = typeof r === 'object' ? r.name : r;
+                return <option key={rName} value={rName}>{rName}</option>;
+              })}
             </select>
           </div>
 
@@ -4180,8 +4322,12 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
             header: 'Name & Contact',
             accessor: 'name',
             render: (v) => (
-              <div>
-                <div style={{ fontWeight: 600 }}>{v.name}</div>
+              <div 
+                onClick={(e) => { e.stopPropagation(); handleOpenEditModal(v); }} 
+                style={{ cursor: 'pointer' }}
+                title="Click to view & edit Person details"
+              >
+                <div style={{ fontWeight: 700, color: 'var(--primary)' }}>{v.name}</div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
                   {formatContact(v.contact).email || v.contact}
                   {formatContact(v.contact).phone ? ` • ${formatContact(v.contact).phone}` : ''}
@@ -4208,41 +4354,81 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
             )
           },
           {
-            header: 'Assigned POD Group',
+            header: 'Assigned Resource',
             accessor: 'podId',
-            render: (v) => (
-              <select
-                value={v.podId || ''}
-                onChange={(e) => handleUpdatePodInline(v.id, e.target.value)}
-                className="form-input"
-                style={{ padding: '6px 12px', fontSize: '0.85rem', width: '170px' }}
-              >
-                <option value="">Unassigned</option>
-                {pods.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            )
+            render: (v) => {
+              const target = getRoleTarget(v.type);
+              if (target === 'ps') {
+                return (
+                  <select
+                    value={v.problemStatementId || ''}
+                    onChange={(e) => handleUpdateAssignmentInline(v.id, 'ps', e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="form-input"
+                    style={{ padding: '6px 12px', fontSize: '0.85rem', width: '190px', borderColor: 'var(--primary)', fontWeight: 500 }}
+                    title="Assigned Problem Statement"
+                  >
+                    <option value="">-- No PS Assigned --</option>
+                    {problemStatements.map(ps => (
+                      <option key={ps.id} value={ps.id}>[{ps.code}] {ps.title}</option>
+                    ))}
+                  </select>
+                );
+              }
+
+              if (target === 'team') {
+                return (
+                  <select
+                    value={v.teamId || ''}
+                    onChange={(e) => handleUpdateAssignmentInline(v.id, 'team', e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="form-input"
+                    style={{ padding: '6px 12px', fontSize: '0.85rem', width: '190px', borderColor: '#3b82f6', fontWeight: 500 }}
+                    title="Assigned Team"
+                  >
+                    <option value="">-- No Team Assigned --</option>
+                    {allTeams.map(t => (
+                      <option key={t.id} value={t.id}>[{t.registrationId}] {t.name}</option>
+                    ))}
+                  </select>
+                );
+              }
+
+              return (
+                <select
+                  value={v.podId || ''}
+                  onChange={(e) => handleUpdateAssignmentInline(v.id, 'pod', e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="form-input"
+                  style={{ padding: '6px 12px', fontSize: '0.85rem', width: '170px' }}
+                >
+                  <option value="">Unassigned</option>
+                  {pods.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              );
+            }
           },
           {
             header: 'Login Access',
             accessor: 'hasLogin',
             render: (v) => (
               v.hasLogin ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
                   <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--success)' }}>
                     User: <code>{v.username}</code>
                   </span>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button
-                      onClick={() => handleResetVolunteerPassword(v.id, v.name)}
+                      onClick={(e) => { e.stopPropagation(); handleResetVolunteerPassword(v.id, v.name); }}
                       className="btn btn-secondary"
                       style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 0, height: 'auto' }}
                     >
                       Reset Password
                     </button>
                     <button
-                      onClick={() => setRevokeConfirmState({ isOpen: true, volId: v.id, volName: v.name })}
+                      onClick={(e) => { e.stopPropagation(); setRevokeConfirmState({ isOpen: true, volId: v.id, volName: v.name }); }}
                       className="btn btn-secondary"
                       style={{ padding: '4px 8px', fontSize: '0.75rem', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)', minHeight: 0, height: 'auto' }}
                     >
@@ -4251,10 +4437,10 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
                   </div>
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
                   <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>No Login Account</span>
                   <button
-                    onClick={() => handleCreateVolunteerLogin(v.id, v.name)}
+                    onClick={(e) => { e.stopPropagation(); handleCreateVolunteerLogin(v.id, v.name); }}
                     className="btn btn-primary"
                     style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 0, height: 'auto', alignSelf: 'flex-start' }}
                   >
@@ -4271,7 +4457,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
             render: (v) => (
               <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
                 <button
-                  onClick={() => handleOpenEditModal(v)}
+                  onClick={(e) => { e.stopPropagation(); handleOpenEditModal(v); }}
                   className="btn btn-secondary"
                   style={{ padding: '6px 10px' }}
                   title="Edit details"
@@ -4279,7 +4465,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
                   <Edit2 size={14} />
                 </button>
                 <button
-                  onClick={() => setDeleteConfirmState({ isOpen: true, volId: v.id, volName: v.name })}
+                  onClick={(e) => { e.stopPropagation(); setDeleteConfirmState({ isOpen: true, volId: v.id, volName: v.name }); }}
                   className="btn btn-secondary"
                   style={{ padding: '6px 10px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)' }}
                   title="Delete"
@@ -4295,6 +4481,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
         pages={pages}
         totalCount={total}
         onPageChange={setPage}
+        onRowClick={(v) => handleOpenEditModal(v)}
         loading={loading}
         emptyState={
           <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
@@ -4331,7 +4518,9 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
                 <label className="form-label">Role Designation</label>
                 <select value={type} onChange={(e) => setType(e.target.value)} className="form-input" disabled={isSaving}>
                   {peopleRoles.map((r) => (
-                    <option key={r} value={r}>{r}</option>
+                    <option key={typeof r === 'object' ? r.name : r} value={typeof r === 'object' ? r.name : r}>
+                      {typeof r === 'object' ? r.name : r}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -4364,7 +4553,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
               <div className="form-group">
                 <label className="form-label">Remarks / Assignment Notes</label>
                 <textarea
-                  placeholder="e.g. Evaluator for Pod A & B, judge for AI track"
+                  placeholder="e.g. Evaluator for Track 1, team mentor"
                   className="form-input"
                   value={remarks}
                   onChange={(e) => setRemarks(e.target.value)}
@@ -4374,15 +4563,41 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
                 />
               </div>
 
-              <div className="form-group" style={{ marginBottom: '20px' }}>
-                <label className="form-label">Assign to POD Group (Optional)</label>
-                <select value={podId} onChange={(e) => setPodId(e.target.value)} className="form-input" disabled={isSaving}>
-                  <option value="">Unassigned</option>
-                  {pods.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
+              {getRoleTarget(type) === 'ps' && (
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                  <label className="form-label">Assign to Problem Statement (For Judges / Evaluators)</label>
+                  <select value={problemStatementId} onChange={(e) => setProblemStatementId(e.target.value)} className="form-input" disabled={isSaving}>
+                    <option value="">-- No PS Assigned --</option>
+                    {problemStatements.map(ps => (
+                      <option key={ps.id} value={ps.id}>[{ps.code}] {ps.title}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {getRoleTarget(type) === 'team' && (
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                  <label className="form-label">Assign to Team Roster</label>
+                  <select value={teamId} onChange={(e) => setTeamId(e.target.value)} className="form-input" disabled={isSaving}>
+                    <option value="">-- No Team Assigned --</option>
+                    {allTeams.map(t => (
+                      <option key={t.id} value={t.id}>[{t.registrationId}] {t.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {getRoleTarget(type) === 'pod' && (
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                  <label className="form-label">Assign to POD Group (Optional)</label>
+                  <select value={podId} onChange={(e) => setPodId(e.target.value)} className="form-input" disabled={isSaving}>
+                    <option value="">Unassigned</option>
+                    {pods.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
                 <button type="button" onClick={() => setShowEditModal(false)} className="btn btn-secondary touch-target" disabled={isSaving}>Cancel</button>
@@ -4423,7 +4638,9 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
                 <label className="form-label">Role Designation</label>
                 <select value={type} onChange={(e) => setType(e.target.value)} className="form-input" disabled={isSaving}>
                   {peopleRoles.map((r) => (
-                    <option key={r} value={r}>{r}</option>
+                    <option key={typeof r === 'object' ? r.name : r} value={typeof r === 'object' ? r.name : r}>
+                      {typeof r === 'object' ? r.name : r}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -4456,7 +4673,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
               <div className="form-group">
                 <label className="form-label">Remarks / Assignment Notes</label>
                 <textarea
-                  placeholder="e.g. Evaluator for Pod A & B, judge for AI track"
+                  placeholder="e.g. Evaluator for Track 1, team mentor"
                   className="form-input"
                   value={remarks}
                   onChange={(e) => setRemarks(e.target.value)}
@@ -4466,15 +4683,41 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
                 />
               </div>
 
-              <div className="form-group" style={{ marginBottom: '16px' }}>
-                <label className="form-label">Assign to POD Group (Optional)</label>
-                <select value={podId} onChange={(e) => setPodId(e.target.value)} className="form-input" disabled={isSaving}>
-                  <option value="">Unassigned</option>
-                  {pods.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
+              {getRoleTarget(type) === 'ps' && (
+                <div className="form-group" style={{ marginBottom: '16px' }}>
+                  <label className="form-label">Assign to Problem Statement (For Judges / Evaluators)</label>
+                  <select value={problemStatementId} onChange={(e) => setProblemStatementId(e.target.value)} className="form-input" disabled={isSaving}>
+                    <option value="">-- No PS Assigned --</option>
+                    {problemStatements.map(ps => (
+                      <option key={ps.id} value={ps.id}>[{ps.code}] {ps.title}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {getRoleTarget(type) === 'team' && (
+                <div className="form-group" style={{ marginBottom: '16px' }}>
+                  <label className="form-label">Assign to Team Roster</label>
+                  <select value={teamId} onChange={(e) => setTeamId(e.target.value)} className="form-input" disabled={isSaving}>
+                    <option value="">-- No Team Assigned --</option>
+                    {allTeams.map(t => (
+                      <option key={t.id} value={t.id}>[{t.registrationId}] {t.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {getRoleTarget(type) === 'pod' && (
+                <div className="form-group" style={{ marginBottom: '16px' }}>
+                  <label className="form-label">Assign to POD Group (Optional)</label>
+                  <select value={podId} onChange={(e) => setPodId(e.target.value)} className="form-input" disabled={isSaving}>
+                    <option value="">Unassigned</option>
+                    {pods.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="form-group" style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <input
@@ -4505,58 +4748,88 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
       {/* Manage Custom Roles Modal */}
       {showManageRolesModal && createPortal(
         <div className="modal-overlay-fade" style={{ background: 'rgba(0,0,0,0.5)' }}>
-          <div className="glass-card modal-scale-up" style={{ width: '100%', maxWidth: '460px', padding: '24px', position: 'relative' }}>
+          <div className="glass-card modal-scale-up" style={{ width: '100%', maxWidth: '480px', padding: '24px', position: 'relative' }}>
             <button onClick={() => setShowManageRolesModal(false)} style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
               <X size={20} />
             </button>
             <h2 style={{ fontSize: '1.4rem', marginBottom: '8px' }} className="text-gradient">Manage Custom Roles</h2>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-              Add or remove role designations available in dropdowns across the platform.
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+              Define roles and specify whether people in that role are assigned to a POD Group, Problem Statement, or Team.
             </p>
 
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
-              <input
-                type="text"
-                placeholder="e.g. Technical Mentor, Guest Speaker"
-                className="form-input"
-                value={newRoleInput}
-                onChange={(e) => setNewRoleInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddRole(); } }}
-                style={{ flex: 1 }}
-              />
-              <button onClick={handleAddRole} className="btn btn-primary" style={{ padding: '0 16px', whiteSpace: 'nowrap' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px', padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
+              <label className="form-label" style={{ fontSize: '0.8rem', margin: 0 }}>Add New Role Designation</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="e.g. Technical Mentor"
+                  className="form-input"
+                  value={newRoleInput}
+                  onChange={(e) => setNewRoleInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddRole(); } }}
+                  style={{ flex: 1 }}
+                />
+                <select
+                  value={newRoleTarget}
+                  onChange={(e) => setNewRoleTarget(e.target.value)}
+                  className="form-input"
+                  style={{ width: '130px', fontSize: '0.8rem' }}
+                >
+                  <option value="pod">POD Group</option>
+                  <option value="ps">PS (Problem Statement)</option>
+                  <option value="team">Team Roster</option>
+                </select>
+              </div>
+              <button onClick={handleAddRole} className="btn btn-primary" style={{ padding: '8px', fontSize: '0.85rem', justifyContent: 'center' }}>
                 + Add Role
               </button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto', paddingRight: '4px' }}>
-              {peopleRoles.map((roleName) => (
-                <div
-                  key={roleName}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justify: 'space-between',
-                    padding: '10px 14px',
-                    borderRadius: '8px',
-                    background: 'rgba(255, 255, 255, 0.04)',
-                    border: '1px solid rgba(255, 255, 255, 0.08)'
-                  }}
-                >
-                  <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{roleName}</span>
-                  <button
-                    onClick={() => handleDeleteRole(roleName)}
-                    className="btn btn-secondary"
-                    style={{ padding: '4px 8px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.2)' }}
-                    title="Remove Role"
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '240px', overflowY: 'auto', paddingRight: '4px' }}>
+              {peopleRoles.map((roleObj) => {
+                const rName = typeof roleObj === 'object' ? roleObj.name : roleObj;
+                const rTarget = typeof roleObj === 'object' ? roleObj.target : getRoleTarget(rName);
+                return (
+                  <div
+                    key={rName}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '10px 14px',
+                      borderRadius: '8px',
+                      background: 'rgba(255, 255, 255, 0.04)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)'
+                    }}
                   >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{rName}</span>
+                      <span style={{
+                        fontSize: '0.65rem',
+                        fontWeight: 700,
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        textTransform: 'uppercase',
+                        background: rTarget === 'ps' ? 'rgba(185,111,56,0.15)' : rTarget === 'team' ? 'rgba(59,130,246,0.15)' : 'rgba(16,185,129,0.15)',
+                        color: rTarget === 'ps' ? 'var(--primary)' : rTarget === 'team' ? '#3b82f6' : 'var(--success)'
+                      }}>
+                        {rTarget === 'ps' ? 'Assigned to PS' : rTarget === 'team' ? 'Assigned to Team' : 'Assigned to POD'}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => handleDeleteRole(rName)}
+                      className="btn btn-secondary"
+                      style={{ padding: '4px 8px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.2)' }}
+                      title="Remove Role"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
 
-            <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end' }}>
+            <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
               <button onClick={() => setShowManageRolesModal(false)} className="btn btn-secondary">Done</button>
             </div>
           </div>
@@ -5105,7 +5378,15 @@ const CheckpointsView = () => {
           {
             header: 'Slot Name',
             accessor: 'name',
-            render: (c) => <div style={{ fontWeight: 600 }}>{c.name}</div>
+            render: (c) => (
+              <div 
+                onClick={(e) => { e.stopPropagation(); openEditModal(c); }} 
+                style={{ cursor: 'pointer' }}
+                title="Click to edit Attendance Slot"
+              >
+                <div style={{ fontWeight: 700, color: 'var(--primary)' }}>{c.name}</div>
+              </div>
+            )
           },
           {
             header: 'Description',
@@ -5119,7 +5400,7 @@ const CheckpointsView = () => {
             render: (c) => (
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                 <button
-                  onClick={() => openClearConfirm(c)}
+                  onClick={(e) => { e.stopPropagation(); openClearConfirm(c); }}
                   className="btn btn-secondary"
                   style={{ padding: '6px 10px', color: 'var(--warning)', borderColor: 'rgba(245, 158, 11, 0.2)', minHeight: 'auto', fontSize: '0.8rem' }}
                   title="Clear all attendance records for this slot"
@@ -5127,7 +5408,7 @@ const CheckpointsView = () => {
                   Clear Records
                 </button>
                 <button
-                  onClick={() => openEditModal(c)}
+                  onClick={(e) => { e.stopPropagation(); openEditModal(c); }}
                   className="btn btn-secondary"
                   style={{ padding: '6px 10px', minHeight: 'auto' }}
                   title="Edit Slot"
@@ -5135,7 +5416,7 @@ const CheckpointsView = () => {
                   Edit
                 </button>
                 <button
-                  onClick={() => openDeleteConfirm(c)}
+                  onClick={(e) => { e.stopPropagation(); openDeleteConfirm(c); }}
                   className="btn btn-secondary"
                   style={{ padding: '6px 10px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)', minHeight: 'auto' }}
                   title="Delete Slot"
@@ -5151,6 +5432,7 @@ const CheckpointsView = () => {
         pages={pages}
         totalCount={total}
         onPageChange={setPage}
+        onRowClick={(c) => openEditModal(c)}
         loading={loading}
         emptyState={
           <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>

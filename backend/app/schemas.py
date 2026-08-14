@@ -179,6 +179,8 @@ class VolunteerBase(BaseModel):
     contact: str
     remarks: Optional[str] = None
     podId: Optional[str] = None
+    problemStatementId: Optional[str] = None
+    teamId: Optional[str] = None
 
 class VolunteerCreate(VolunteerBase):
     pass
@@ -187,6 +189,9 @@ class VolunteerResponse(VolunteerBase):
     id: str
     eventId: str
     podName: Optional[str] = None
+    problemStatementCode: Optional[str] = None
+    problemStatementTitle: Optional[str] = None
+    teamName: Optional[str] = None
     username: Optional[str] = None
     hasLogin: bool = False
     generatedPassword: Optional[str] = None
