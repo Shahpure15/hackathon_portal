@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Optional, List, Any
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, EmailStr, Field
-from app.models import Role, TeamStatus, VolunteerType
+from app.models import Role, TeamStatus, VolunteerType, Discipline
 
 # Auth Schemas
 class UserLogin(BaseModel):
@@ -58,6 +58,8 @@ class TeamResponse(TeamBase):
     eventId: str
     registrationId: str
     status: TeamStatus
+    category: Discipline = Discipline.ENGINEERING
+    deskNumber: Optional[str] = None
     podId: Optional[str] = None
     createdAt: datetime
     members: List[TeamMemberResponse] = []
@@ -90,6 +92,85 @@ class PodResponse(PodBase):
 class PodDetailResponse(PodResponse):
     teams: List[TeamBase] = []
     volunteers: List[Any] = [] # Will map to VolunteerResponse
+
+# Panel Schemas
+class PanelBase(BaseModel):
+    name: str
+    facultyMemberName: Optional[str] = None
+    memberNames: List[str] = []
+    problemStatementId: Optional[str] = None
+
+class PanelCreate(PanelBase):
+    pass
+
+class PanelUpdate(BaseModel):
+    name: Optional[str] = None
+    facultyMemberName: Optional[str] = None
+    memberNames: Optional[List[str]] = None
+    problemStatementId: Optional[str] = None
+
+class PanelResponse(PanelBase):
+    id: str
+    eventId: str
+    problemStatementCode: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+# Evaluation Round Schemas
+class EvaluationRoundField(BaseModel):
+    id: Optional[str] = None
+    name: str
+    description: Optional[str] = ""
+    fieldType: str = "text"
+    required: bool = True
+
+class EvaluationRoundBase(BaseModel):
+    name: str
+    roundNumber: int
+    description: Optional[str] = None
+    fields: Optional[List[Dict[str, Any]]] = []
+
+class EvaluationRoundCreate(EvaluationRoundBase):
+    pass
+
+class EvaluationRoundUpdate(BaseModel):
+    name: Optional[str] = None
+    roundNumber: Optional[int] = None
+    description: Optional[str] = None
+    fields: Optional[List[Dict[str, Any]]] = None
+    isSubmissionOpen: Optional[bool] = None
+
+class EvaluationRoundResponse(EvaluationRoundBase):
+    id: str
+    eventId: str
+    description: Optional[str] = None
+    fields: Optional[List[Dict[str, Any]]] = []
+    isSubmissionOpen: bool = False
+    submissionCount: int = 0
+    createdAt: datetime
+
+    class Config:
+        from_attributes = True
+
+# Submission Schemas
+class SubmissionCreate(BaseModel):
+    driveLink: Optional[str] = None
+    githubLink: Optional[str] = None
+    answers: Optional[Dict[str, Any]] = None
+
+class SubmissionResponse(BaseModel):
+    id: str
+    teamId: str
+    roundId: str
+    driveLink: Optional[str] = None
+    githubLink: Optional[str] = None
+    answers: Optional[Dict[str, Any]] = None
+    submittedAt: datetime
+    updatedAt: datetime
+
+    class Config:
+        from_attributes = True
 
 # Volunteer Schemas
 class VolunteerBase(BaseModel):
@@ -143,6 +224,22 @@ class AttendanceRecordResponse(BaseModel):
         from_attributes = True
 
 # Problem Statement Schemas
+class ProblemStatementCreate(BaseModel):
+    code: str
+    title: str
+    description: str
+    capacity: int
+    requirements: Optional[str] = None
+    discipline: Optional[Discipline] = None
+
+class ProblemStatementUpdate(BaseModel):
+    code: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    capacity: Optional[int] = None
+    requirements: Optional[str] = None
+    discipline: Optional[Discipline] = None
+
 class ProblemStatementResponse(BaseModel):
     id: str
     eventId: str
@@ -153,6 +250,7 @@ class ProblemStatementResponse(BaseModel):
     selectedCount: int
     remainingCapacity: int = 0
     requirements: Optional[str] = None
+    discipline: Optional[Discipline] = None
 
     class Config:
         from_attributes = True

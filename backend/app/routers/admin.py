@@ -4,6 +4,9 @@ import uuid
 import random
 import string
 import pandas as pd
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
@@ -11,17 +14,23 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, and_, func
 
+import io
 from app.database import get_db
+from app.logger import logger
 from app.models import (
     User, Role, Team, TeamMember, TeamStatus, Pod, Volunteer, 
     VolunteerType, ProblemStatement, PSSelection, AuditLog, 
-    PendingImport, EventConfig, CheckpointType, AttendanceRecord
+    PendingImport, EventConfig, CheckpointType, AttendanceRecord,
+    Panel, EvaluationRound, Submission, Discipline
 )
 from app.auth import require_role, CurrentUser, get_password_hash
 from app.schemas import (
     TeamResponse, TeamDetailResponse, AuditLogResponse, 
     PodResponse, VolunteerResponse, ProblemStatementResponse,
-    CheckpointTypeCreate, CheckpointTypeUpdate, CheckpointTypeResponse
+    CheckpointTypeCreate, CheckpointTypeUpdate, CheckpointTypeResponse,
+    PanelCreate, PanelUpdate, PanelResponse,
+    EvaluationRoundCreate, EvaluationRoundUpdate, EvaluationRoundResponse,
+    ProblemStatementCreate, ProblemStatementUpdate
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -108,9 +117,13 @@ def parse_members_from_row(row: Dict[str, Any]) -> List[Dict[str, Any]]:
 async def get_teams(
     search: Optional[str] = None,
     status: Optional[TeamStatus] = None,
+    category: Optional[str] = None,
     podId: Optional[str] = None,
     hasPod: Optional[bool] = None,
     hasPs: Optional[bool] = None,
+    hasDesk: Optional[bool] = None,
+    deskNumber: Optional[str] = None,
+    psId: Optional[str] = None,
     page: int = 1,
     limit: int = 20,
     db: Session = Depends(get_db),
@@ -125,6 +138,12 @@ async def get_teams(
     # Filters
     if status:
         query = query.filter(Team.status == status)
+    if category:
+        try:
+            cat_enum = Discipline(category.upper())
+            query = query.filter(Team.category == cat_enum)
+        except ValueError:
+            pass
     if podId:
         query = query.filter(Team.podId == podId)
     if hasPod is not None:
@@ -137,6 +156,16 @@ async def get_teams(
             query = query.filter(Team.psSelection.has())
         else:
             query = query.filter(~Team.psSelection.has())
+    if hasDesk is not None:
+        if hasDesk:
+            query = query.filter(Team.deskNumber.isnot(None), Team.deskNumber != '')
+        else:
+            query = query.filter(or_(Team.deskNumber.is_(None), Team.deskNumber == ''))
+    if deskNumber:
+        escaped_desk = escape_like_string(deskNumber)
+        query = query.filter(Team.deskNumber.ilike(f"%{escaped_desk}%"))
+    if psId:
+        query = query.filter(Team.psSelection.has(PSSelection.psId == psId))
         
     # Search
     if search:
@@ -246,7 +275,7 @@ async def get_team_detail(
     )
 
 @router.patch("/teams/{team_id}")
-async def patch_team(
+def patch_team(
     team_id: str,
     payload: Dict[str, Any],
     db: Session = Depends(get_db),
@@ -260,8 +289,12 @@ async def patch_team(
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
         
-    # Valid fields to edit are podId, status, and psId
-    allowed_updates = ["podId", "status"]
+    # Valid fields to edit on Team
+    allowed_updates = [
+        "name", "registrationId", "collegeName", 
+        "leaderName", "leaderEmail", "leaderPhone", 
+        "podId", "status", "deskNumber", "category"
+    ]
     diff = {}
     
     # Update simple fields
@@ -277,6 +310,12 @@ async def patch_team(
                 value = TeamStatus(value)
             except ValueError:
                 raise HTTPException(status_code=400, detail=f"Invalid team status: {value}")
+        elif key == "category":
+            try:
+                val_str = str(value).upper() if value else ""
+                value = Discipline(val_str)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid category: {value}")
         
         if old_val != value:
             # Strict check for Pod Capacity Limit
@@ -292,6 +331,40 @@ async def patch_team(
             
             diff[key] = {"from": old_val if old_val is not None else None, "to": value if value is not None else None}
             setattr(team, key, value)
+
+    # Process Team Roster (members list) update if provided
+    if "members" in payload and isinstance(payload["members"], list):
+        existing_members = db.query(TeamMember).filter(TeamMember.teamId == team.id).all()
+        existing_map = {m.id: m for m in existing_members}
+        payload_member_ids = set()
+
+        for m_data in payload["members"]:
+            m_id = m_data.get("id")
+            if m_id and m_id in existing_map:
+                payload_member_ids.add(m_id)
+                tm = existing_map[m_id]
+                tm.name = m_data.get("name", tm.name)
+                tm.email = m_data.get("email", tm.email)
+                tm.phone = m_data.get("phone", tm.phone)
+                if "isTeamLeader" in m_data:
+                    tm.isTeamLeader = bool(m_data["isTeamLeader"])
+            else:
+                # Add new team member
+                new_tm = TeamMember(
+                    teamId=team.id,
+                    name=m_data.get("name", ""),
+                    email=m_data.get("email", ""),
+                    phone=m_data.get("phone", ""),
+                    isTeamLeader=bool(m_data.get("isTeamLeader", False))
+                )
+                db.add(new_tm)
+                db.flush()
+                payload_member_ids.add(new_tm.id)
+
+        # Remove members not in payload
+        for m_id, tm in existing_map.items():
+            if m_id not in payload_member_ids:
+                db.delete(tm)
             
     # Process Problem Statement (PS) assignment separately
     if "psId" in payload:
@@ -327,18 +400,7 @@ async def patch_team(
                     
             diff["psId"] = {"from": old_ps_id, "to": new_ps_id}
             
-    if diff:
-        db.flush()
-        log_audit(
-            db=db,
-            actor_id=current_user.id,
-            action="team.edit",
-            entity_type="Team",
-            entity_id=team.id,
-            diff=diff
-        )
-        db.commit()
-        
+    db.commit()
     return {"message": "Team updated successfully", "diff": diff}
 
 
@@ -427,8 +489,21 @@ async def import_teams_preview(
             })
             continue
             
-        # Determine leader
+        # Determine leader and category
         leader = next((m for m in parsed_members if m["lead"]), parsed_members[0])
+        
+        raw_cat = ""
+        for key, val in row.items():
+            k_lower = str(key).strip().lower()
+            if any(term in k_lower for term in ["category", "discipline", "track", "domain", "stream", "department"]):
+                if val and str(val).strip() and str(val).strip().lower() != "nan":
+                    raw_cat = str(val).strip()
+                    break
+
+        if not raw_cat:
+            raw_cat = f"{team_name} {leader.get('college', '')}"
+
+        team_cat = Discipline.DESIGN.value if "design" in raw_cat.lower() else Discipline.ENGINEERING.value
         
         # Prepare row payload
         row_payload = {
@@ -438,6 +513,7 @@ async def import_teams_preview(
             "leaderEmail": leader["email"],
             "leaderPhone": leader["phone"],
             "collegeName": leader["college"] or "Unknown College",
+            "category": team_cat,
             "members": parsed_members,
             "row": row_num
         }
@@ -559,7 +635,8 @@ async def import_teams_confirm(
                 leaderName=row["leaderName"],
                 leaderEmail=row["leaderEmail"],
                 leaderPhone=row["leaderPhone"],
-                collegeName=row["collegeName"]
+                collegeName=row["collegeName"],
+                category=Discipline(row.get("category", Discipline.ENGINEERING.value))
             )
             db.add(team)
             db.flush() # Populate team.id
@@ -1739,7 +1816,7 @@ async def import_volunteers_confirm(
 # ==========================================
 
 @router.get("/problem-statements", response_model=List[ProblemStatementResponse])
-async def get_problem_statements(
+def get_problem_statements(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
@@ -1757,9 +1834,113 @@ async def get_problem_statements(
             capacity=s.capacity,
             selectedCount=s.selectedCount,
             remainingCapacity=max(s.capacity - s.selectedCount, 0),
-            requirements=s.requirements
+            requirements=s.requirements,
+            discipline=s.discipline
         ) for s in statements
     ]
+
+@router.post("/problem-statements", response_model=ProblemStatementResponse)
+def create_problem_statement(
+    payload: ProblemStatementCreate,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    existing = db.query(ProblemStatement).filter(
+        ProblemStatement.eventId == current_user.eventId,
+        func.lower(ProblemStatement.code) == payload.code.lower()
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Problem Statement code '{payload.code}' already exists.")
+
+    ps = ProblemStatement(
+        eventId=current_user.eventId,
+        code=payload.code.strip().upper(),
+        title=payload.title.strip(),
+        description=payload.description.strip(),
+        capacity=payload.capacity,
+        requirements=payload.requirements,
+        discipline=payload.discipline
+    )
+    db.add(ps)
+    db.commit()
+    db.refresh(ps)
+    logger.info(f"Created Problem Statement '{ps.code}' (Discipline: {ps.discipline})")
+    return ProblemStatementResponse(
+        id=ps.id,
+        eventId=ps.eventId,
+        code=ps.code,
+        title=ps.title,
+        description=ps.description,
+        capacity=ps.capacity,
+        selectedCount=ps.selectedCount,
+        remainingCapacity=max(ps.capacity - ps.selectedCount, 0),
+        requirements=ps.requirements,
+        discipline=ps.discipline
+    )
+
+@router.patch("/problem-statements/{ps_id}", response_model=ProblemStatementResponse)
+def update_problem_statement(
+    ps_id: str,
+    payload: ProblemStatementUpdate,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    ps = db.query(ProblemStatement).filter(
+        ProblemStatement.id == ps_id,
+        ProblemStatement.eventId == current_user.eventId
+    ).first()
+    if not ps:
+        raise HTTPException(status_code=404, detail="Problem Statement not found")
+
+    if payload.code is not None:
+        ps.code = payload.code.strip().upper()
+    if payload.title is not None:
+        ps.title = payload.title.strip()
+    if payload.description is not None:
+        ps.description = payload.description.strip()
+    if payload.capacity is not None:
+        ps.capacity = payload.capacity
+    if payload.requirements is not None:
+        ps.requirements = payload.requirements
+    if payload.discipline is not None or "discipline" in payload.model_fields_set:
+        ps.discipline = payload.discipline
+
+    db.commit()
+    db.refresh(ps)
+    logger.info(f"Updated Problem Statement '{ps.code}' (Discipline: {ps.discipline})")
+    return ProblemStatementResponse(
+        id=ps.id,
+        eventId=ps.eventId,
+        code=ps.code,
+        title=ps.title,
+        description=ps.description,
+        capacity=ps.capacity,
+        selectedCount=ps.selectedCount,
+        remainingCapacity=max(ps.capacity - ps.selectedCount, 0),
+        requirements=ps.requirements,
+        discipline=ps.discipline
+    )
+
+@router.delete("/problem-statements/{ps_id}")
+def delete_problem_statement(
+    ps_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    ps = db.query(ProblemStatement).filter(
+        ProblemStatement.id == ps_id,
+        ProblemStatement.eventId == current_user.eventId
+    ).first()
+    if not ps:
+        raise HTTPException(status_code=404, detail="Problem Statement not found")
+
+    if ps.selectedCount > 0:
+        raise HTTPException(status_code=400, detail="Cannot delete a Problem Statement that has teams selected.")
+
+    db.delete(ps)
+    db.commit()
+    logger.info(f"Deleted Problem Statement '{ps.code}' (ID: {ps_id})")
+    return {"success": True}
 
 @router.get("/problem-statements/export")
 async def export_problem_statements(
@@ -2216,6 +2397,741 @@ async def clear_checkpoint_records(
     })
     db.commit()
     return {"message": f"Cleared {record_count} attendance record(s) for checkpoint '{cp.name}'", "count": record_count}
+
+
+# ==========================================
+# PANELS & EVALUATION ROSTER EXPORT
+# ==========================================
+
+@router.get("/panels", response_model=List[PanelResponse])
+def get_panels(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    panels = db.query(Panel).filter(Panel.eventId == current_user.eventId).order_by(Panel.name).all()
+    res = []
+    for p in panels:
+        ps_code = p.problemStatement.code if p.problemStatement else None
+        res.append(PanelResponse(
+            id=p.id,
+            eventId=p.eventId,
+            name=p.name,
+            facultyMemberName=p.facultyMemberName,
+            memberNames=p.memberNames or [],
+            problemStatementId=p.problemStatementId,
+            problemStatementCode=ps_code
+        ))
+    return res
+
+@router.post("/panels", response_model=PanelResponse)
+def create_panel(
+    payload: PanelCreate,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    if payload.problemStatementId:
+        existing = db.query(Panel).filter(
+            Panel.eventId == current_user.eventId,
+            Panel.problemStatementId == payload.problemStatementId
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="This Problem Statement already has a panel assigned.")
+
+    panel = Panel(
+        eventId=current_user.eventId,
+        name=payload.name,
+        facultyMemberName=payload.facultyMemberName,
+        memberNames=payload.memberNames,
+        problemStatementId=payload.problemStatementId
+    )
+    db.add(panel)
+    db.commit()
+    db.refresh(panel)
+    logger.info(f"Created Panel '{panel.name}' (ID: {panel.id})")
+    ps_code = panel.problemStatement.code if panel.problemStatement else None
+    return PanelResponse(
+        id=panel.id,
+        eventId=panel.eventId,
+        name=panel.name,
+        facultyMemberName=panel.facultyMemberName,
+        memberNames=panel.memberNames or [],
+        problemStatementId=panel.problemStatementId,
+        problemStatementCode=ps_code
+    )
+
+@router.patch("/panels/{panel_id}", response_model=PanelResponse)
+def update_panel(
+    panel_id: str,
+    payload: PanelUpdate,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    panel = db.query(Panel).filter(Panel.id == panel_id, Panel.eventId == current_user.eventId).first()
+    if not panel:
+        raise HTTPException(status_code=404, detail="Panel not found")
+
+    if payload.problemStatementId is not None and payload.problemStatementId != panel.problemStatementId:
+        existing = db.query(Panel).filter(
+            Panel.eventId == current_user.eventId,
+            Panel.problemStatementId == payload.problemStatementId,
+            Panel.id != panel_id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="This Problem Statement already has another panel assigned.")
+        panel.problemStatementId = payload.problemStatementId
+
+    if payload.name is not None:
+        panel.name = payload.name
+    if payload.facultyMemberName is not None:
+        panel.facultyMemberName = payload.facultyMemberName
+    if payload.memberNames is not None:
+        panel.memberNames = payload.memberNames
+
+    db.commit()
+    db.refresh(panel)
+    logger.info(f"Updated Panel '{panel.name}' (ID: {panel.id})")
+    ps_code = panel.problemStatement.code if panel.problemStatement else None
+    return PanelResponse(
+        id=panel.id,
+        eventId=panel.eventId,
+        name=panel.name,
+        facultyMemberName=panel.facultyMemberName,
+        memberNames=panel.memberNames or [],
+        problemStatementId=panel.problemStatementId,
+        problemStatementCode=ps_code
+    )
+
+@router.delete("/panels/{panel_id}")
+def delete_panel(
+    panel_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    panel = db.query(Panel).filter(Panel.id == panel_id, Panel.eventId == current_user.eventId).first()
+    if not panel:
+        raise HTTPException(status_code=404, detail="Panel not found")
+    db.delete(panel)
+    db.commit()
+    logger.info(f"Deleted Panel '{panel.name}' (ID: {panel_id})")
+    return {"success": True}
+
+@router.get("/evaluation-sheet/export")
+def export_evaluation_sheet(
+    ps_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    query = (
+        db.query(Team)
+        .filter(Team.eventId == current_user.eventId)
+        .join(PSSelection, PSSelection.teamId == Team.id)
+        .join(ProblemStatement, ProblemStatement.id == PSSelection.psId)
+        .outerjoin(Panel, Panel.problemStatementId == ProblemStatement.id)
+    )
+    if ps_id:
+        query = query.filter(ProblemStatement.id == ps_id)
+
+    teams = query.order_by(ProblemStatement.code, Team.name).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Pod", "Desk/Bench Number", "Team Name", "Team ID", "Leader Name",
+        "PS Title", "Panel Number", "Panel Judges", "Faculty Member"
+    ])
+    for team in teams:
+        pod = team.pod
+        ps = team.psSelection.ps if team.psSelection else None
+        panel = ps.panel if ps else None
+        writer.writerow([
+            pod.name if pod else "Unassigned",
+            team.deskNumber or "",
+            team.name,
+            team.registrationId,
+            team.leaderName,
+            ps.title if ps else "",
+            panel.name if panel else "Unassigned",
+            "; ".join(panel.memberNames) if panel and panel.memberNames else "",
+            panel.facultyMemberName if panel else "",
+        ])
+
+    output.seek(0)
+    logger.info(f"Exported evaluation sheet (ps_id={ps_id}, total_teams={len(teams)})")
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        headers={'Content-Disposition': 'attachment; filename="evaluation_roster.csv"', 'Content-Type': 'text/csv'}
+    )
+
+
+# ==========================================
+# EVALUATION ROUNDS MANAGEMENT
+# ==========================================
+
+@router.get("/evaluation-rounds", response_model=List[EvaluationRoundResponse])
+def get_evaluation_rounds(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    rounds = db.query(EvaluationRound).filter(EvaluationRound.eventId == current_user.eventId).order_by(EvaluationRound.roundNumber).all()
+    res = []
+    for r in rounds:
+        count = db.query(Submission).filter(Submission.roundId == r.id).count()
+        res.append(EvaluationRoundResponse(
+            id=r.id,
+            eventId=r.eventId,
+            name=r.name,
+            roundNumber=r.roundNumber,
+            description=r.description,
+            fields=r.fields or [],
+            isSubmissionOpen=r.isSubmissionOpen,
+            submissionCount=count,
+            createdAt=r.createdAt
+        ))
+    return res
+
+@router.post("/evaluation-rounds", response_model=EvaluationRoundResponse)
+def create_evaluation_round(
+    payload: EvaluationRoundCreate,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    existing = db.query(EvaluationRound).filter(
+        EvaluationRound.eventId == current_user.eventId,
+        EvaluationRound.roundNumber == payload.roundNumber
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Round number {payload.roundNumber} already exists.")
+
+    round_obj = EvaluationRound(
+        eventId=current_user.eventId,
+        name=payload.name,
+        roundNumber=payload.roundNumber,
+        description=payload.description,
+        fields=payload.fields if payload.fields is not None else [],
+        isSubmissionOpen=False
+    )
+    db.add(round_obj)
+    db.commit()
+    db.refresh(round_obj)
+    logger.info(f"Created Evaluation Round '{round_obj.name}' (Number: {round_obj.roundNumber})")
+    return EvaluationRoundResponse(
+        id=round_obj.id,
+        eventId=round_obj.eventId,
+        name=round_obj.name,
+        roundNumber=round_obj.roundNumber,
+        description=round_obj.description,
+        fields=round_obj.fields or [],
+        isSubmissionOpen=round_obj.isSubmissionOpen,
+        submissionCount=0,
+        createdAt=round_obj.createdAt
+    )
+
+@router.patch("/evaluation-rounds/{round_id}", response_model=EvaluationRoundResponse)
+def update_evaluation_round(
+    round_id: str,
+    payload: EvaluationRoundUpdate,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    round_obj = db.query(EvaluationRound).filter(
+        EvaluationRound.id == round_id,
+        EvaluationRound.eventId == current_user.eventId
+    ).first()
+    if not round_obj:
+        raise HTTPException(status_code=404, detail="Evaluation round not found")
+
+    if payload.name is not None:
+        round_obj.name = payload.name
+    if payload.roundNumber is not None:
+        round_obj.roundNumber = payload.roundNumber
+    if payload.description is not None:
+        round_obj.description = payload.description
+    if payload.fields is not None:
+        round_obj.fields = payload.fields
+    if payload.isSubmissionOpen is not None:
+        round_obj.isSubmissionOpen = payload.isSubmissionOpen
+
+    db.commit()
+    db.refresh(round_obj)
+    logger.info(f"Updated Evaluation Round '{round_obj.name}' (isOpen={round_obj.isSubmissionOpen})")
+    count = db.query(Submission).filter(Submission.roundId == round_obj.id).count()
+    return EvaluationRoundResponse(
+        id=round_obj.id,
+        eventId=round_obj.eventId,
+        name=round_obj.name,
+        roundNumber=round_obj.roundNumber,
+        description=round_obj.description,
+        fields=round_obj.fields or [],
+        isSubmissionOpen=round_obj.isSubmissionOpen,
+        submissionCount=count,
+        createdAt=round_obj.createdAt
+    )
+
+@router.delete("/evaluation-rounds/{round_id}")
+def delete_evaluation_round(
+    round_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    round_obj = db.query(EvaluationRound).filter(
+        EvaluationRound.id == round_id,
+        EvaluationRound.eventId == current_user.eventId
+    ).first()
+    if not round_obj:
+        raise HTTPException(status_code=404, detail="Evaluation round not found")
+    db.delete(round_obj)
+    db.commit()
+    logger.info(f"Deleted Evaluation Round '{round_obj.name}' (ID: {round_id})")
+    return {"success": True}
+
+@router.get("/evaluation-rounds/export-master-workbook")
+def export_master_evaluation_workbook(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    rounds = (
+        db.query(EvaluationRound)
+        .filter(EvaluationRound.eventId == current_user.eventId)
+        .order_by(EvaluationRound.roundNumber)
+        .all()
+    )
+
+    if not rounds:
+        raise HTTPException(status_code=404, detail="No evaluation rounds found for this event")
+
+    wb = openpyxl.Workbook()
+    if "Sheet" in wb.sheetnames:
+        wb.remove(wb["Sheet"])
+
+    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    data_font = Font(name="Calibri", size=10)
+    thin_border = Border(
+        left=Side(style='thin', color='E2E8F0'),
+        right=Side(style='thin', color='E2E8F0'),
+        top=Side(style='thin', color='E2E8F0'),
+        bottom=Side(style='thin', color='E2E8F0')
+    )
+
+    for r in rounds:
+        raw_name = r.name or f"Round {r.roundNumber}"
+        sheet_title = raw_name[:31]
+        for char in [':', '\\', '/', '?', '*', '[', ']']:
+            sheet_title = sheet_title.replace(char, '_')
+
+        ws = wb.create_sheet(title=sheet_title)
+
+        field_list = r.fields or []
+        if field_list:
+            custom_headers = [f.get("name", f"Field_{i+1}") for i, f in enumerate(field_list)]
+        else:
+            custom_headers = ["Google Drive Link", "GitHub Repository Link"]
+
+        headers = ["Team Code", "Team Name", "PS Code", "PS Title", *custom_headers, "Submitted At"]
+        ws.append(headers)
+
+        for col_idx in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col_idx)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="left", vertical="center")
+
+        submissions = (
+            db.query(Submission)
+            .filter(Submission.roundId == r.id)
+            .join(Team, Team.id == Submission.teamId)
+            .order_by(Team.registrationId)
+            .all()
+        )
+
+        for s in submissions:
+            team = s.team
+            ps_code = ""
+            ps_title = ""
+            if team and team.psSelection and team.psSelection.ps:
+                ps_code = team.psSelection.ps.code
+                ps_title = team.psSelection.ps.title
+
+            ans = s.answers or {}
+            custom_row_vals = []
+            if field_list:
+                for f in field_list:
+                    fname = f.get("name", "")
+                    fid = f.get("id", fname)
+                    val = ans.get(fname, ans.get(fid, ""))
+                    if not val and "drive" in fname.lower():
+                        val = s.driveLink or ""
+                    elif not val and "github" in fname.lower():
+                        val = s.githubLink or ""
+                    custom_row_vals.append(str(val) if val is not None else "")
+            else:
+                custom_row_vals = [s.driveLink or "", s.githubLink or ""]
+
+            sub_time_str = s.submittedAt.strftime("%Y-%m-%d %H:%M:%S") if s.submittedAt else ""
+            row_values = [
+                team.registrationId if team else "",
+                team.name if team else "",
+                ps_code,
+                ps_title,
+                *custom_row_vals,
+                sub_time_str
+            ]
+            ws.append(row_values)
+
+            row_idx = ws.max_row
+            for c_idx in range(1, len(row_values) + 1):
+                cell = ws.cell(row=row_idx, column=c_idx)
+                cell.font = data_font
+                cell.border = thin_border
+                cell.alignment = Alignment(horizontal="left", vertical="center")
+
+        for col in ws.columns:
+            max_len = 0
+            col_letter = get_column_letter(col[0].column)
+            for cell in col:
+                val_str = str(cell.value or '')
+                if len(val_str) > max_len:
+                    max_len = len(val_str)
+            ws.column_dimensions[col_letter].width = min(max(max_len + 4, 14), 60)
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    logger.info(f"Exported master evaluation workbook across {len(rounds)} round sheets")
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="evaluation_submissions_master_workbook.xlsx"'}
+    )
+
+@router.get("/evaluation-rounds/{round_id}/submissions/export")
+def export_round_submissions(
+    round_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    round_obj = db.query(EvaluationRound).filter(
+        EvaluationRound.id == round_id,
+        EvaluationRound.eventId == current_user.eventId
+    ).first()
+    if not round_obj:
+        raise HTTPException(status_code=404, detail="Evaluation round not found")
+
+    submissions = (
+        db.query(Submission)
+        .filter(Submission.roundId == round_id)
+        .join(Team, Team.id == Submission.teamId)
+        .order_by(Team.registrationId)
+        .all()
+    )
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    sheet_title = (round_obj.name or f"Round {round_obj.roundNumber}")[:31]
+    for char in [':', '\\', '/', '?', '*', '[', ']']:
+        sheet_title = sheet_title.replace(char, '_')
+    ws.title = sheet_title
+
+    field_list = round_obj.fields or []
+    if field_list:
+        custom_headers = [f.get("name", f"Field_{i+1}") for i, f in enumerate(field_list)]
+    else:
+        custom_headers = ["Google Drive Link", "GitHub Repository Link"]
+
+    headers = ["Team Code", "Team Name", "PS Code", "PS Title", *custom_headers, "Submitted At"]
+    ws.append(headers)
+
+    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    data_font = Font(name="Calibri", size=10)
+    thin_border = Border(
+        left=Side(style='thin', color='E2E8F0'),
+        right=Side(style='thin', color='E2E8F0'),
+        top=Side(style='thin', color='E2E8F0'),
+        bottom=Side(style='thin', color='E2E8F0')
+    )
+
+    for col_idx in range(1, len(headers) + 1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="left", vertical="center")
+
+    for s in submissions:
+        team = s.team
+        ps_code = ""
+        ps_title = ""
+        if team and team.psSelection and team.psSelection.ps:
+            ps_code = team.psSelection.ps.code
+            ps_title = team.psSelection.ps.title
+
+        ans = s.answers or {}
+        custom_row_vals = []
+        if field_list:
+            for f in field_list:
+                fname = f.get("name", "")
+                fid = f.get("id", fname)
+                val = ans.get(fname, ans.get(fid, ""))
+                if not val and "drive" in fname.lower():
+                    val = s.driveLink or ""
+                elif not val and "github" in fname.lower():
+                    val = s.githubLink or ""
+                custom_row_vals.append(str(val) if val is not None else "")
+        else:
+            custom_row_vals = [s.driveLink or "", s.githubLink or ""]
+
+        sub_time_str = s.submittedAt.strftime("%Y-%m-%d %H:%M:%S") if s.submittedAt else ""
+        row_values = [
+            team.registrationId if team else "",
+            team.name if team else "",
+            ps_code,
+            ps_title,
+            *custom_row_vals,
+            sub_time_str
+        ]
+        ws.append(row_values)
+
+        row_idx = ws.max_row
+        for c_idx in range(1, len(row_values) + 1):
+            cell = ws.cell(row=row_idx, column=c_idx)
+            cell.font = data_font
+            cell.border = thin_border
+            cell.alignment = Alignment(horizontal="left", vertical="center")
+
+    for col in ws.columns:
+        max_len = 0
+        col_letter = get_column_letter(col[0].column)
+        for cell in col:
+            val_str = str(cell.value or '')
+            if len(val_str) > max_len:
+                max_len = len(val_str)
+        ws.column_dimensions[col_letter].width = min(max(max_len + 4, 14), 60)
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    safe_name = round_obj.name.lower().replace(" ", "_")
+    logger.info(f"Exported submissions Excel for round {round_obj.name} ({len(submissions)} rows)")
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="submissions_{safe_name}.xlsx"'}
+    )
+
+
+# ==========================================
+# PANELS CSV EXPORT & IMPORT
+# ==========================================
+
+@router.get("/panels/export")
+def export_panels(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    panels = db.query(Panel).filter(Panel.eventId == current_user.eventId).order_by(Panel.name).all()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Panel Name", "Problem Statement Code", "Faculty Lead", "Judges"])
+    for p in panels:
+        ps_code = p.problemStatement.code if p.problemStatement else ""
+        judges_str = "; ".join(p.memberNames) if p.memberNames else ""
+        writer.writerow([p.name, ps_code, p.facultyMemberName or "", judges_str])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        headers={'Content-Disposition': 'attachment; filename="panels_export.csv"', 'Content-Type': 'text/csv'}
+    )
+
+@router.post("/panels/import")
+async def import_panels(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Invalid file type. CSV required.")
+    
+    contents = await file.read()
+    df = pd.read_csv(io.StringIO(contents.decode('utf-8-sig', errors='replace')))
+    created_count = 0
+
+    for index, row in df.iterrows():
+        name = str(row.get("Panel Name", "")).strip()
+        if not name or name.lower() == "nan":
+            continue
+
+        ps_code = str(row.get("Problem Statement Code", "")).strip()
+        faculty = str(row.get("Faculty Lead", "")).strip()
+        judges_raw = str(row.get("Judges", "")).strip()
+        judges_list = [j.strip() for j in re.split(r'[;,]', judges_raw) if j.strip() and j.strip().lower() != "nan"]
+
+        ps_obj = None
+        if ps_code and ps_code.lower() != "nan":
+            ps_obj = db.query(ProblemStatement).filter(
+                ProblemStatement.eventId == current_user.eventId,
+                ProblemStatement.code.ilike(ps_code)
+            ).first()
+
+        existing = db.query(Panel).filter(
+            Panel.eventId == current_user.eventId,
+            Panel.name.ilike(name)
+        ).first()
+
+        if existing:
+            existing.facultyMemberName = faculty if faculty and faculty.lower() != "nan" else existing.facultyMemberName
+            existing.memberNames = judges_list if judges_list else existing.memberNames
+            if ps_obj:
+                existing.problemStatementId = ps_obj.id
+        else:
+            new_p = Panel(
+                eventId=current_user.eventId,
+                name=name,
+                facultyMemberName=faculty if faculty and faculty.lower() != "nan" else None,
+                memberNames=judges_list,
+                problemStatementId=ps_obj.id if ps_obj else None
+            )
+            db.add(new_p)
+            created_count += 1
+
+    db.commit()
+    return {"message": f"Successfully processed panels CSV import ({created_count} new created)"}
+
+
+# ==========================================
+# EVALUATION ROUNDS CSV EXPORT & IMPORT
+# ==========================================
+
+@router.get("/evaluation-rounds/export")
+def export_evaluation_rounds(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    rounds = db.query(EvaluationRound).filter(EvaluationRound.eventId == current_user.eventId).order_by(EvaluationRound.roundNumber).all()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Round Name", "Sequence Order", "Submissions Open"])
+    for r in rounds:
+        writer.writerow([r.name, r.roundNumber, "YES" if r.isSubmissionOpen else "NO"])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        headers={'Content-Disposition': 'attachment; filename="evaluation_rounds_export.csv"', 'Content-Type': 'text/csv'}
+    )
+
+@router.post("/evaluation-rounds/import")
+async def import_evaluation_rounds(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Invalid file type. CSV required.")
+    
+    contents = await file.read()
+    df = pd.read_csv(io.StringIO(contents.decode('utf-8-sig', errors='replace')))
+    created_count = 0
+
+    for index, row in df.iterrows():
+        name = str(row.get("Round Name", "")).strip()
+        if not name or name.lower() == "nan":
+            continue
+
+        round_num_raw = str(row.get("Sequence Order", index + 1)).strip()
+        try:
+            round_num = int(round_num_raw)
+        except ValueError:
+            round_num = index + 1
+
+        existing = db.query(EvaluationRound).filter(
+            EvaluationRound.eventId == current_user.eventId,
+            EvaluationRound.roundNumber == round_num
+        ).first()
+
+        if existing:
+            existing.name = name
+        else:
+            new_r = EvaluationRound(
+                eventId=current_user.eventId,
+                name=name,
+                roundNumber=round_num,
+                isSubmissionOpen=False
+            )
+            db.add(new_r)
+            created_count += 1
+
+    db.commit()
+    return {"message": f"Successfully imported evaluation rounds ({created_count} created)"}
+
+
+# ==========================================
+# ATTENDANCE SLOTS CSV EXPORT & IMPORT
+# ==========================================
+
+@router.get("/attendance-slots/export")
+def export_attendance_slots(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    slots = db.query(AttendanceSlot).filter(AttendanceSlot.eventId == current_user.eventId).order_by(AttendanceSlot.orderNumber).all()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Slot Title", "Sequence Order", "Is Active"])
+    for s in slots:
+        writer.writerow([s.title, s.orderNumber, "YES" if s.isActive else "NO"])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        headers={'Content-Disposition': 'attachment; filename="attendance_slots_export.csv"', 'Content-Type': 'text/csv'}
+    )
+
+@router.post("/attendance-slots/import")
+async def import_attendance_slots(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Invalid file type. CSV required.")
+    
+    contents = await file.read()
+    df = pd.read_csv(io.StringIO(contents.decode('utf-8-sig', errors='replace')))
+    created_count = 0
+
+    for index, row in df.iterrows():
+        title = str(row.get("Slot Title", "")).strip()
+        if not title or title.lower() == "nan":
+            continue
+
+        order_raw = str(row.get("Sequence Order", index + 1)).strip()
+        try:
+            order_num = int(order_raw)
+        except ValueError:
+            order_num = index + 1
+
+        existing = db.query(AttendanceSlot).filter(
+            AttendanceSlot.eventId == current_user.eventId,
+            AttendanceSlot.orderNumber == order_num
+        ).first()
+
+        if existing:
+            existing.title = title
+        else:
+            new_s = AttendanceSlot(
+                eventId=current_user.eventId,
+                title=title,
+                orderNumber=order_num,
+                isActive=False
+            )
+            db.add(new_s)
+            created_count += 1
+
+    db.commit()
+    return {"message": f"Successfully imported attendance slots ({created_count} created)"}
 
 
 

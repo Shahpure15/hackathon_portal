@@ -27,6 +27,10 @@ class VolunteerType(str, enum.Enum):
     FACULTY = "FACULTY"
     STUDENT = "STUDENT"
 
+class Discipline(str, enum.Enum):
+    ENGINEERING = "ENGINEERING"
+    DESIGN = "DESIGN"
+
 # Models
 class Event(Base):
     __tablename__ = "events"
@@ -46,6 +50,8 @@ class Event(Base):
     volunteers = relationship("Volunteer", back_populates="event", cascade="all, delete-orphan")
     checkpointTypes = relationship("CheckpointType", back_populates="event", cascade="all, delete-orphan")
     problemStatements = relationship("ProblemStatement", back_populates="event", cascade="all, delete-orphan")
+    panels = relationship("Panel", back_populates="event", cascade="all, delete-orphan")
+    evaluationRounds = relationship("EvaluationRound", back_populates="event", cascade="all, delete-orphan")
 
 class EventConfig(Base):
     __tablename__ = "event_configs"
@@ -93,6 +99,8 @@ class Team(Base):
     leaderPhone = Column(String(50), nullable=False)
     collegeName = Column(String(255), nullable=False)
     status = Column(Enum(TeamStatus, native_enum=False), default=TeamStatus.REGISTERED, nullable=False)
+    category = Column(Enum(Discipline, native_enum=False), default=Discipline.ENGINEERING, nullable=False)
+    deskNumber = Column(String(20), nullable=True)
     podId = Column(String(36), ForeignKey("pods.id", ondelete="SET NULL"), nullable=True)
     rawCsvExtra = Column(JSON, nullable=True)
     createdAt = Column(DateTime, default=func.now(), nullable=False)
@@ -103,6 +111,7 @@ class Team(Base):
     members = relationship("TeamMember", back_populates="team", cascade="all, delete-orphan")
     user = relationship("User", back_populates="team", uselist=False)
     psSelection = relationship("PSSelection", back_populates="team", uselist=False, cascade="all, delete-orphan")
+    submissions = relationship("Submission", back_populates="team", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("idx_team_event_status", "eventId", "status"),
@@ -195,13 +204,70 @@ class ProblemStatement(Base):
     capacity = Column(Integer, nullable=False)
     selectedCount = Column(Integer, default=0, nullable=False)
     requirements = Column(Text, nullable=True)
+    discipline = Column(Enum(Discipline, native_enum=False), nullable=True)
 
     # Relationships
     event = relationship("Event", back_populates="problemStatements")
     selections = relationship("PSSelection", back_populates="ps", cascade="all, delete-orphan")
+    panel = relationship("Panel", back_populates="problemStatement", uselist=False)
 
     __table_args__ = (
         UniqueConstraint("eventId", "code", name="uq_ps_event_code"),
+    )
+
+class Panel(Base):
+    __tablename__ = "panels"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(100), nullable=False)
+    facultyMemberName = Column(String(255), nullable=True)
+    memberNames = Column(JSON, nullable=False, default=list)
+    problemStatementId = Column(String(36), ForeignKey("problem_statements.id", ondelete="SET NULL"), nullable=True, unique=True)
+
+    event = relationship("Event", back_populates="panels")
+    problemStatement = relationship("ProblemStatement", back_populates="panel", uselist=False)
+
+    __table_args__ = (
+        UniqueConstraint("eventId", "name", name="uq_panel_event_name"),
+    )
+
+class EvaluationRound(Base):
+    __tablename__ = "evaluation_rounds"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(100), nullable=False)
+    roundNumber = Column(Integer, nullable=False)
+    description = Column(Text, nullable=True)
+    fields = Column(JSON, nullable=True, default=list)
+    isSubmissionOpen = Column(Boolean, default=False, nullable=False)
+    createdAt = Column(DateTime, default=func.now(), nullable=False)
+
+    event = relationship("Event", back_populates="evaluationRounds")
+    submissions = relationship("Submission", back_populates="round", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("eventId", "roundNumber", name="uq_round_event_number"),
+    )
+
+class Submission(Base):
+    __tablename__ = "submissions"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    teamId = Column(String(36), ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
+    roundId = Column(String(36), ForeignKey("evaluation_rounds.id", ondelete="CASCADE"), nullable=False)
+    driveLink = Column(String(500), nullable=True)
+    githubLink = Column(String(500), nullable=True)
+    answers = Column(JSON, nullable=True, default=dict)
+    submittedAt = Column(DateTime, default=func.now(), nullable=False)
+    updatedAt = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+
+    team = relationship("Team", back_populates="submissions")
+    round = relationship("EvaluationRound", back_populates="submissions")
+
+    __table_args__ = (
+        UniqueConstraint("teamId", "roundId", name="uq_submission_team_round"),
     )
 
 class PSSelection(Base):

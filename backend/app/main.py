@@ -11,47 +11,7 @@ from app.routers import auth, admin, leader, volunteer, ws
 from app.limiter import limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
-
-def _auto_migrate():
-    Base.metadata.create_all(bind=engine)
-    with engine.connect() as conn:
-        # Fix event_configs psGateCheckpointTypeId column (quoted camelCase)
-        try:
-            conn.execute(text("""
-                DO $$ 
-                BEGIN 
-                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='event_configs' AND column_name='psGateCheckpointTypeId') THEN
-                        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='event_configs' AND column_name='psgatecheckpointtypeid') THEN
-                            ALTER TABLE "event_configs" RENAME COLUMN "psgatecheckpointtypeid" TO "psGateCheckpointTypeId";
-                        ELSE
-                            ALTER TABLE "event_configs" ADD COLUMN "psGateCheckpointTypeId" VARCHAR(36);
-                        END IF;
-                    END IF;
-                END $$;
-            """))
-            conn.commit()
-        except Exception as e:
-            print(f"Auto-migrate event_configs warning: {e}")
-
-        # Fix team_members isTeamLeader column (quoted camelCase)
-        try:
-            conn.execute(text("""
-                DO $$ 
-                BEGIN 
-                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='team_members' AND column_name='isTeamLeader') THEN
-                        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='team_members' AND column_name='isteamleader') THEN
-                            ALTER TABLE "team_members" RENAME COLUMN "isteamleader" TO "isTeamLeader";
-                        ELSE
-                            ALTER TABLE "team_members" ADD COLUMN "isTeamLeader" BOOLEAN DEFAULT FALSE NOT NULL;
-                        END IF;
-                    END IF;
-                END $$;
-            """))
-            conn.commit()
-        except Exception as e:
-            print(f"Auto-migrate team_members warning: {e}")
-
-_auto_migrate()
+from app.logger import logger
 
 # Initialize Sentry if DSN is provided
 if settings.SENTRY_DSN:
@@ -76,17 +36,23 @@ origins = [origin.strip() for origin in settings.CORS_ALLOWED_ORIGINS.split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Register Routers
-app.include_router(auth.router)
-app.include_router(admin.router)
-app.include_router(leader.router)
-app.include_router(volunteer.router)
-app.include_router(ws.router)
+@app.on_event("startup")
+def startup_db_migration():
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE evaluation_rounds ADD COLUMN IF NOT EXISTS description TEXT;"))
+            conn.execute(text("ALTER TABLE evaluation_rounds ADD COLUMN IF NOT EXISTS fields JSONB DEFAULT '[]'::jsonb;"))
+            conn.execute(text("ALTER TABLE submissions ADD COLUMN IF NOT EXISTS answers JSONB DEFAULT '{}'::jsonb;"))
+            conn.commit()
+            logger.info("Successfully executed startup schema migration for evaluation_rounds and submissions")
+    except Exception as e:
+        logger.warning(f"Startup schema migration notice: {e}")
 
 @app.get("/health")
 def health_check(db: Session = Depends(get_db)):
@@ -104,3 +70,10 @@ def health_check(db: Session = Depends(get_db)):
             status_code=503,
             detail=f"Database connection error: {str(e)}"
         )
+
+# Register API Routers
+app.include_router(auth.router)
+app.include_router(admin.router)
+app.include_router(leader.router)
+app.include_router(volunteer.router)
+app.include_router(ws.router)

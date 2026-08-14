@@ -109,12 +109,12 @@ h1, h2, h3, h4, h5, h6 {
 .glass-panel,
 .glass-card {
   position: relative;
-  background: rgba(253, 251, 247, 0.48);
-  backdrop-filter: blur(24px) saturate(185%) brightness(1.04);
-  -webkit-backdrop-filter: blur(24px) saturate(185%) brightness(1.04);
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  border-top-color: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 16px 40px -16px rgba(33, 26, 19, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.95);
+  background: rgba(253, 251, 247, 0.55);
+  backdrop-filter: blur(24px) saturate(200%) brightness(1.02);
+  -webkit-backdrop-filter: blur(24px) saturate(200%) brightness(1.02);
+  border: 1px solid rgba(43, 33, 24, 0.10);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 16px 40px -16px rgba(33, 26, 19, 0.18), inset 0 1px 1px rgba(255, 255, 255, 0.95);
   border-radius: var(--radius);
   transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.28s ease, background-color 0.28s ease;
   overflow: hidden;
@@ -766,17 +766,17 @@ a:focus-visible {
   top: 16px;
   left: 50%;
   transform: translateX(-50%);
-  width: calc(100% - 32px);
-  max-width: 1320px;
+  width: calc(100% - 24px);
+  max-width: 1440px;
   height: 60px;
   border-radius: 999px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  padding: 0 16px;
   z-index: 1000;
   /* Translucent Liquid Glass */
-  background: rgba(244, 239, 230, 0.28);
+  background: rgba(244, 239, 230, 0.38);
   backdrop-filter: blur(28px) saturate(200%) brightness(1.05);
   -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.05);
   border: 1px solid rgba(255, 255, 255, 0.75);
@@ -787,7 +787,6 @@ a:focus-visible {
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
     inset 0 -1px 0 rgba(185, 111, 56, 0.08);
   transition: backdrop-filter 0.3s ease-out, background-color 0.3s ease-out, box-shadow 0.3s ease-out, max-width 0.3s ease;
-  overflow: hidden;
 }
 
 .floating-nav::before {
@@ -803,7 +802,7 @@ a:focus-visible {
 }
 
 .floating-nav.scrolled {
-  background: rgba(244, 239, 230, 0.48);
+  background: rgba(244, 239, 230, 0.58);
   backdrop-filter: blur(34px) saturate(210%) brightness(1.08);
   -webkit-backdrop-filter: blur(34px) saturate(210%) brightness(1.08);
   box-shadow:
@@ -815,13 +814,17 @@ a:focus-visible {
 
 .floating-nav-tabs {
   display: flex;
-  gap: 3px;
+  gap: 4px;
   align-items: center;
   flex: 1;
-  justify-content: center;
+  justify-content: flex-start;
   min-width: 0;
   padding: 0 8px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   flex-wrap: nowrap;
 }
 
@@ -881,6 +884,22 @@ a:focus-visible {
   justify-content: center;
   padding: 4px;
   line-height: 1;
+}
+
+.pw-toggle:active {
+  transform: translateY(-50%) scale(0.96) !important;
+}
+
+/* Touch-friendly controls & mobile optimizations */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.touch-scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 
 /* Glass Navbar & Scroll Reactive Intensity */

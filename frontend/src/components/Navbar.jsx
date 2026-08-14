@@ -14,12 +14,12 @@ export function Navbar({
 }) {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 1000 : false);
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
   const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
     const handleResize = () => {
-      const mobile = window.innerWidth < 1000;
+      const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
       if (!mobile) setMobileOpen(false);
     };
@@ -62,27 +62,28 @@ export function Navbar({
       {/* Floating Glass Notch Navigation Pill */}
       <nav className={`floating-nav ${scrolled ? 'scrolled' : ''}`}>
         {/* Left Section: Logo & Role Badge */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-          <span style={{ fontWeight: 800, fontSize: '0.95rem', letterSpacing: '0.5px' }} className="text-gradient">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, paddingRight: '8px' }}>
+          <span style={{ fontWeight: 800, fontSize: '0.85rem', letterSpacing: '0.3px', whiteSpace: 'nowrap' }} className="text-gradient">
             {title}
           </span>
           {user?.role && (
             <span style={{ 
-              fontSize: '0.68rem', 
+              fontSize: '0.6rem', 
               background: 'var(--primary-glow)', 
               color: 'var(--primary)', 
-              padding: '2px 8px', 
+              padding: '2px 6px', 
               borderRadius: '999px', 
               fontWeight: 700,
               textTransform: 'uppercase',
-              letterSpacing: '0.5px'
+              letterSpacing: '0.3px',
+              whiteSpace: 'nowrap'
             }}>
               {user.role}
             </span>
           )}
         </div>
 
-        {/* Center Section: Desktop Tabs (Compact non-scrolly single row) */}
+        {/* Center Section: Desktop Tabs (Smooth scrollable single row) */}
         {!isMobile && navItems.length > 0 && (
           <div className="floating-nav-tabs">
             {navItems.map((item) => {
@@ -102,20 +103,20 @@ export function Navbar({
                   className={`btn tab-pill ${isActive ? 'btn-primary' : 'btn-secondary'}`}
                   title={isDisabled ? item.disabledTitle || 'Not available' : undefined}
                   style={{ 
-                    padding: '5px 12px', 
+                    padding: '4px 10px', 
                     border: 'none', 
                     background: isActive ? undefined : 'transparent', 
                     minHeight: 'auto', 
-                    height: '34px', 
+                    height: '32px', 
                     borderRadius: '999px', 
-                    fontSize: '0.8rem', 
+                    fontSize: '0.78rem', 
                     fontWeight: isActive ? 700 : 500,
                     color: isActive ? undefined : isDisabled ? 'var(--text-muted)' : 'var(--text-secondary)',
                     flexShrink: 0,
                     whiteSpace: 'nowrap',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '5px',
+                    gap: '4px',
                     opacity: isDisabled ? 0.5 : 1,
                     cursor: isDisabled ? 'not-allowed' : 'pointer'
                   }}

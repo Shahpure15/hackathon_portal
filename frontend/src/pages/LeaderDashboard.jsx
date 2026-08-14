@@ -115,11 +115,54 @@ const LeaderDashboard = () => {
   const [statementsLoading, setStatementsLoading] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
 
+  // Evaluation rounds state
+  const [evalRounds, setEvalRounds] = useState([]);
+  const [submittingRoundId, setSubmittingRoundId] = useState(null);
+  const [roundInputs, setRoundInputs] = useState({});
+
   useEffect(() => {
     fetchTeamData();
     fetchConfig();
     fetchVerificationStatus();
+    fetchEvalRounds();
   }, []);
+
+  const fetchEvalRounds = async () => {
+    try {
+      const res = await api.get('/leader/evaluation-rounds');
+      setEvalRounds(res.data || []);
+      const initialInputs = {};
+      (res.data || []).forEach(r => {
+        const subAnswers = r.submission?.answers || {};
+        initialInputs[r.id] = {
+          driveLink: r.submission?.driveLink || '',
+          githubLink: r.submission?.githubLink || '',
+          answers: { ...subAnswers }
+        };
+      });
+      setRoundInputs(initialInputs);
+    } catch (e) {
+      console.error('Failed to fetch evaluation rounds', e);
+    }
+  };
+
+  const handleRoundSubmit = async (roundId) => {
+    const data = roundInputs[roundId] || {};
+    setSubmittingRoundId(roundId);
+    try {
+      await api.post(`/leader/evaluation-rounds/${roundId}/submit`, {
+        driveLink: data.driveLink || null,
+        githubLink: data.githubLink || null,
+        answers: data.answers || {}
+      });
+      addToast('Submission updated successfully!', 'success');
+      fetchEvalRounds();
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to update submission', 'error');
+    } finally {
+      setSubmittingRoundId(null);
+    }
+  };
 
   const fetchVerificationStatus = async () => {
     try {
@@ -353,16 +396,31 @@ const LeaderDashboard = () => {
                 </div>
               </div>
 
-              {/* POD assignments card */}
+              {/* POD & Desk Assignment Card */}
               <div className="glass-card" style={{ padding: '24px' }}>
                 <h3 style={{ fontSize: '1.1rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
                   <Layers size={18} style={{ color: 'var(--primary)' }} />
-                  Assigned POD Group
+                  Venue Location & POD Group
                 </h3>
-                
+
+                <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+                  <div style={{ flex: 1, padding: '12px', borderRadius: '8px', background: 'rgba(185, 111, 56, 0.08)', border: '1px solid rgba(185, 111, 56, 0.2)' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Category</div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 700, textTransform: 'capitalize', color: 'var(--primary)', marginTop: '2px' }}>
+                      {teamInfo.category || 'Engineering'}
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, padding: '12px', borderRadius: '8px', background: 'rgba(62, 125, 71, 0.08)', border: '1px solid rgba(62, 125, 71, 0.2)' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Desk / Bench #</div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--success)', marginTop: '2px' }}>
+                      {teamInfo.deskNumber || 'Not assigned yet'}
+                    </div>
+                  </div>
+                </div>
+
                 {teamInfo.pod ? (
                   <div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '12px' }}>{teamInfo.pod.name}</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '8px' }}>POD: {teamInfo.pod.name}</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>POD Mentors:</span>
                       {teamInfo.pod.mentors.map((men, i) => (
@@ -377,13 +435,167 @@ const LeaderDashboard = () => {
                     </div>
                   </div>
                 ) : (
-                  <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)' }}>
-                    <Layers size={24} style={{ marginBottom: '8px' }} />
+                  <div style={{ textAlign: 'center', padding: '16px 0', color: 'var(--text-muted)' }}>
                     <p style={{ fontSize: '0.85rem' }}>POD grouping is currently unassigned.</p>
                   </div>
                 )}
               </div>
             </div>
+
+            {/* Evaluation Submissions Section */}
+            {evalRounds.length > 0 && (
+              <div className="glass-card" style={{ padding: '24px', marginBottom: '24px' }}>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                  <FileText size={20} style={{ color: 'var(--primary)' }} />
+                  Evaluation Submissions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  {evalRounds.map((r) => {
+                    const inputs = roundInputs[r.id] || { driveLink: '', githubLink: '', answers: {} };
+                    return (
+                      <div key={r.id} style={{ padding: '20px', borderRadius: '12px', background: 'rgba(0,0,0,0.01)', border: '1px solid var(--border-light)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                          <div style={{ fontWeight: 700, fontSize: '1.05rem' }}>
+                            {r.name} <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 400 }}>(Round #{r.roundNumber})</span>
+                          </div>
+                          <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '6px', fontWeight: 700, background: r.isOpen ? 'var(--success-glow)' : 'rgba(255,255,255,0.05)', color: r.isOpen ? 'var(--success)' : 'var(--text-muted)' }}>
+                            {r.isOpen ? '● SUBMISSION OPEN' : '🔒 SUBMISSIONS CLOSED'}
+                          </span>
+                        </div>
+
+                        {r.description && (
+                          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: '1.5' }}>
+                            {r.description}
+                          </p>
+                        )}
+
+                        {r.isOpen ? (
+                          <form onSubmit={(e) => { e.preventDefault(); handleRoundSubmit(r.id); }} style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '12px' }}>
+                            {r.fields && r.fields.length > 0 ? (
+                              r.fields.map((f, idx) => {
+                                const fname = f.name || `Field ${idx + 1}`;
+                                const fid = f.id || fname;
+                                const currentVal = inputs.answers?.[fname] ?? inputs.answers?.[fid] ?? '';
+
+                                return (
+                                  <div key={idx}>
+                                    <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                                      {fname} {f.required && <span style={{ color: 'var(--danger)' }}>*</span>}
+                                    </label>
+                                    {f.description && (
+                                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '-2px 0 6px 0' }}>
+                                        {f.description}
+                                      </p>
+                                    )}
+                                    <input
+                                      type="text"
+                                      className="form-input touch-target"
+                                      placeholder={`Enter ${fname}...`}
+                                      value={currentVal}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        setRoundInputs(prev => ({
+                                          ...prev,
+                                          [r.id]: {
+                                            ...prev[r.id],
+                                            answers: {
+                                              ...(prev[r.id]?.answers || {}),
+                                              [fname]: val,
+                                              [fid]: val
+                                            }
+                                          }
+                                        }));
+                                      }}
+                                      required={f.required}
+                                    />
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              <>
+                                <div>
+                                  <label className="form-label" style={{ fontSize: '0.8rem' }}>Google Drive / OneDrive Link</label>
+                                  <input
+                                    type="url"
+                                    className="form-input touch-target"
+                                    placeholder="https://drive.google.com/..."
+                                    value={inputs.driveLink}
+                                    onChange={(e) => setRoundInputs(prev => ({
+                                      ...prev,
+                                      [r.id]: { ...prev[r.id], driveLink: e.target.value }
+                                    }))}
+                                  />
+                                </div>
+                                <div>
+                                  <label className="form-label" style={{ fontSize: '0.8rem' }}>GitHub Repository Link</label>
+                                  <input
+                                    type="url"
+                                    className="form-input touch-target"
+                                    placeholder="https://github.com/..."
+                                    value={inputs.githubLink}
+                                    onChange={(e) => setRoundInputs(prev => ({
+                                      ...prev,
+                                      [r.id]: { ...prev[r.id], githubLink: e.target.value }
+                                    }))}
+                                  />
+                                </div>
+                              </>
+                            )}
+
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
+                              <button
+                                type="submit"
+                                className="btn btn-primary touch-target"
+                                style={{ padding: '8px 24px', fontSize: '0.85rem' }}
+                                disabled={submittingRoundId === r.id}
+                              >
+                                {submittingRoundId === r.id ? 'Saving Submission...' : 'Save & Submit Round'}
+                              </button>
+                            </div>
+                          </form>
+                        ) : (
+                          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
+                            {r.fields && r.fields.length > 0 ? (
+                              r.fields.map((f, idx) => {
+                                const fname = f.name || `Field ${idx + 1}`;
+                                const fid = f.id || fname;
+                                const val = r.submission?.answers?.[fname] || r.submission?.answers?.[fid] || '';
+
+                                return (
+                                  <div key={idx} style={{ background: 'rgba(0,0,0,0.02)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+                                    <strong style={{ color: 'var(--text-primary)', display: 'block', fontSize: '0.8rem' }}>{fname}:</strong>
+                                    {val ? (
+                                      val.startsWith('http') ? (
+                                        <a href={val} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', wordBreak: 'break-all' }}>{val}</a>
+                                      ) : (
+                                        <span style={{ color: 'var(--text-primary)' }}>{val}</span>
+                                      )
+                                    ) : (
+                                      <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Not submitted</span>
+                                    )}
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              <>
+                                <div style={{ marginBottom: '6px' }}><strong>Drive Link:</strong> {r.submission?.driveLink ? <a href={r.submission.driveLink} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', marginLeft: '6px' }}>{r.submission.driveLink}</a> : <span style={{ color: 'var(--text-muted)', marginLeft: '6px' }}>None provided</span>}</div>
+                                <div><strong>GitHub Link:</strong> {r.submission?.githubLink ? <a href={r.submission.githubLink} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', marginLeft: '6px' }}>{r.submission.githubLink}</a> : <span style={{ color: 'var(--text-muted)', marginLeft: '6px' }}>None provided</span>}</div>
+                              </>
+                            )}
+
+                            {r.submission?.submittedAt && (
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px', textAlign: 'right' }}>
+                                Submitted: {new Date(r.submission.submittedAt).toLocaleString()}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Note on Verification */}
             <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '16px 20px', borderRadius: '12px', border: '1px solid var(--border-light)', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>

@@ -181,7 +181,7 @@ const DateTimePicker = ({
         position: 'absolute',
         top: dropdownPos.top,
         left: dropdownPos.left,
-        zIndex: 9999,
+        zIndex: 10001,
         padding: '16px',
         width: `${dropdownPos.width}px`,
         minWidth: '320px',

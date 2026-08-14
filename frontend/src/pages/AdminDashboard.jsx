@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Users, Layers, UserCheck, FileText, Download, Upload,
-  Search, X, Edit2, AlertCircle, CheckCircle, Info, ChevronLeft, ChevronRight, Eye, EyeOff, LogOut, Menu
+  Search, X, Edit2, AlertCircle, CheckCircle, Info, ChevronLeft, ChevronRight, Eye, EyeOff, LogOut, Menu, Lock, Plus, Trash2
 } from 'lucide-react';
 import api from '../services/api';
 import { useToast } from '../contexts/ToastContext';
@@ -95,6 +95,8 @@ const AdminDashboard = () => {
         navItems={[
           { id: 'teams', label: 'Teams', icon: <Users size={16} /> },
           { id: 'pods', label: 'POD Groups', icon: <Layers size={16} /> },
+          { id: 'panels', label: 'Panels', icon: <Layers size={16} /> },
+          { id: 'evalRounds', label: 'Evaluation Rounds', icon: <FileText size={16} /> },
           { id: 'volunteers', label: 'Volunteers', icon: <UserCheck size={16} /> },
           { id: 'checkpoints', label: 'Attendance Slots', icon: <FileText size={16} /> },
           { id: 'ps', label: 'Problem Statements', icon: <Layers size={16} /> }
@@ -128,6 +130,12 @@ const AdminDashboard = () => {
         </div>
         <div style={{ display: activeTab === 'pods' ? 'block' : 'none' }} className="fade-in-up">
           <PodsView pods={pods} fetchPodsPool={fetchPodsPool} />
+        </div>
+        <div style={{ display: activeTab === 'panels' ? 'block' : 'none' }} className="fade-in-up">
+          <PanelsView />
+        </div>
+        <div style={{ display: activeTab === 'evalRounds' ? 'block' : 'none' }} className="fade-in-up">
+          <EvalRoundsView />
         </div>
         <div style={{ display: activeTab === 'volunteers' ? 'block' : 'none' }} className="fade-in-up">
           <VolunteersView
@@ -309,6 +317,20 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
     return () => clearTimeout(delayDebounceFn);
   }, [search, filters, page]);
 
+  const [problemStatementsList, setProblemStatementsList] = useState([]);
+
+  useEffect(() => {
+    const fetchPSList = async () => {
+      try {
+        const res = await api.get('/admin/problem-statements');
+        setProblemStatementsList(res.data || []);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchPSList();
+  }, []);
+
   const fetchTeams = async () => {
     setLoading(true);
     try {
@@ -316,9 +338,13 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
         params: {
           search: search || undefined,
           status: filters.status || undefined,
+          category: filters.category || undefined,
           podId: filters.podId || undefined,
           hasPod: filters.hasPod === '' || filters.hasPod === undefined ? undefined : filters.hasPod === 'true',
           hasPs: filters.hasPs === '' || filters.hasPs === undefined ? undefined : filters.hasPs === 'true',
+          hasDesk: filters.hasDesk === '' || filters.hasDesk === undefined ? undefined : filters.hasDesk === 'true',
+          deskNumber: filters.deskNumber || undefined,
+          psId: filters.psId || undefined,
           page,
           limit: 10
         }
@@ -421,7 +447,7 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
   return (
     <div>
       {/* Top Header Row */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Teams <span className="font-accent">Directory</span></h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
@@ -437,6 +463,25 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
           <button onClick={handleExport} className="btn btn-secondary">
             <Download size={16} />
             Export CSV
+          </button>
+          <button onClick={async () => {
+            try {
+              const res = await api.get('/admin/evaluation-sheet/export', { responseType: 'blob' });
+              const url = window.URL.createObjectURL(new Blob([res.data]));
+              const link = document.createElement('a');
+              link.href = url;
+              link.setAttribute('download', 'evaluation_roster.csv');
+              document.body.appendChild(link);
+              link.click();
+              link.remove();
+              window.URL.revokeObjectURL(url);
+              addToast('Evaluation roster downloaded!', 'success');
+            } catch (err) {
+              addToast('Failed to export evaluation roster', 'error');
+            }
+          }} className="btn btn-secondary">
+            <Download size={16} />
+            Evaluation Sheet CSV
           </button>
           <button onClick={() => setShowImportModal(true)} className="btn btn-primary">
             <Upload size={16} />
@@ -476,8 +521,8 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
 
       {/* Filter and Search controls */}
       <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', width: '100%' }}>
-          <div style={{ position: 'relative', flex: 2, minWidth: '280px' }}>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', width: '100%' }}>
+          <div style={{ position: 'relative', flex: 2, minWidth: '260px' }}>
             <Search size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             <input
               type="text"
@@ -487,6 +532,19 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+          </div>
+
+          <div style={{ flex: 1, minWidth: '150px' }}>
+            <select
+              value={filters.category || ''}
+              onChange={(e) => onFilterChange('category', e.target.value)}
+              className="form-input"
+              style={{ width: '100%' }}
+            >
+              <option value="">All Categories</option>
+              <option value="ENGINEERING">Engineering</option>
+              <option value="DESIGN">Design</option>
+            </select>
           </div>
 
           <div style={{ flex: 1, minWidth: '150px' }}>
@@ -520,12 +578,24 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', borderTop: '1px solid var(--border-light)', paddingTop: '16px' }}>
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', flex: 1 }}>
+            <select
+              value={filters.psId || ''}
+              onChange={(e) => onFilterChange('psId', e.target.value)}
+              className="form-input"
+              style={{ width: '200px' }}
+            >
+              <option value="">All Problem Statements</option>
+              {problemStatementsList.map((ps) => (
+                <option key={ps.id} value={ps.id}>[{ps.code}] {ps.title}</option>
+              ))}
+            </select>
+
             <select
               value={filters.hasPod || ''}
               onChange={(e) => onFilterChange('hasPod', e.target.value)}
               className="form-input"
-              style={{ width: '180px' }}
+              style={{ width: '170px' }}
             >
               <option value="">All POD Statuses</option>
               <option value="true">Assigned to POD</option>
@@ -536,15 +606,35 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
               value={filters.hasPs || ''}
               onChange={(e) => onFilterChange('hasPs', e.target.value)}
               className="form-input"
-              style={{ width: '200px' }}
+              style={{ width: '170px' }}
             >
               <option value="">All PS Statuses</option>
               <option value="true">Selected a PS</option>
               <option value="false">No PS Selected</option>
             </select>
+
+            <select
+              value={filters.hasDesk || ''}
+              onChange={(e) => onFilterChange('hasDesk', e.target.value)}
+              className="form-input"
+              style={{ width: '170px' }}
+            >
+              <option value="">All Desk Statuses</option>
+              <option value="true">Assigned Desk #</option>
+              <option value="false">Unassigned Desk</option>
+            </select>
+
+            <input
+              type="text"
+              placeholder="Desk # (e.g. Desk 14)"
+              className="form-input"
+              style={{ width: '160px' }}
+              value={filters.deskNumber || ''}
+              onChange={(e) => onFilterChange('deskNumber', e.target.value)}
+            />
           </div>
 
-          {(search || filters.status || filters.podId || filters.hasPod || filters.hasPs) && (
+          {(search || filters.status || filters.category || filters.podId || filters.hasPod || filters.hasPs || filters.hasDesk || filters.deskNumber || filters.psId) && (
             <button
               type="button"
               onClick={clearFilters}
@@ -612,6 +702,24 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
                 <div style={{ fontWeight: 500 }}>{t.leaderName}</div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>{t.leaderEmail}</div>
               </div>
+            )
+          },
+          {
+            header: 'Category',
+            accessor: 'category',
+            render: (t) => (
+              <span style={{ fontSize: '0.75rem', padding: '3px 8px', borderRadius: '6px', fontWeight: 600, textTransform: 'capitalize', background: t.category === 'design' ? 'rgba(236,72,153,0.1)' : 'rgba(59,130,246,0.1)', color: t.category === 'design' ? '#ec4899' : '#3b82f6' }}>
+                {t.category || 'Engineering'}
+              </span>
+            )
+          },
+          {
+            header: 'Desk #',
+            accessor: 'deskNumber',
+            render: (t) => (
+              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: t.deskNumber ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                {t.deskNumber || '—'}
+              </span>
             )
           },
           {
@@ -881,28 +989,36 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
   );
 };
 
-
 // ==========================================
-// TEAM DETAILS MODAL COMPONENT
+// TEAM DETAILS MODAL COMPONENT (FULL ADMIN EDIT)
 // ==========================================
 const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose }) => {
   const { addToast } = useToast();
-  const [status, setStatus] = useState(team.status);
+  
+  // Team editable fields
+  const [name, setName] = useState(team.name || '');
+  const [registrationId, setRegistrationId] = useState(team.registrationId || '');
+  const [collegeName, setCollegeName] = useState(team.collegeName || '');
+  const [leaderName, setLeaderName] = useState(team.leaderName || '');
+  const [leaderEmail, setLeaderEmail] = useState(team.leaderEmail || '');
+  const [leaderPhone, setLeaderPhone] = useState(team.leaderPhone || '');
+  const [status, setStatus] = useState(team.status || 'REGISTERED');
+  const [category, setCategory] = useState(team.category || 'ENGINEERING');
+  const [deskNumber, setDeskNumber] = useState(team.deskNumber || '');
   const [podId, setPodId] = useState(team.podId || '');
   const [psId, setPsId] = useState('');
   const [members, setMembers] = useState(team.members || []);
+
   const [problemStatements, setProblemStatements] = useState([]);
   const [loadingDetails, setLoadingDetails] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [inlinePodName, setInlinePodName] = useState('');
   const [showInlinePod, setShowInlinePod] = useState(false);
-  const [credentialsToShow, setCredentialsToShow] = useState(null);
 
-  // Handle outside click/Escape closes
   const modalRef = useRef();
 
   const handleResetTeamPassword = () => {
-    onResetPassword(team.id, team.name);
+    onResetPassword(team.id, name || team.name);
   };
 
   useEffect(() => {
@@ -922,7 +1038,15 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
       setLoadingDetails(true);
       try {
         const teamRes = await api.get(`/admin/teams/${team.id}`);
-        setStatus(teamRes.data.status);
+        setName(teamRes.data.name || '');
+        setRegistrationId(teamRes.data.registrationId || '');
+        setCollegeName(teamRes.data.collegeName || '');
+        setLeaderName(teamRes.data.leaderName || '');
+        setLeaderEmail(teamRes.data.leaderEmail || '');
+        setLeaderPhone(teamRes.data.leaderPhone || '');
+        setStatus(teamRes.data.status || 'REGISTERED');
+        setCategory(teamRes.data.category || 'ENGINEERING');
+        setDeskNumber(teamRes.data.deskNumber || '');
         setPodId(teamRes.data.podId || '');
         setPsId(teamRes.data.psId || '');
         setMembers(teamRes.data.members || []);
@@ -930,7 +1054,7 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
         const psRes = await api.get('/admin/problem-statements');
         setProblemStatements(psRes.data || []);
       } catch (err) {
-        addToast('Failed to load team detailed information', 'error');
+        addToast('Failed to load team details', 'error');
       } finally {
         setLoadingDetails(false);
       }
@@ -939,26 +1063,58 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
   }, [team.id]);
 
   const handleSave = async () => {
+    if (!name.trim()) {
+      addToast('Team name cannot be empty', 'error');
+      return;
+    }
+    if (!registrationId.trim()) {
+      addToast('Registration code cannot be empty', 'error');
+      return;
+    }
+
     setIsSaving(true);
     try {
-      const res = await api.patch(`/admin/teams/${team.id}`, {
+      await api.patch(`/admin/teams/${team.id}`, {
+        name: name.trim(),
+        registrationId: registrationId.trim(),
+        collegeName: collegeName.trim(),
+        leaderName: leaderName.trim(),
+        leaderEmail: leaderEmail.trim(),
+        leaderPhone: leaderPhone.trim(),
         status,
+        category,
+        deskNumber: deskNumber.trim() || null,
         podId: podId || null,
-        psId: psId || null
+        psId: psId || null,
+        members
       });
 
-      const resWarning = res.data.diff?._warning;
-      if (resWarning) {
-        addToast(resWarning, 'warning');
-      } else {
-        addToast('Team updated successfully!', 'success');
-      }
+      addToast('Team details updated successfully!', 'success');
       onClose();
     } catch (err) {
       addToast(err.response?.data?.detail || 'Failed to update team details', 'error');
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleAddMember = () => {
+    setMembers((prev) => [
+      ...prev,
+      { id: '', name: '', email: '', phone: '', isTeamLeader: false, idVerified: false }
+    ]);
+  };
+
+  const handleMemberChange = (index, field, val) => {
+    setMembers((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: val };
+      return next;
+    });
+  };
+
+  const handleRemoveMember = (index) => {
+    setMembers((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleCreateInlinePod = async (e) => {
@@ -983,18 +1139,36 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
       ref={modalRef}
       className="modal-overlay-fade"
     >
-      <div className="glass-card modal-scale-up" style={{ width: '80vw', maxWidth: '1200px', padding: '24px', position: 'relative' }}>
-        <button
-          onClick={onClose}
-          style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
-        >
-          <X size={20} />
-        </button>
-
-        <h2 className="panel-title" style={{ fontSize: '1.75rem', marginBottom: '4px' }}>{team.name}</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '16px', paddingLeft: '16px' }}>
-          Registration Code: {team.registrationId} | Synced from CSV
-        </p>
+      <div className="glass-card modal-scale-up" style={{ width: '90vw', maxWidth: '1240px', padding: '28px', position: 'relative', maxHeight: '90vh', overflowY: 'auto' }}>
+        
+        {/* Header Bar */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid var(--border-light)', paddingBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            <h2 className="panel-title" style={{ fontSize: '1.6rem', fontWeight: 800 }}>Edit Team Profile</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '2px' }}>
+              Full admin edit mode for team information, leaders, assigned venue location, and roster.
+            </p>
+          </div>
+          
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <button
+              onClick={handleResetTeamPassword}
+              type="button"
+              className="btn btn-secondary touch-target"
+              style={{ fontSize: '0.85rem', padding: '8px 16px', minHeight: '38px', height: '38px', gap: '6px' }}
+              title="Reset password for leader account"
+            >
+              <Lock size={14} />
+              Reset Leader Password
+            </button>
+            <button
+              onClick={onClose}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
+            >
+              <X size={22} />
+            </button>
+          </div>
+        </div>
 
         {loadingDetails ? (
           <div style={{ padding: '60px', textAlign: 'center' }}>
@@ -1002,140 +1176,238 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
             <p style={{ marginTop: '12px', color: 'var(--text-secondary)' }}>Loading team information...</p>
           </div>
         ) : (
-          <div className="modal-grid-1-1">
-            {/* Left column: read-only summaries & forms */}
-            <div>
-              <div className="modal-grid-3" style={{ marginBottom: '16px' }}>
-                <div style={{ background: 'var(--cream)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border-strong)' }}>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', textTransform: 'uppercase' }}>Leader Contact</span>
-                  <div style={{ fontWeight: 600, marginTop: '4px' }}>{team.leaderName}</div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>{team.leaderEmail}</div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{team.leaderPhone}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+            
+            {/* LEFT COLUMN: Team Primary Fields */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--primary)', borderBottom: '1px solid var(--border-light)', paddingBottom: '6px' }}>
+                Team & Leader Details
+              </h3>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label className="form-label">Team Name</label>
+                  <input
+                    type="text"
+                    className="form-input touch-target"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                  />
                 </div>
-                <div style={{ background: 'var(--cream)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border-strong)' }}>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', textTransform: 'uppercase' }}>College</span>
-                  <div style={{ fontWeight: 600, marginTop: '4px', fontSize: '0.85rem', lineHeight: '1.4' }}>{team.collegeName}</div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>Locked from CSV source</div>
-                </div>
-                <div style={{ background: 'var(--cream)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border-strong)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                  <div>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', textTransform: 'uppercase' }}>Leader Account</span>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>Username: <code>{team.registrationId.toLowerCase()}</code></div>
-                  </div>
-                  <button
-                    onClick={handleResetTeamPassword}
-                    className="btn btn-secondary"
-                    style={{ padding: '6px 14px', fontSize: '0.75rem', minHeight: '32px', height: '32px', marginTop: '6px', alignSelf: 'flex-start' }}
-                  >
-                    Reset Password
-                  </button>
+                <div>
+                  <label className="form-label">Registration Code / ID</label>
+                  <input
+                    type="text"
+                    className="form-input touch-target"
+                    value={registrationId}
+                    onChange={(e) => setRegistrationId(e.target.value)}
+                    required
+                  />
                 </div>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '0' }}>
-                <div className="form-group" style={{ marginBottom: 0 }}>
+              <div>
+                <label className="form-label">College Name</label>
+                <input
+                  type="text"
+                  className="form-input touch-target"
+                  value={collegeName}
+                  onChange={(e) => setCollegeName(e.target.value)}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label className="form-label">Leader Name</label>
+                  <input
+                    type="text"
+                    className="form-input touch-target"
+                    value={leaderName}
+                    onChange={(e) => setLeaderName(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="form-label">Leader Email</label>
+                  <input
+                    type="email"
+                    className="form-input touch-target"
+                    value={leaderEmail}
+                    onChange={(e) => setLeaderEmail(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="form-label">Leader Mobile</label>
+                  <input
+                    type="text"
+                    className="form-input touch-target"
+                    value={leaderPhone}
+                    onChange={(e) => setLeaderPhone(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--primary)', borderBottom: '1px solid var(--border-light)', paddingBottom: '6px', marginTop: '8px' }}>
+                Category & Venue Assignment
+              </h3>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label className="form-label">Category</label>
+                  <select
+                    className="form-input touch-target"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                  >
+                    <option value="ENGINEERING">Engineering</option>
+                    <option value="DESIGN">Design</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="form-label">Desk / Bench #</label>
+                  <input
+                    type="text"
+                    className="form-input touch-target"
+                    placeholder="e.g. Desk 14"
+                    value={deskNumber}
+                    onChange={(e) => setDeskNumber(e.target.value)}
+                  />
+                </div>
+                <div>
                   <label className="form-label">Team Status</label>
-                  <select value={status} onChange={(e) => setStatus(e.target.value)} className="form-input">
+                  <select value={status} onChange={(e) => setStatus(e.target.value)} className="form-input touch-target">
                     <option value="REGISTERED">Registered</option>
                     <option value="SHORTLISTED">Shortlisted</option>
                     <option value="WAITLISTED">Waitlisted</option>
                     <option value="DISQUALIFIED">Disqualified</option>
                   </select>
                 </div>
+              </div>
 
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>POD Grouping</span>
-                    <button
-                      onClick={() => setShowInlinePod(!showInlinePod)}
-                      type="button"
-                      style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}
-                    >
-                      + Create New
-                    </button>
-                  </label>
-                  {showInlinePod ? (
-                    <form onSubmit={handleCreateInlinePod} style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                      <input
-                        type="text"
-                        placeholder="Pod Name (e.g. Pod 10)"
-                        className="form-input"
-                        value={inlinePodName}
-                        onChange={(e) => setInlinePodName(e.target.value)}
-                      />
-                      <button type="submit" className="btn btn-primary" style={{ minHeight: '38px', height: '38px', padding: '6px 16px', fontSize: '0.85rem' }}>Save</button>
-                    </form>
-                  ) : (
-                    <select value={podId} onChange={(e) => setPodId(e.target.value)} className="form-input">
-                      <option value="">Unassigned</option>
-                      {pods.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} {p.capacity ? `(${p.capacity} max)` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">Problem Statement Assignment</label>
-                  <select value={psId} onChange={(e) => setPsId(e.target.value)} className="form-input">
-                    <option value="">No Problem Statement Selected (Unassigned)</option>
-                    {problemStatements.map((ps) => (
-                      <option key={ps.id} value={ps.id}>
-                        [{ps.code}] {ps.title} ({ps.selectedCount}/{ps.capacity} filled)
+              <div>
+                <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>POD Group</span>
+                  <button
+                    onClick={() => setShowInlinePod(!showInlinePod)}
+                    type="button"
+                    style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}
+                  >
+                    + Create New Pod
+                  </button>
+                </label>
+                {showInlinePod ? (
+                  <form onSubmit={handleCreateInlinePod} style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                    <input
+                      type="text"
+                      placeholder="Pod Name (e.g. Pod 10)"
+                      className="form-input touch-target"
+                      value={inlinePodName}
+                      onChange={(e) => setInlinePodName(e.target.value)}
+                    />
+                    <button type="submit" className="btn btn-primary touch-target" style={{ minHeight: '38px', height: '38px', padding: '6px 16px', fontSize: '0.85rem' }}>Save</button>
+                  </form>
+                ) : (
+                  <select value={podId} onChange={(e) => setPodId(e.target.value)} className="form-input touch-target">
+                    <option value="">-- Unassigned --</option>
+                    {pods.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} {p.capacity ? `(${p.capacity} max)` : ''}
                       </option>
                     ))}
                   </select>
-                </div>
+                )}
               </div>
+
+              <div>
+                <label className="form-label">Problem Statement Assignment</label>
+                <select value={psId} onChange={(e) => setPsId(e.target.value)} className="form-input touch-target">
+                  <option value="">-- None Locked --</option>
+                  {problemStatements.map((ps) => (
+                    <option key={ps.id} value={ps.id}>
+                      [{ps.code}] {ps.title} ({ps.selectedCount}/{ps.capacity} filled)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
             </div>
 
-            {/* Right column: member lists */}
+            {/* RIGHT COLUMN: Roster Members Editor */}
             <div style={{ display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--border-light)', paddingLeft: '24px' }}>
-              <h3 className="panel-title" style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '16px' }}>Team Roster</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto', maxHeight: '340px', paddingRight: '4px' }}>
-                {members.map((m) => (
-                  <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderRadius: '8px', background: 'var(--cream)', border: '1px solid var(--border-strong)' }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{m.name}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>{m.email}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{m.phone}</div>
-                    </div>
-                    <div>
-                      {m.idVerified ? (
-                        <span style={{ color: 'var(--success)', fontSize: '0.75rem', fontWeight: 600, background: 'var(--success-glow)', padding: '4px 8px', borderRadius: '6px' }}>✓ Verified</span>
-                      ) : (
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', background: 'var(--card-2)', padding: '4px 8px', borderRadius: '6px' }}>Awaiting Venue Check-in</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid var(--border-light)', paddingBottom: '6px' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--primary)' }}>
+                  Team Roster ({members.length} members)
+                </h3>
+                <button
+                  type="button"
+                  onClick={handleAddMember}
+                  className="btn btn-secondary touch-target"
+                  style={{ padding: '4px 10px', fontSize: '0.75rem', minHeight: '32px' }}
+                >
+                  <Plus size={14} /> Add Member
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', overflowY: 'auto', maxHeight: '460px', paddingRight: '4px' }}>
+                {members.map((m, idx) => (
+                  <div key={idx} style={{ padding: '12px', borderRadius: '8px', background: 'var(--cream)', border: '1px solid var(--border-strong)', position: 'relative' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                        Member #{idx + 1} {m.isTeamLeader ? '★ (Leader)' : ''}
+                      </span>
+                      {members.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMember(idx)}
+                          style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: '2px' }}
+                          title="Remove member"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       )}
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <input
+                        type="text"
+                        placeholder="Member Full Name"
+                        className="form-input touch-target"
+                        style={{ fontSize: '0.85rem' }}
+                        value={m.name}
+                        onChange={(e) => handleMemberChange(idx, 'name', e.target.value)}
+                      />
+                      <input
+                        type="email"
+                        placeholder="Email Address"
+                        className="form-input touch-target"
+                        style={{ fontSize: '0.85rem' }}
+                        value={m.email}
+                        onChange={(e) => handleMemberChange(idx, 'email', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Mobile Number"
+                        className="form-input touch-target"
+                        style={{ fontSize: '0.85rem' }}
+                        value={m.phone}
+                        onChange={(e) => handleMemberChange(idx, 'phone', e.target.value)}
+                      />
                     </div>
                   </div>
                 ))}
               </div>
             </div>
+
           </div>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid var(--border-light)', paddingTop: '16px', marginTop: '16px' }}>
-          <button onClick={onClose} className="btn btn-secondary" disabled={isSaving}>Cancel</button>
-          <button onClick={handleSave} className="btn btn-primary" disabled={isSaving}>
-            {isSaving ? <span className="spinner"></span> : 'Save Changes'}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid var(--border-light)', paddingTop: '16px', marginTop: '20px' }}>
+          <button onClick={onClose} className="btn btn-secondary touch-target" disabled={isSaving}>Cancel</button>
+          <button onClick={handleSave} className="btn btn-primary touch-target" disabled={isSaving}>
+            {isSaving ? 'Saving...' : 'Save All Team Changes'}
           </button>
         </div>
       </div>
-
-      {credentialsToShow && (
-        <CredentialDialog
-          isOpen={true}
-          onClose={() => {
-            setCredentialsToShow(null);
-            onClose();
-          }}
-          title={credentialsToShow.title}
-          username={credentialsToShow.username}
-          password={credentialsToShow.password}
-        />
-      )}
     </div>,
     document.body
   );
@@ -1487,6 +1759,902 @@ const CsvImportModal = ({ onClose }) => {
 };
 
 // ==========================================
+// ==========================================
+// GENERIC CSV IMPORT MODAL COMPONENT
+// ==========================================
+const GenericCsvImportModal = ({ title, endpoint, templateHeaders, onSuccess, onClose }) => {
+  const { addToast } = useToast();
+  const [file, setFile] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleFileChange = (e) => {
+    const selected = e.target.files[0];
+    if (selected && (selected.type === 'text/csv' || selected.name.endsWith('.csv'))) {
+      setFile(selected);
+    } else {
+      addToast('Please select a valid CSV file', 'error');
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!file) return;
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await api.post(endpoint, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      addToast(res.data.message || 'CSV imported successfully!', 'success');
+      onSuccess?.();
+      onClose();
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to import CSV', 'error');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  return createPortal(
+    <div className="modal-overlay-fade" style={{ zIndex: 1100 }}>
+      <div className="glass-card modal-scale-up" style={{ width: '100%', maxWidth: '580px', padding: '28px', position: 'relative' }}>
+        <button onClick={onClose} style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+          <X size={20} />
+        </button>
+
+        <h2 className="panel-title text-gradient" style={{ fontSize: '1.6rem', marginBottom: '8px' }}>
+          {title}
+        </h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '20px' }}>
+          Upload a CSV file with columns: <code>{templateHeaders.join(', ')}</code>
+        </p>
+
+        <div
+          style={{ border: '2px dashed var(--border-strong)', borderRadius: '12px', padding: '36px 20px', textAlign: 'center', marginBottom: '20px', cursor: 'pointer', background: 'rgba(185, 111, 56, 0.02)' }}
+          onClick={() => document.getElementById('genCsvFile').click()}
+        >
+          <Upload size={32} style={{ color: 'var(--text-muted)', marginBottom: '12px' }} />
+          <p style={{ fontWeight: 600, fontSize: '0.9rem' }}>Click to select CSV file</p>
+
+          {file && (
+            <div style={{ marginTop: '12px', background: 'var(--primary-glow)', border: '1px solid var(--border-focus)', display: 'inline-flex', padding: '4px 10px', borderRadius: '999px', fontSize: '0.8rem', color: 'var(--primary)' }}>
+              {file.name} ({(file.size / 1024).toFixed(1)} KB)
+            </div>
+          )}
+
+          <input id="genCsvFile" type="file" accept=".csv" onChange={handleFileChange} style={{ display: 'none' }} />
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+          <button onClick={onClose} className="btn btn-secondary touch-target" disabled={isUploading}>Cancel</button>
+          <button onClick={handleUpload} className="btn btn-primary touch-target" disabled={!file || isUploading}>
+            {isUploading ? 'Importing...' : 'Upload & Import'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
+// ==========================================
+// PANELS TAB VIEW
+// ==========================================
+const PanelsView = () => {
+  const { addToast } = useToast();
+  const [panels, setPanels] = useState([]);
+  const [problemStatements, setProblemStatements] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [editingPanel, setEditingPanel] = useState(null);
+  const [deleteConfirmPanel, setDeleteConfirmPanel] = useState(null);
+
+  // Form states
+  const [name, setName] = useState('');
+  const [facultyMemberName, setFacultyMemberName] = useState('');
+  const [memberNames, setMemberNames] = useState(['']);
+  const [problemStatementId, setProblemStatementId] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const fetchPanels = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/admin/panels');
+      setPanels(res.data || []);
+    } catch (err) {
+      addToast('Failed to fetch panels', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const takenPsIds = panels
+    .filter(p => p.problemStatementId && (!editingPanel || p.id !== editingPanel.id))
+    .map(p => p.problemStatementId);
+
+  const fetchPSList = async () => {
+    try {
+      const res = await api.get('/admin/problem-statements');
+      setProblemStatements(res.data || []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    fetchPanels();
+    fetchPSList();
+  }, []);
+
+  const openCreateModal = () => {
+    setEditingPanel(null);
+    setName(`Panel ${panels.length + 1}`);
+    setFacultyMemberName('');
+    setMemberNames(['']);
+    setProblemStatementId('');
+    setShowModal(true);
+  };
+
+  const openEditModal = (p) => {
+    setEditingPanel(p);
+    setName(p.name);
+    setFacultyMemberName(p.facultyMemberName || '');
+    setMemberNames(p.memberNames && p.memberNames.length ? p.memberNames : ['']);
+    setProblemStatementId(p.problemStatementId || '');
+    setShowModal(true);
+  };
+
+  const handleAddJudge = () => {
+    setMemberNames((prev) => [...prev, '']);
+  };
+
+  const handleJudgeChange = (index, value) => {
+    setMemberNames((prev) => {
+      const next = [...prev];
+      next[index] = value;
+      return next;
+    });
+  };
+
+  const handleRemoveJudge = (index) => {
+    setMemberNames((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSavePanel = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setIsSaving(true);
+    const cleanMembers = memberNames.map(m => m.trim()).filter(Boolean);
+    const payload = {
+      name: name.trim(),
+      facultyMemberName: facultyMemberName.trim() || null,
+      memberNames: cleanMembers,
+      problemStatementId: problemStatementId || null
+    };
+
+    try {
+      if (editingPanel) {
+        await api.put(`/admin/panels/${editingPanel.id}`, payload);
+        addToast('Panel updated successfully!', 'success');
+      } else {
+        await api.post('/admin/panels', payload);
+        addToast('Panel created successfully!', 'success');
+      }
+      setShowModal(false);
+      fetchPanels();
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to save panel', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeletePanel = async () => {
+    if (!deleteConfirmPanel) return;
+    try {
+      await api.delete(`/admin/panels/${deleteConfirmPanel.id}`);
+      addToast('Panel deleted successfully!', 'success');
+      setDeleteConfirmPanel(null);
+      fetchPanels();
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to delete panel', 'error');
+    }
+  };
+
+  const handleDownloadPanelsTemplate = () => {
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "Panel Name,Problem Statement Code,Faculty Lead,Judges\n";
+    csvContent += "Panel 1,PS01,Dr. John Doe,Judge Alpha; Judge Beta\n";
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "panels_import_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportPanels = async () => {
+    try {
+      const res = await api.get('/admin/panels/export', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'panels_export.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      addToast('Panels exported successfully!', 'success');
+    } catch (err) {
+      addToast('Failed to export panels', 'error');
+    }
+  };
+
+  const handleExportPSPanelSheet = async (psId, psCode) => {
+    try {
+      const res = await api.get(`/admin/evaluation-sheet/export?ps_id=${psId}`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `evaluation_sheet_${psCode || 'ps'}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      addToast('Evaluation sheet downloaded!', 'success');
+    } catch (err) {
+      addToast('Failed to download evaluation sheet', 'error');
+    }
+  };
+
+  const [search, setSearch] = useState('');
+
+  const filteredPanels = panels.filter((p) => {
+    const q = search.toLowerCase();
+    const matchesName = p.name.toLowerCase().includes(q);
+    const matchesFaculty = p.facultyMemberName && p.facultyMemberName.toLowerCase().includes(q);
+    const matchesPs = p.problemStatementCode && p.problemStatementCode.toLowerCase().includes(q);
+    const matchesJudges = p.memberNames && p.memberNames.some(j => j.toLowerCase().includes(q));
+    return matchesName || matchesFaculty || matchesPs || matchesJudges;
+  });
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
+        <div>
+          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Evaluation <span className="font-accent">Panels</span></h1>
+          <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
+            Assign 1:1 judging panels to Problem Statements with assigned faculty leads and judges.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button onClick={handleDownloadPanelsTemplate} className="btn btn-secondary touch-target" title="Download Panels Template CSV">
+            <Download size={16} /> Template CSV
+          </button>
+          <button onClick={handleExportPanels} className="btn btn-secondary touch-target" title="Export Panels CSV">
+            <Download size={16} /> Export CSV
+          </button>
+          <button onClick={() => setShowImportModal(true)} className="btn btn-secondary touch-target" title="Import Panels CSV">
+            <Upload size={16} /> Import CSV
+          </button>
+          <button onClick={openCreateModal} className="btn btn-primary touch-target">
+            + Create Panel
+          </button>
+        </div>
+      </div>
+
+      {showImportModal && (
+        <GenericCsvImportModal
+          title="Panels CSV Importer"
+          endpoint="/admin/panels/import"
+          templateHeaders={["Panel Name", "Problem Statement Code", "Faculty Lead", "Judges"]}
+          onSuccess={fetchPanels}
+          onClose={() => setShowImportModal(false)}
+        />
+      )}
+
+      {/* Search & Filter Controls under Page Title */}
+      <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px', position: 'relative' }}>
+        <Search size={18} style={{ position: 'absolute', left: '36px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+        <input
+          type="text"
+          placeholder="Search evaluation panels by name, faculty lead, judges, or PS code..."
+          className="form-input"
+          style={{ paddingLeft: '48px', width: '100%' }}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      {loading ? (
+        <div style={{ padding: '60px', textAlign: 'center' }}>
+          <span className="spinner" style={{ width: '32px', height: '32px', margin: '0 auto' }}></span>
+          <p style={{ marginTop: '12px', color: 'var(--text-secondary)' }}>Loading evaluation panels...</p>
+        </div>
+      ) : filteredPanels.length === 0 ? (
+        <div className="glass-panel" style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
+          <Layers size={32} style={{ marginBottom: '12px' }} />
+          <p>No evaluation panels match your criteria.</p>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '20px' }}>
+          {filteredPanels.map((p) => (
+            <div key={p.id} className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>{p.name}</h3>
+                  {p.problemStatementCode ? (
+                    <span style={{ fontSize: '0.75rem', background: 'rgba(99,102,241,0.12)', color: 'var(--primary)', padding: '3px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                      PS: {p.problemStatementCode}
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: '0.75rem', background: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)', padding: '3px 8px', borderRadius: '6px' }}>
+                      Unassigned PS
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ marginBottom: '12px', fontSize: '0.85rem' }}>
+                  <strong style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Faculty Member / Lead:</strong>
+                  <div style={{ fontWeight: 600, marginTop: '2px' }}>{p.facultyMemberName || 'Not specified'}</div>
+                </div>
+
+                <div style={{ fontSize: '0.85rem', marginBottom: '16px' }}>
+                  <strong style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '4px' }}>Panel Judges:</strong>
+                  {p.memberNames && p.memberNames.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {p.memberNames.map((j, i) => (
+                        <span key={i} style={{ fontSize: '0.75rem', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-light)', padding: '2px 8px', borderRadius: '4px' }}>
+                          {j}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <span style={{ color: 'var(--text-muted)' }}>No judges added</span>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-light)', paddingTop: '16px', marginTop: '16px' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => openEditModal(p)} className="btn btn-secondary touch-target" style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+                    Edit
+                  </button>
+                  <button onClick={() => setDeleteConfirmPanel(p)} className="btn btn-secondary touch-target" style={{ padding: '6px 12px', fontSize: '0.8rem', color: 'var(--danger)' }}>
+                    Delete
+                  </button>
+                </div>
+                {p.problemStatementId && (
+                  <button onClick={() => handleExportPSPanelSheet(p.problemStatementId, p.problemStatementCode)} className="btn btn-secondary touch-target" style={{ padding: '6px 12px', fontSize: '0.8rem' }} title="Download Evaluation Sheet for this PS Panel">
+                    <Download size={14} /> Sheet
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modal: Create/Edit Panel */}
+      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editingPanel ? `Edit ${editingPanel.name}` : 'Create Evaluation Panel'} maxWidth="520px">
+        <form onSubmit={handleSavePanel} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div>
+            <label className="form-label">Panel Name / Title</label>
+            <input type="text" className="form-input touch-target" placeholder="e.g. Panel 1 (AI & ML)" value={name} onChange={(e) => setName(e.target.value)} required />
+          </div>
+
+          <div>
+            <label className="form-label">Faculty Member Name</label>
+            <input type="text" className="form-input touch-target" placeholder="Dr. John Doe" value={facultyMemberName} onChange={(e) => setFacultyMemberName(e.target.value)} />
+          </div>
+
+          <div>
+            <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Panel Judges / Evaluators</span>
+              <button type="button" onClick={handleAddJudge} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
+                + Add Judge
+              </button>
+            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+              {memberNames.map((judge, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    className="form-input touch-target"
+                    placeholder={`Judge ${idx + 1} Name`}
+                    value={judge}
+                    onChange={(e) => handleJudgeChange(idx, e.target.value)}
+                  />
+                  {memberNames.length > 1 && (
+                    <button type="button" onClick={() => handleRemoveJudge(idx)} className="btn btn-secondary touch-target" style={{ color: 'var(--danger)', padding: '0 12px' }}>
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="form-label">Assign to Problem Statement (1:1)</label>
+            <select className="form-input touch-target" value={problemStatementId} onChange={(e) => setProblemStatementId(e.target.value)}>
+              <option value="">-- None (Unassigned) --</option>
+              {problemStatements.map((ps) => {
+                const isTaken = takenPsIds.includes(ps.id);
+                return (
+                  <option key={ps.id} value={ps.id} disabled={isTaken}>
+                    {ps.code} — {ps.title} {isTaken ? '(Already assigned to another panel)' : ''}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
+            <button type="button" onClick={() => setShowModal(false)} className="btn btn-secondary touch-target">Cancel</button>
+            <button type="submit" className="btn btn-primary touch-target" disabled={isSaving}>
+              {isSaving ? 'Saving...' : editingPanel ? 'Update Panel' : 'Create Panel'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Confirm Delete Dialog */}
+      {deleteConfirmPanel && (
+        <ConfirmDialog
+          isOpen={true}
+          onClose={() => setDeleteConfirmPanel(null)}
+          onConfirm={handleDeletePanel}
+          title={`Delete ${deleteConfirmPanel.name}?`}
+          message="Are you sure you want to delete this evaluation panel? This will unassign judges for the linked problem statement."
+        />
+      )}
+    </div>
+  );
+};
+
+// ==========================================
+// EVALUATION ROUNDS TAB VIEW
+// ==========================================
+const EvalRoundsView = () => {
+  const { addToast } = useToast();
+  const [rounds, setRounds] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [editingRound, setEditingRound] = useState(null);
+
+  // Form states
+  const [name, setName] = useState('');
+  const [roundNumber, setRoundNumber] = useState(1);
+  const [description, setDescription] = useState('');
+  const [fields, setFields] = useState([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [deleteConfirmRound, setDeleteConfirmRound] = useState(null);
+
+  const fetchRounds = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/admin/evaluation-rounds');
+      setRounds(res.data || []);
+    } catch (err) {
+      addToast('Failed to fetch evaluation rounds', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRounds();
+  }, []);
+
+  const openCreateModal = () => {
+    setEditingRound(null);
+    setName(`Round ${rounds.length + 1} Evaluation`);
+    setRoundNumber(rounds.length + 1);
+    setDescription('Submit your project architecture slide deck link and source code repository URL.');
+    setFields([
+      { id: 'field_1', name: 'Google Drive / Slide Deck Link', description: 'Presentation or Architecture PDF link', fieldType: 'text', required: true },
+      { id: 'field_2', name: 'GitHub Repository Link', description: 'Public repository source code link', fieldType: 'text', required: true }
+    ]);
+    setShowModal(true);
+  };
+
+  const openEditModal = (r) => {
+    setEditingRound(r);
+    setName(r.name);
+    setRoundNumber(r.roundNumber);
+    setDescription(r.description || '');
+    setFields(r.fields && r.fields.length > 0 ? r.fields : [
+      { id: 'field_1', name: 'Google Drive / Slide Deck Link', description: 'Presentation or Architecture PDF link', fieldType: 'text', required: true },
+      { id: 'field_2', name: 'GitHub Repository Link', description: 'Public repository source code link', fieldType: 'text', required: true }
+    ]);
+    setShowModal(true);
+  };
+
+  const handleAddField = () => {
+    setFields(prev => [
+      ...prev,
+      {
+        id: `field_${Date.now()}`,
+        name: `Submission Field ${prev.length + 1}`,
+        description: 'Text response or URL',
+        fieldType: 'text',
+        required: true
+      }
+    ]);
+  };
+
+  const handleFieldChange = (index, key, val) => {
+    setFields(prev => {
+      const next = [...prev];
+      next[index] = { ...next[index], [key]: val };
+      return next;
+    });
+  };
+
+  const handleRemoveField = (index) => {
+    setFields(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSaveRound = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setIsSaving(true);
+    const payload = {
+      name: name.trim(),
+      roundNumber: parseInt(roundNumber) || 1,
+      description: description.trim() || null,
+      fields: fields.map(f => ({
+        id: f.id || `field_${Date.now()}`,
+        name: f.name.trim() || 'Submission Field',
+        description: f.description ? f.description.trim() : '',
+        fieldType: 'text',
+        required: !!f.required
+      }))
+    };
+
+    try {
+      if (editingRound) {
+        await api.patch(`/admin/evaluation-rounds/${editingRound.id}`, payload);
+        addToast('Evaluation round & submission fields updated!', 'success');
+      } else {
+        await api.post('/admin/evaluation-rounds', payload);
+        addToast('Evaluation round created!', 'success');
+      }
+      setShowModal(false);
+      fetchRounds();
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to save round', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleToggleSubmissionOpen = async (roundId, currentOpen) => {
+    try {
+      await api.patch(`/admin/evaluation-rounds/${roundId}`, {
+        isSubmissionOpen: !currentOpen
+      });
+      addToast(`Submissions ${!currentOpen ? 'opened' : 'closed'} for round`, 'success');
+      fetchRounds();
+    } catch (err) {
+      addToast('Failed to update submission status', 'error');
+    }
+  };
+
+  const handleDeleteRound = async () => {
+    if (!deleteConfirmRound) return;
+    try {
+      await api.delete(`/admin/evaluation-rounds/${deleteConfirmRound.id}`);
+      addToast('Evaluation round deleted!', 'success');
+      setDeleteConfirmRound(null);
+      fetchRounds();
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to delete round', 'error');
+    }
+  };
+
+  const handleDownloadRoundsTemplate = () => {
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "Round Name,Sequence Order\n";
+    csvContent += "Round 1 Evaluation,1\nRound 2 Evaluation,2\n";
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "evaluation_rounds_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportRounds = async () => {
+    try {
+      const res = await api.get('/admin/evaluation-rounds/export', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'evaluation_rounds_export.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      addToast('Evaluation rounds exported!', 'success');
+    } catch (err) {
+      addToast('Failed to export evaluation rounds', 'error');
+    }
+  };
+
+  const handleExportMasterWorkbook = async () => {
+    try {
+      addToast('Generating master round-wise Excel workbook...', 'info');
+      const res = await api.get('/admin/evaluation-rounds/export-master-workbook', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'evaluation_submissions_master_workbook.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      addToast('Master Evaluation Workbook (All Rounds) downloaded!', 'success');
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to export master workbook', 'error');
+    }
+  };
+
+  const handleExportSubmissions = async (roundId, roundName) => {
+    try {
+      const res = await api.get(`/admin/evaluation-rounds/${roundId}/submissions/export`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `submissions_${roundName.toLowerCase().replace(/\s+/g, '_')}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      addToast('Submissions Excel downloaded!', 'success');
+    } catch (err) {
+      addToast('Failed to export submissions', 'error');
+    }
+  };
+
+  const [search, setSearch] = useState('');
+
+  const filteredRounds = rounds.filter((r) => {
+    const q = search.toLowerCase();
+    return r.name.toLowerCase().includes(q) || String(r.roundNumber).includes(q) || (r.description && r.description.toLowerCase().includes(q));
+  });
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
+        <div>
+          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Evaluation <span className="font-accent">Rounds</span></h1>
+          <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
+            Design submission form fields, toggle submission windows, and export team answers Excel workbook.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button onClick={handleExportMasterWorkbook} className="btn btn-primary touch-target" title="Export Multi-Sheet Excel Workbook for All Rounds">
+            <Download size={16} /> Export All Rounds (Excel)
+          </button>
+          <button onClick={handleDownloadRoundsTemplate} className="btn btn-secondary touch-target" title="Download Rounds Template CSV">
+            <Download size={16} /> Template CSV
+          </button>
+          <button onClick={handleExportRounds} className="btn btn-secondary touch-target" title="Export Rounds CSV">
+            <Download size={16} /> Export CSV
+          </button>
+          <button onClick={() => setShowImportModal(true)} className="btn btn-secondary touch-target" title="Import Rounds CSV">
+            <Upload size={16} /> Import CSV
+          </button>
+          <button onClick={openCreateModal} className="btn btn-primary touch-target">
+            + Add Round
+          </button>
+        </div>
+      </div>
+
+      {showImportModal && (
+        <GenericCsvImportModal
+          title="Evaluation Rounds CSV Importer"
+          endpoint="/admin/evaluation-rounds/import"
+          templateHeaders={["Round Name", "Sequence Order"]}
+          onSuccess={fetchRounds}
+          onClose={() => setShowImportModal(false)}
+        />
+      )}
+
+      {/* Search & Filter Controls under Page Title */}
+      <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px', position: 'relative' }}>
+        <Search size={18} style={{ position: 'absolute', left: '36px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+        <input
+          type="text"
+          placeholder="Search evaluation rounds by name, round # or description..."
+          className="form-input"
+          style={{ paddingLeft: '48px', width: '100%' }}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      {loading ? (
+        <div style={{ padding: '60px', textAlign: 'center' }}>
+          <span className="spinner" style={{ width: '32px', height: '32px', margin: '0 auto' }}></span>
+          <p style={{ marginTop: '12px', color: 'var(--text-secondary)' }}>Loading evaluation rounds...</p>
+        </div>
+      ) : filteredRounds.length === 0 ? (
+        <div className="glass-panel" style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
+          <FileText size={32} style={{ marginBottom: '12px' }} />
+          <p>No evaluation rounds match your search.</p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {filteredRounds.map((r) => (
+            <div key={r.id} className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.75rem', background: 'rgba(185, 111, 56, 0.12)', color: 'var(--primary)', padding: '3px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                      Round #{r.roundNumber}
+                    </span>
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: 700 }}>{r.name}</h3>
+                  </div>
+                  {r.description && (
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px', maxWidth: '600px' }}>
+                      {r.description}
+                    </p>
+                  )}
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '8px', display: 'flex', gap: '16px' }}>
+                    <span>Total Submissions: <strong>{r.submissionCount || 0}</strong></span>
+                    <span>Required Fields: <strong>{r.fields?.length || 0} Text Fields</strong></span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.02)', padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Window:</span>
+                    <button
+                      onClick={() => handleToggleSubmissionOpen(r.id, r.isSubmissionOpen)}
+                      className={`btn ${r.isSubmissionOpen ? 'btn-primary' : 'btn-secondary'} touch-target`}
+                      style={{ padding: '4px 12px', fontSize: '0.8rem', minHeight: '32px' }}
+                    >
+                      {r.isSubmissionOpen ? '● OPEN' : '🔒 CLOSED'}
+                    </button>
+                  </div>
+
+                  <button onClick={() => openEditModal(r)} className="btn btn-secondary touch-target" style={{ padding: '8px 14px', fontSize: '0.85rem' }}>
+                    Edit Round & Form
+                  </button>
+
+                  <button onClick={() => handleExportSubmissions(r.id, r.name)} className="btn btn-secondary touch-target" style={{ padding: '8px 14px', fontSize: '0.85rem' }}>
+                    <Download size={16} /> Export CSV
+                  </button>
+
+                  <button onClick={() => setDeleteConfirmRound(r)} className="btn btn-secondary touch-target" style={{ padding: '8px 12px', color: 'var(--danger)' }}>
+                    Delete
+                  </button>
+                </div>
+              </div>
+
+              {/* Form Fields Summary Pill Badge */}
+              {r.fields && r.fields.length > 0 && (
+                <div style={{ background: 'rgba(0,0,0,0.02)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border-light)', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Submissions Taking:</span>
+                  {r.fields.map((f, idx) => (
+                    <span key={idx} style={{ fontSize: '0.75rem', background: 'var(--primary-glow)', border: '1px solid var(--border-focus)', color: 'var(--primary)', padding: '2px 8px', borderRadius: '6px' }}>
+                      {f.name} <span style={{ opacity: 0.6, fontSize: '0.7rem' }}>(Text)</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modal: Create/Edit Round & Form Designer */}
+      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editingRound ? "Edit Round & Submission Form" : "Add Evaluation Round & Form"} maxWidth="620px">
+        <form onSubmit={handleSaveRound} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
+            <div>
+              <label className="form-label">Round Title</label>
+              <input type="text" className="form-input touch-target" placeholder="e.g. Round 1 - Architecture & Deck" value={name} onChange={(e) => setName(e.target.value)} required />
+            </div>
+
+            <div>
+              <label className="form-label">Sequence #</label>
+              <input type="number" className="form-input touch-target" min="1" value={roundNumber} onChange={(e) => setRoundNumber(e.target.value)} required />
+            </div>
+          </div>
+
+          <div>
+            <label className="form-label">Round Instructions / Description (for Students)</label>
+            <textarea
+              className="form-input touch-target"
+              placeholder="Instructions displayed to team leaders when submitting for this round..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
+              style={{ resize: 'vertical' }}
+            />
+          </div>
+
+          {/* Custom Submission Fields Designer */}
+          <div style={{ background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-strong)', borderRadius: '12px', padding: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div>
+                <h4 style={{ fontSize: '0.95rem', fontWeight: 700 }}>Strict Text Submission Fields</h4>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Define what information teams must enter for this evaluation round.
+                </p>
+              </div>
+              <button type="button" onClick={handleAddField} className="btn btn-secondary touch-target" style={{ padding: '4px 12px', fontSize: '0.8rem' }}>
+                + Add Field
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {fields.map((f, idx) => (
+                <div key={idx} style={{ background: 'rgba(0,0,0,0.02)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      className="form-input touch-target"
+                      placeholder={`Field ${idx + 1} Name (e.g. GitHub Repo URL)`}
+                      value={f.name}
+                      onChange={(e) => handleFieldChange(idx, 'name', e.target.value)}
+                      required
+                    />
+                    <span style={{ fontSize: '0.75rem', background: 'rgba(255,255,255,0.05)', padding: '6px 10px', borderRadius: '6px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                      TEXT
+                    </span>
+                    {fields.length > 1 && (
+                      <button type="button" onClick={() => handleRemoveField(idx)} className="btn btn-secondary touch-target" style={{ color: 'var(--danger)', padding: '0 10px' }}>
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    className="form-input touch-target"
+                    placeholder="Field Helper Prompt / Subtext (e.g. Public repo URL containing source code)"
+                    value={f.description || ''}
+                    onChange={(e) => handleFieldChange(idx, 'description', e.target.value)}
+                    style={{ fontSize: '0.8rem' }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
+            <button type="button" onClick={() => setShowModal(false)} className="btn btn-secondary touch-target">Cancel</button>
+            <button type="submit" className="btn btn-primary touch-target" disabled={isSaving}>
+              {isSaving ? 'Saving...' : editingRound ? 'Update Round & Fields' : 'Create Round'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Confirm Delete Dialog */}
+      {deleteConfirmRound && (
+        <ConfirmDialog
+          isOpen={true}
+          onClose={() => setDeleteConfirmRound(null)}
+          onConfirm={handleDeleteRound}
+          title={`Delete ${deleteConfirmRound.name}?`}
+          message="Are you sure you want to delete this evaluation round? Submissions made by teams for this round will also be deleted."
+        />
+      )}
+    </div>
+  );
+};
+
+// ==========================================
 // PODS VIEW TAB COMPONENT
 // ==========================================
 const PodsView = ({ pods, fetchPodsPool }) => {
@@ -1602,9 +2770,13 @@ const PodsView = ({ pods, fetchPodsPool }) => {
     }
   };
 
+  const [search, setSearch] = useState('');
+
+  const filteredPods = pods.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
+
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>POD <span className="font-accent">Groupings</span></h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
@@ -1612,33 +2784,46 @@ const PodsView = ({ pods, fetchPodsPool }) => {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <button onClick={handleDownloadPodsTemplate} className="btn btn-secondary" title="Download PODs Import Template CSV">
+          <button onClick={handleDownloadPodsTemplate} className="btn btn-secondary touch-target" title="Download PODs Import Template CSV">
             <Download size={16} />
             Template CSV
           </button>
-          <button onClick={() => setShowImportModal(true)} className="btn btn-secondary">
+          <button onClick={() => setShowImportModal(true)} className="btn btn-secondary touch-target">
             <Upload size={16} />
             Import CSV
           </button>
-          <button onClick={handleExportPods} className="btn btn-secondary">
+          <button onClick={handleExportPods} className="btn btn-secondary touch-target">
             <Download size={16} />
             Export CSV
           </button>
-          <button onClick={() => setShowCreateModal(true)} className="btn btn-primary">
+          <button onClick={() => setShowCreateModal(true)} className="btn btn-primary touch-target">
             + Create POD Group
           </button>
         </div>
       </div>
 
+      {/* Search Controls under Page Title */}
+      <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px', position: 'relative' }}>
+        <Search size={18} style={{ position: 'absolute', left: '36px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+        <input
+          type="text"
+          placeholder="Search POD groups by name..."
+          className="form-input"
+          style={{ paddingLeft: '48px', width: '100%' }}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
       {/* Grid of Pod Tiles */}
-      {pods.length === 0 ? (
+      {filteredPods.length === 0 ? (
         <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }} className="glass-panel">
           <Layers size={32} style={{ marginBottom: '12px' }} />
-          <p>No POD groups created yet. Click the button to add one.</p>
+          <p>No POD groups match your search.</p>
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
-          {pods.map((p) => {
+          {filteredPods.map((p) => {
             const isFull = p.capacity ? p.teamCount >= p.capacity : false;
             const fillPercent = p.capacity ? Math.min((p.teamCount / p.capacity) * 100, 100) : 0;
 
@@ -2527,7 +3712,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Volunteers <span className="font-accent">Pool</span></h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
@@ -3275,19 +4460,72 @@ const CheckpointsView = () => {
     setShowDeleteConfirm(true);
   };
 
+  const [showImportModal, setShowImportModal] = useState(false);
+
+  const handleDownloadSlotsTemplate = () => {
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "Slot Title,Sequence Order\n";
+    csvContent += "Day 1 Registration,1\nDay 1 Lunch Checkin,2\n";
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "attendance_slots_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportSlots = async () => {
+    try {
+      const res = await api.get('/admin/attendance-slots/export', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'attendance_slots_export.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      addToast('Attendance slots exported!', 'success');
+    } catch (err) {
+      addToast('Failed to export attendance slots', 'error');
+    }
+  };
+
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Attendance <span className="font-accent">Slots</span></h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
             Configure and manage checkpoints (check-in, lunch, workshops) that volunteers can verify.
           </p>
         </div>
-        <button onClick={() => setShowAddModal(true)} className="btn btn-primary">
-          + Add Attendance Slot
-        </button>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button onClick={handleDownloadSlotsTemplate} className="btn btn-secondary touch-target" title="Download Slots Template CSV">
+            <Download size={16} /> Template CSV
+          </button>
+          <button onClick={handleExportSlots} className="btn btn-secondary touch-target" title="Export Slots CSV">
+            <Download size={16} /> Export CSV
+          </button>
+          <button onClick={() => setShowImportModal(true)} className="btn btn-secondary touch-target" title="Import Slots CSV">
+            <Upload size={16} /> Import CSV
+          </button>
+          <button onClick={() => setShowAddModal(true)} className="btn btn-primary touch-target">
+            + Add Attendance Slot
+          </button>
+        </div>
       </div>
+
+      {showImportModal && (
+        <GenericCsvImportModal
+          title="Attendance Slots CSV Importer"
+          endpoint="/admin/attendance-slots/import"
+          templateHeaders={["Slot Title", "Sequence Order"]}
+          onSuccess={fetchCheckpoints}
+          onClose={() => setShowImportModal(false)}
+        />
+      )}
 
       <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px', position: 'relative' }}>
         <Search size={18} style={{ position: 'absolute', left: '36px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
@@ -3530,6 +4768,9 @@ const PSView = () => {
   const [loading, setLoading] = useState(false);
   const [isUpdatingConfig, setIsUpdatingConfig] = useState(false);
 
+  const [search, setSearch] = useState('');
+  const [disciplineFilter, setDisciplineFilter] = useState('');
+
   // Modals state
   const [showImportModal, setShowImportModal] = useState(false);
   const [selectedPS, setSelectedPS] = useState(null);
@@ -3538,6 +4779,13 @@ const PSView = () => {
 
   const sortKey = '';
   const sortDir = 'asc';
+
+  const filteredStatements = statements.filter((s) => {
+    const q = search.toLowerCase();
+    const matchesSearch = s.code.toLowerCase().includes(q) || s.title.toLowerCase().includes(q) || (s.description && s.description.toLowerCase().includes(q)) || (s.organization && s.organization.toLowerCase().includes(q));
+    const matchesDiscipline = !disciplineFilter || (s.discipline && s.discipline.toUpperCase() === disciplineFilter.toUpperCase());
+    return matchesSearch && matchesDiscipline;
+  });
 
   useEffect(() => {
     fetchPS();
@@ -3690,7 +4938,7 @@ const PSView = () => {
       </div>
 
       {/* Release Configuration Card */}
-      <div className="glass-panel" style={{ padding: '24px', marginBottom: '32px' }}>
+      <div className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>
         <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <FileText size={18} style={{ color: 'var(--primary)' }} />
           Problem Selection Release Config
@@ -3735,11 +4983,14 @@ const PSView = () => {
             </form>
           </div>
         ) : (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
             <div>
-              <p style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 600 }}>
-                Selections Scheduled: <span style={{ color: 'var(--success)' }}>{formatToIST(releaseTime)}</span>
-              </p>
+              <span style={{ fontSize: '0.75rem', background: 'var(--success-glow)', color: 'var(--success)', padding: '2px 8px', borderRadius: '999px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Selections Scheduled / Unlocked
+              </span>
+              <div style={{ fontSize: '1.1rem', fontWeight: 700, marginTop: '6px' }}>
+                {new Date(releaseTime).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'short' })}
+              </div>
               <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
                 UTC Time: {new Date(releaseTime).toUTCString()}
               </p>
@@ -3758,6 +5009,34 @@ const PSView = () => {
             </button>
           </div>
         )}
+      </div>
+
+      {/* Search & Discipline Filter Bar under Config Card */}
+      <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: 2, minWidth: '260px' }}>
+          <Search size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+          <input
+            type="text"
+            placeholder="Search problem statements by code, title, domain, organization..."
+            className="form-input"
+            style={{ paddingLeft: '48px', width: '100%' }}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+
+        <div style={{ flex: 1, minWidth: '160px' }}>
+          <select
+            value={disciplineFilter}
+            onChange={(e) => setDisciplineFilter(e.target.value)}
+            className="form-input"
+            style={{ width: '100%' }}
+          >
+            <option value="">All Categories</option>
+            <option value="ENGINEERING">Engineering</option>
+            <option value="DESIGN">Design</option>
+          </select>
+        </div>
       </div>
 
       {/* Tile Grid */}
@@ -3780,14 +5059,14 @@ const PSView = () => {
             </div>
           ))}
         </div>
-      ) : statements.length === 0 ? (
+      ) : filteredStatements.length === 0 ? (
         <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }} className="glass-panel">
           <FileText size={32} style={{ marginBottom: '12px' }} />
-          <p>No problem statements imported yet. Upload a CSV to get started.</p>
+          <p>No problem statements match your criteria.</p>
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
-          {statements.map((s) => {
+          {filteredStatements.map((s) => {
             const fillPercent = Math.min((s.selectedCount / s.capacity) * 100, 100);
             const isFull = s.remainingCapacity === 0;
 
@@ -3800,9 +5079,16 @@ const PSView = () => {
               >
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <span style={{ fontSize: '0.75rem', background: 'rgba(99,102,241,0.1)', color: 'var(--primary)', padding: '3px 8px', borderRadius: '6px', fontWeight: 700 }}>
-                      {s.code}
-                    </span>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', background: 'rgba(99,102,241,0.1)', color: 'var(--primary)', padding: '3px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                        {s.code}
+                      </span>
+                      {s.discipline && (
+                        <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 600, textTransform: 'capitalize', background: s.discipline === 'design' ? 'rgba(236,72,153,0.12)' : 'rgba(59,130,246,0.12)', color: s.discipline === 'design' ? '#ec4899' : '#3b82f6' }}>
+                          {s.discipline}
+                        </span>
+                      )}
+                    </div>
                     <span style={{ fontSize: '0.75rem', background: isFull ? 'var(--danger-glow)' : 'var(--success-glow)', color: isFull ? 'var(--danger)' : 'var(--success)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
                       {isFull ? 'Fully Committed' : `${s.remainingCapacity} Left`}
                     </span>

@@ -3,13 +3,17 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List
 from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, or_
 from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
-from app.models import Role, Team, TeamMember, ProblemStatement, PSSelection, EventConfig, Volunteer, AttendanceRecord
+from app.logger import logger
+from app.models import (
+    Role, Team, TeamMember, ProblemStatement, PSSelection, 
+    EventConfig, Volunteer, AttendanceRecord, EvaluationRound, Submission
+)
 from app.auth import require_role, CurrentUser
-from app.schemas import ProblemStatementResponse
+from app.schemas import ProblemStatementResponse, SubmissionCreate
 from app.limiter import limiter, team_key_func
 from app.websocket_manager import manager
 
@@ -128,6 +132,8 @@ def get_leader_team_info(
         "name": team.name,
         "collegeName": team.collegeName,
         "status": team.status.value,
+        "category": team.category.value,
+        "deskNumber": team.deskNumber,
         "pod": pod_data,
         "psSelection": ps_data,
         "members": [
@@ -155,10 +161,15 @@ def get_problem_statements_for_leaders(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Problem statements are not yet released"
         )
-        
-    statements = db.query(ProblemStatement).filter(
-        ProblemStatement.eventId == current_user.eventId
-    ).order_by(ProblemStatement.code).all()
+
+    team = db.query(Team).filter(Team.id == current_user.teamId).first()
+    team_cat = team.category if team else None
+
+    query = db.query(ProblemStatement).filter(ProblemStatement.eventId == current_user.eventId)
+    if team_cat:
+        query = query.filter(or_(ProblemStatement.discipline == team_cat, ProblemStatement.discipline.is_(None)))
+
+    statements = query.order_by(ProblemStatement.code).all()
     
     return [
         ProblemStatementResponse(
@@ -169,7 +180,9 @@ def get_problem_statements_for_leaders(
             description=s.description,
             capacity=s.capacity,
             selectedCount=s.selectedCount,
-            remainingCapacity=max(s.capacity - s.selectedCount, 0)
+            remainingCapacity=max(s.capacity - s.selectedCount, 0),
+            requirements=s.requirements,
+            discipline=s.discipline
         ) for s in statements
     ]
 
@@ -189,6 +202,8 @@ def select_problem_statement(
     if not current_user.teamId:
         raise HTTPException(status_code=400, detail="User is not associated with a team")
 
+    team = db.query(Team).filter(Team.id == current_user.teamId).first()
+
     # 1. Enforce Server-side release time
     config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
     if not config or not config.psReleaseAt or datetime.utcnow() < config.psReleaseAt:
@@ -197,9 +212,20 @@ def select_problem_statement(
             detail="Problem statements have not been released yet"
         )
 
-    # 1b. Enforce Server-side check-in gate
+    # 1b. Discipline guard
+    ps_obj = db.query(ProblemStatement).filter(ProblemStatement.id == ps_id).first()
+    if not ps_obj:
+        raise HTTPException(status_code=404, detail="Problem statement not found")
+
+    if ps_obj.discipline and team and ps_obj.discipline != team.category:
+        logger.warn(f"leader.select_ps Cross-discipline attempt: team={team.id} ({team.category}) ps={ps_obj.code} ({ps_obj.discipline})")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This problem statement is not available for your team's discipline category"
+        )
+
+    # 1c. Enforce Server-side check-in gate
     if config and config.psGateCheckpointTypeId:
-        team = db.query(Team).filter(Team.id == current_user.teamId).first()
         leader_member = db.query(TeamMember).filter(
             TeamMember.teamId == team.id, TeamMember.isTeamLeader == True
         ).first()
@@ -278,3 +304,82 @@ def select_problem_statement(
         "message": "Problem statement locked in successfully!",
         "psId": ps_id
     }
+
+
+# ==========================================
+# EVALUATION ROUNDS (LEADER SUBMISSION)
+# ==========================================
+
+@router.get("/evaluation-rounds")
+def get_evaluation_rounds_for_leader(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.LEADER))
+):
+    team = db.query(Team).filter(Team.id == current_user.teamId).first()
+    if not team:
+        raise HTTPException(status_code=400, detail="Team not found")
+
+    rounds = db.query(EvaluationRound).filter(EvaluationRound.eventId == current_user.eventId).order_by(EvaluationRound.roundNumber).all()
+    submissions = {s.roundId: s for s in db.query(Submission).filter(Submission.teamId == team.id).all()}
+
+    res = []
+    for r in rounds:
+        sub = submissions.get(r.id)
+        res.append({
+            "id": r.id,
+            "name": r.name,
+            "roundNumber": r.roundNumber,
+            "description": r.description,
+            "fields": r.fields or [],
+            "isOpen": r.isSubmissionOpen,
+            "submission": {
+                "id": sub.id,
+                "driveLink": sub.driveLink if sub else None,
+                "githubLink": sub.githubLink if sub else None,
+                "answers": sub.answers or {} if sub else {},
+                "submittedAt": sub.submittedAt.isoformat() if sub and sub.submittedAt else None,
+                "updatedAt": sub.updatedAt.isoformat() if sub and sub.updatedAt else None
+            } if sub else None
+        })
+    return res
+
+@router.post("/evaluation-rounds/{round_id}/submit")
+def submit_evaluation_round(
+    round_id: str,
+    payload: SubmissionCreate,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.LEADER))
+):
+    round_obj = db.query(EvaluationRound).filter(
+        EvaluationRound.id == round_id,
+        EvaluationRound.eventId == current_user.eventId
+    ).first()
+    if not round_obj:
+        raise HTTPException(status_code=404, detail="Evaluation round not found")
+
+    if not round_obj.isSubmissionOpen:
+        logger.warn(f"leader.submit_round Submission attempt on closed round: team={current_user.teamId} round={round_id}")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Submissions are closed for this round")
+
+    team_id = current_user.teamId
+    existing = db.query(Submission).filter(Submission.teamId == team_id, Submission.roundId == round_id).first()
+
+    if existing:
+        existing.driveLink = payload.driveLink
+        existing.githubLink = payload.githubLink
+        if payload.answers is not None:
+            existing.answers = payload.answers
+        logger.info(f"leader.submit_round Updated submission for team={team_id} round={round_id}")
+    else:
+        submission = Submission(
+            teamId=team_id,
+            roundId=round_id,
+            driveLink=payload.driveLink,
+            githubLink=payload.githubLink,
+            answers=payload.answers or {}
+        )
+        db.add(submission)
+        logger.info(f"leader.submit_round Created submission for team={team_id} round={round_id}")
+
+    db.commit()
+    return {"success": True}
