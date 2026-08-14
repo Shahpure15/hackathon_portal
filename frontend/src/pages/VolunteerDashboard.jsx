@@ -146,15 +146,35 @@ const VolunteerDashboard = () => {
 
     setMarkingMemberId(memberId);
     try {
-      await api.post('/volunteer/checkin', {
+      const res = await api.post('/volunteer/checkin', {
         teamMemberId: memberId,
         checkpointTypeId: activeCheckpointId
       });
       addToast(`${memberName} marked present!`, 'success');
-      // Refresh detailed data
-      await fetchDetailedTeam(selectedTeam.id);
-      // Refresh list to update verified counts
-      fetchTeams();
+      
+      const nowStr = new Date().toISOString();
+      setDetailedTeam(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          members: prev.members.map(m => {
+            if (m.id === memberId) {
+              const updatedCp = m.checkpoints ? [...m.checkpoints] : [];
+              const existingIdx = updatedCp.findIndex(cp => cp.checkpointTypeId === activeCheckpointId);
+              const cpObj = {
+                checkedIn: true,
+                checkpointTypeId: activeCheckpointId,
+                timestamp: res.data?.timestamp || nowStr,
+                markedBy: res.data?.markedBy || 'You'
+              };
+              if (existingIdx >= 0) updatedCp[existingIdx] = cpObj;
+              else updatedCp.push(cpObj);
+              return { ...m, checkpoints: updatedCp };
+            }
+            return m;
+          })
+        };
+      });
     } catch (err) {
       if (err.response?.status === 409) {
         addToast('Already checked in', 'info');

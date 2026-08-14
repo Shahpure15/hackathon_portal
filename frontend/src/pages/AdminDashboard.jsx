@@ -97,7 +97,7 @@ const AdminDashboard = () => {
           { id: 'pods', label: 'POD Groups', icon: <Layers size={16} /> },
           { id: 'panels', label: 'Panels', icon: <Layers size={16} /> },
           { id: 'evalRounds', label: 'Evaluation Rounds', icon: <FileText size={16} /> },
-          { id: 'volunteers', label: 'Volunteers', icon: <UserCheck size={16} /> },
+          { id: 'volunteers', label: 'People & Organizers', icon: <UserCheck size={16} /> },
           { id: 'checkpoints', label: 'Attendance Slots', icon: <FileText size={16} /> },
           { id: 'ps', label: 'Problem Statements', icon: <Layers size={16} /> }
         ]}
@@ -1762,10 +1762,24 @@ const CsvImportModal = ({ onClose }) => {
 // ==========================================
 // GENERIC CSV IMPORT MODAL COMPONENT
 // ==========================================
-const GenericCsvImportModal = ({ title, endpoint, templateHeaders, onSuccess, onClose }) => {
+const GenericCsvImportModal = ({ title, endpoint, previewEndpoint, confirmEndpoint, templateHeaders, onSuccess, onClose }) => {
   const { addToast } = useToast();
+
+  const [step, setStep] = useState(1); // 1: Upload, 2: Review & Resolve, 3: Credentials (if any)
   const [file, setFile] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+
+  // Preview data
+  const [importId, setImportId] = useState(null);
+  const [summary, setSummary] = useState({ new: 0, changed: 0, unchanged: 0, invalid: 0 });
+  const [changedRows, setChangedRows] = useState([]);
+  const [invalidRows, setInvalidRows] = useState([]);
+  const [decisions, setDecisions] = useState({}); // key -> "update" | "skip"
+  const [credentials, setCredentials] = useState([]);
+
+  const targetPreview = previewEndpoint || `${endpoint}/preview`;
+  const targetConfirm = confirmEndpoint || `${endpoint}/confirm`;
 
   const handleFileChange = (e) => {
     const selected = e.target.files[0];
@@ -1776,62 +1790,291 @@ const GenericCsvImportModal = ({ title, endpoint, templateHeaders, onSuccess, on
     }
   };
 
-  const handleUpload = async () => {
+  const handleAnalyze = async () => {
     if (!file) return;
-    setIsUploading(true);
+    setIsAnalyzing(true);
     const formData = new FormData();
     formData.append('file', file);
 
     try {
-      const res = await api.post(endpoint, formData, {
+      const res = await api.post(targetPreview, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      addToast(res.data.message || 'CSV imported successfully!', 'success');
-      onSuccess?.();
-      onClose();
+      setImportId(res.data.importId);
+      setSummary(res.data.summary || { new: 0, changed: 0, unchanged: 0, invalid: 0 });
+      setChangedRows(res.data.details?.changed || []);
+      setInvalidRows(res.data.details?.invalid || []);
+
+      const initialDecisions = {};
+      (res.data.details?.changed || []).forEach(row => {
+        const pkKey = row.code || row.contact || row.registrationId || row.name;
+        if (pkKey) initialDecisions[pkKey] = 'update';
+      });
+      setDecisions(initialDecisions);
+      setStep(2);
     } catch (err) {
-      addToast(err.response?.data?.detail || 'Failed to import CSV', 'error');
+      // Fallback for endpoints without preview API
+      try {
+        const singleRes = await api.post(endpoint, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        addToast(singleRes.data.message || 'CSV imported successfully!', 'success');
+        onSuccess?.();
+        onClose();
+      } catch (singleErr) {
+        addToast(singleErr.response?.data?.detail || err.response?.data?.detail || 'Failed to import CSV', 'error');
+      }
     } finally {
-      setIsUploading(false);
+      setIsAnalyzing(false);
     }
   };
 
+  const handleDecisionToggle = (pkKey) => {
+    setDecisions(prev => ({
+      ...prev,
+      [pkKey]: prev[pkKey] === 'update' ? 'skip' : 'update'
+    }));
+  };
+
+  const handleConfirm = async () => {
+    setIsConfirming(true);
+    try {
+      const res = await api.post(targetConfirm, decisions, {
+        params: { importId }
+      });
+      if (res.data.credentials && res.data.credentials.length > 0) {
+        setCredentials(res.data.credentials);
+        addToast('CSV data successfully imported!', 'success');
+        setStep(3);
+      } else {
+        addToast(res.data.message || 'CSV data successfully imported!', 'success');
+        onSuccess?.();
+        onClose();
+      }
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to confirm CSV import', 'error');
+    } finally {
+      setIsConfirming(false);
+    }
+  };
+
+  const handleDownloadCredentials = () => {
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "Name,Username,Generated Password\n";
+    credentials.forEach(cred => {
+      csvContent += `"${cred.name}","${cred.username}","${cred.password}"\n`;
+    });
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "generated_logins.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return createPortal(
-    <div className="modal-overlay-fade" style={{ zIndex: 1100 }}>
-      <div className="glass-card modal-scale-up" style={{ width: '100%', maxWidth: '580px', padding: '28px', position: 'relative' }}>
-        <button onClick={onClose} style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-          <X size={20} />
-        </button>
+    <div className="modal-overlay-fade" style={{ zIndex: 1100, background: 'rgba(0,0,0,0.5)' }}>
+      <div className="glass-card modal-scale-up" style={{ width: '100%', maxWidth: step === 2 ? '780px' : '580px', padding: '28px', position: 'relative' }}>
+        {step < 3 && (
+          <button onClick={onClose} style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+            <X size={20} />
+          </button>
+        )}
 
         <h2 className="panel-title text-gradient" style={{ fontSize: '1.6rem', marginBottom: '8px' }}>
           {title}
         </h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '20px' }}>
-          Upload a CSV file with columns: <code>{templateHeaders.join(', ')}</code>
-        </p>
 
-        <div
-          style={{ border: '2px dashed var(--border-strong)', borderRadius: '12px', padding: '36px 20px', textAlign: 'center', marginBottom: '20px', cursor: 'pointer', background: 'rgba(185, 111, 56, 0.02)' }}
-          onClick={() => document.getElementById('genCsvFile').click()}
-        >
-          <Upload size={32} style={{ color: 'var(--text-muted)', marginBottom: '12px' }} />
-          <p style={{ fontWeight: 600, fontSize: '0.9rem' }}>Click to select CSV file</p>
+        {/* STEP 1: UPLOAD */}
+        {step === 1 && (
+          <div>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '20px' }}>
+              Upload CSV file with columns: <code>{templateHeaders.join(', ')}</code>
+            </p>
 
-          {file && (
-            <div style={{ marginTop: '12px', background: 'var(--primary-glow)', border: '1px solid var(--border-focus)', display: 'inline-flex', padding: '4px 10px', borderRadius: '999px', fontSize: '0.8rem', color: 'var(--primary)' }}>
-              {file.name} ({(file.size / 1024).toFixed(1)} KB)
+            <div
+              style={{ border: '2px dashed var(--border-strong)', borderRadius: '12px', padding: '36px 20px', textAlign: 'center', marginBottom: '20px', cursor: 'pointer', background: 'rgba(185, 111, 56, 0.02)' }}
+              onClick={() => document.getElementById('genCsvFile').click()}
+            >
+              <Upload size={32} style={{ color: 'var(--text-muted)', marginBottom: '12px' }} />
+              <p style={{ fontWeight: 600, fontSize: '0.9rem' }}>Click to select CSV file</p>
+
+              {file && (
+                <div style={{ marginTop: '12px', background: 'var(--primary-glow)', border: '1px solid var(--border-focus)', display: 'inline-flex', padding: '4px 10px', borderRadius: '999px', fontSize: '0.8rem', color: 'var(--primary)' }}>
+                  {file.name} ({(file.size / 1024).toFixed(1)} KB)
+                </div>
+              )}
+
+              <input id="genCsvFile" type="file" accept=".csv" onChange={handleFileChange} style={{ display: 'none' }} />
             </div>
-          )}
 
-          <input id="genCsvFile" type="file" accept=".csv" onChange={handleFileChange} style={{ display: 'none' }} />
-        </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button onClick={onClose} className="btn btn-secondary touch-target" disabled={isAnalyzing}>Cancel</button>
+              <button onClick={handleAnalyze} className="btn btn-primary touch-target" disabled={!file || isAnalyzing}>
+                {isAnalyzing ? <span className="spinner"></span> : 'Analyze CSV'}
+              </button>
+            </div>
+          </div>
+        )}
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-          <button onClick={onClose} className="btn btn-secondary touch-target" disabled={isUploading}>Cancel</button>
-          <button onClick={handleUpload} className="btn btn-primary touch-target" disabled={!file || isUploading}>
-            {isUploading ? 'Importing...' : 'Upload & Import'}
-          </button>
-        </div>
+        {/* STEP 2: REVIEW & RESOLVE */}
+        {step === 2 && (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '20px' }}>
+              <div style={{ background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-strong)', borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>New Entries</span>
+                <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--primary)', marginTop: '2px' }}>{summary.new}</div>
+              </div>
+              <div style={{ background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-strong)', borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Changed Records</span>
+                <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--warning)', marginTop: '2px' }}>{summary.changed}</div>
+              </div>
+              <div style={{ background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-strong)', borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Unchanged</span>
+                <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-secondary)', marginTop: '2px' }}>{summary.unchanged}</div>
+              </div>
+              <div style={{ background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-strong)', borderRadius: '8px', padding: '10px', textAlign: 'center', borderColor: summary.invalid > 0 ? 'var(--danger)' : undefined }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Invalid</span>
+                <div style={{ fontSize: '1.4rem', fontWeight: 700, color: summary.invalid > 0 ? 'var(--danger)' : 'var(--text-muted)', marginTop: '2px' }}>{summary.invalid}</div>
+              </div>
+            </div>
+
+            {/* Error banner blocking confirm */}
+            {summary.invalid > 0 && (
+              <div className="toast toast-error" style={{ position: 'static', width: '100%', maxWidth: 'none', margin: '0 0 16px 0', borderLeft: '4px solid var(--danger)' }}>
+                <AlertCircle size={18} style={{ color: 'var(--danger)', flexShrink: 0 }} />
+                <div>
+                  <h4 style={{ fontWeight: 700, fontSize: '0.9rem' }}>Import Blocked</h4>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    The CSV file contains {summary.invalid} invalid rows. Please fix these in your file and re-upload.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Diffs & validation details container */}
+            <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid var(--border-light)', borderRadius: '10px', padding: '14px', marginBottom: '20px', background: 'rgba(0,0,0,0.03)' }}>
+              {invalidRows.length > 0 && (
+                <div style={{ marginBottom: '16px' }}>
+                  <h4 style={{ color: 'var(--danger)', fontSize: '0.85rem', display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '8px' }}>
+                    <AlertCircle size={14} /> Validation Errors ({invalidRows.length})
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {invalidRows.map((err, i) => (
+                      <div key={i} style={{ fontSize: '0.8rem', background: 'rgba(178, 58, 42, 0.05)', padding: '6px 10px', borderRadius: '6px', borderLeft: '3px solid var(--danger)' }}>
+                        Row {err.row}: <strong>{err.reason}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {changedRows.length > 0 && (
+                <div>
+                  <h4 style={{ color: 'var(--warning)', fontSize: '0.85rem', display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '10px' }}>
+                    <Info size={14} /> Review & Resolve Field Changes ({changedRows.length})
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {changedRows.map((row, idx) => {
+                      const pkKey = row.code || row.contact || row.registrationId || row.name;
+                      return (
+                        <div key={idx} style={{ border: '1px solid var(--border-light)', borderRadius: '8px', padding: '10px', background: 'rgba(255,255,255,0.02)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                            <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.name || row.code || pkKey}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleDecisionToggle(pkKey)}
+                              className={`btn ${decisions[pkKey] === 'update' ? 'btn-primary' : 'btn-secondary'}`}
+                              style={{ padding: '0 12px', fontSize: '0.75rem', borderRadius: '999px', minHeight: '26px', height: '26px' }}
+                            >
+                              {decisions[pkKey] === 'update' ? 'Will Update' : 'Will Skip'}
+                            </button>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', paddingLeft: '8px', borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
+                            {Object.entries(row.changes).map(([field, delta]) => (
+                              <div key={field} style={{ fontSize: '0.8rem' }}>
+                                <span style={{ color: 'var(--text-muted)' }}>{field}:</span>{' '}
+                                <del style={{ color: 'var(--danger)', opacity: 0.8, textDecoration: 'line-through', marginRight: '6px' }}>
+                                  {String(delta.from)}
+                                </del>{' '}
+                                <ins style={{ color: 'var(--success)', textDecoration: 'none', fontWeight: 600 }}>
+                                  {String(delta.to)}
+                                </ins>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {changedRows.length === 0 && invalidRows.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-muted)' }}>
+                  <CheckCircle size={32} style={{ color: 'var(--success)', marginBottom: '8px' }} />
+                  <p>All records are valid! {summary.new} new entries will be created.</p>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <button onClick={() => setStep(1)} className="btn btn-secondary touch-target">Back</button>
+              <button
+                onClick={handleConfirm}
+                className="btn btn-primary touch-target"
+                disabled={summary.invalid > 0 || isConfirming}
+              >
+                {isConfirming ? <span className="spinner"></span> : 'Confirm Import'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3: CREDENTIALS */}
+        {step === 3 && (
+          <div>
+            <div className="toast toast-success" style={{ position: 'static', width: '100%', maxWidth: 'none', margin: '0 0 20px 0', borderLeft: '4px solid var(--success)' }}>
+              <CheckCircle size={20} style={{ color: 'var(--success)' }} />
+              <div>
+                <h4 style={{ fontWeight: 700 }}>Import Completed!</h4>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                  User accounts have been generated. Download this credentials list now.
+                </p>
+              </div>
+            </div>
+
+            <div style={{ border: '1px solid var(--border-light)', borderRadius: '10px', overflow: 'hidden', marginBottom: '20px', maxHeight: '220px', overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--border-light)' }}>
+                    <th style={{ padding: '8px 14px', textAlign: 'left', color: 'var(--text-muted)' }}>Name</th>
+                    <th style={{ padding: '8px 14px', textAlign: 'left', color: 'var(--text-muted)' }}>Username</th>
+                    <th style={{ padding: '8px 14px', textAlign: 'left', color: 'var(--text-muted)' }}>Password</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {credentials.map((c, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                      <td style={{ padding: '8px 14px', fontWeight: 600 }}>{c.name}</td>
+                      <td style={{ padding: '8px 14px', fontFamily: 'monospace' }}>{c.username}</td>
+                      <td style={{ padding: '8px 14px', fontFamily: 'monospace', color: 'var(--primary)', fontWeight: 600 }}>{c.password}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <button onClick={handleDownloadCredentials} className="btn btn-secondary touch-target">
+                <Download size={16} />
+                Download Credentials CSV
+              </button>
+              <button onClick={() => { onSuccess?.(); onClose(); }} className="btn btn-primary touch-target">Finish & Close</button>
+            </div>
+          </div>
+        )}
       </div>
     </div>,
     document.body
@@ -3527,9 +3770,10 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
 
   // Form states
   const [name, setName] = useState('');
-  const [type, setType] = useState('STUDENT');
+  const [type, setType] = useState('FACULTY');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [remarks, setRemarks] = useState('');
   const [podId, setPodId] = useState('');
   const [generateLogin, setGenerateLogin] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -3537,8 +3781,57 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
   const [revokeConfirmState, setRevokeConfirmState] = useState(null);
   const [deleteConfirmState, setDeleteConfirmState] = useState(null);
 
+  const [peopleRoles, setPeopleRoles] = useState([
+    "Faculty Lead",
+    "Judge / Evaluator",
+    "Student Coordinator",
+    "Volunteer / Monitor",
+    "Event Organizer",
+    "Student Assistant"
+  ]);
+  const [showManageRolesModal, setShowManageRolesModal] = useState(false);
+  const [newRoleInput, setNewRoleInput] = useState('');
+
+  const fetchPeopleRoles = async () => {
+    try {
+      const res = await api.get('/admin/people-roles');
+      if (res.data && res.data.length > 0) {
+        setPeopleRoles(res.data);
+      }
+    } catch (err) {
+      // Keep defaults
+    }
+  };
+
   useEffect(() => {
-    if (showAddModal || showImportModal) {
+    fetchPeopleRoles();
+  }, []);
+
+  const handleAddRole = async () => {
+    const trimmed = newRoleInput.trim();
+    if (!trimmed) return;
+    try {
+      const res = await api.post('/admin/people-roles', { role: trimmed });
+      setPeopleRoles(res.data);
+      setNewRoleInput('');
+      addToast(`Added role "${trimmed}"`, 'success');
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to add role', 'error');
+    }
+  };
+
+  const handleDeleteRole = async (roleName) => {
+    try {
+      const res = await api.delete(`/admin/people-roles/${encodeURIComponent(roleName)}`);
+      setPeopleRoles(res.data);
+      addToast(`Removed role "${roleName}"`, 'success');
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to delete role', 'error');
+    }
+  };
+
+  useEffect(() => {
+    if (showAddModal || showImportModal || showManageRolesModal) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
@@ -3546,7 +3839,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
     return () => {
       document.body.style.overflow = '';
     };
-  }, [showAddModal, showImportModal]);
+  }, [showAddModal, showImportModal, showManageRolesModal]);
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
@@ -3571,9 +3864,52 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
       setTotal(res.data.total);
       setPages(res.data.pages);
     } catch (err) {
-      addToast('Failed to fetch volunteer list', 'error');
+      addToast('Failed to fetch organizers list', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingVolunteer, setEditingVolunteer] = useState(null);
+
+  const handleOpenEditModal = (v) => {
+    setEditingVolunteer(v);
+    setName(v.name || '');
+    setType(v.type || 'VOLUNTEER');
+    const { email: parsedEmail, phone: parsedPhone } = formatContact(v.contact || '');
+    setEmail(parsedEmail || v.contact || '');
+    setPhone(parsedPhone || '');
+    setRemarks(v.remarks || '');
+    setPodId(v.podId || '');
+    setShowEditModal(true);
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    if (!editingVolunteer || !name.trim() || !email.trim()) return;
+
+    setIsSaving(true);
+    try {
+      const combinedContact = phone.trim() ? `${email.trim()} | ${phone.trim()}` : email.trim();
+      const res = await api.patch(`/admin/volunteers/${editingVolunteer.id}`, {
+        name: name.trim(),
+        type,
+        contact: combinedContact,
+        remarks: remarks.trim() || null,
+        podId: podId || null
+      });
+      addToast('Updated details successfully!', 'success');
+      setShowEditModal(false);
+      setEditingVolunteer(null);
+
+      const updatedVol = res.data;
+      setVolunteers((prev) => prev.map((v) => (v.id === updatedVol.id ? updatedVol : v)));
+      fetchPodsPool();
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to update details', 'error');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -3588,13 +3924,14 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
         name: name.trim(),
         type,
         contact: combinedContact,
+        remarks: remarks.trim() || null,
         podId: podId || null,
         generateLogin: generateLogin
       });
-      addToast('Volunteer created successfully!', 'success');
+      addToast('Added successfully!', 'success');
       if (res.data.username && res.data.generatedPassword) {
         setCredentialsToShow({
-          title: 'Volunteer Created with Login Access',
+          title: 'Account Created with Login Access',
           username: res.data.username,
           password: res.data.generatedPassword
         });
@@ -3602,13 +3939,18 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
       setName('');
       setEmail('');
       setPhone('');
+      setRemarks('');
       setPodId('');
       setGenerateLogin(true);
       setShowAddModal(false);
-      fetchVolunteers();
+
+      // Optimistic append
+      const newVol = res.data;
+      setVolunteers((prev) => [newVol, ...prev]);
+      setTotal((prev) => prev + 1);
       fetchPodsPool();
     } catch (err) {
-      addToast(err.response?.data?.detail || 'Failed to add volunteer', 'error');
+      addToast(err.response?.data?.detail || 'Failed to add record', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -3624,7 +3966,9 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
         username: res.data.username,
         password: res.data.generatedPassword
       });
-      fetchVolunteers();
+      setVolunteers((prev) =>
+        prev.map((v) => (v.id === volId ? { ...v, hasLogin: true, username: res.data.username } : v))
+      );
     } catch (err) {
       addToast(err.response?.data?.detail || 'Failed to create login', 'error');
     }
@@ -3637,7 +3981,9 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
       await api.delete(`/admin/volunteers/${volId}/login`);
       addToast(`Login account revoked for ${volName}`, 'success');
       setRevokeConfirmState(null);
-      fetchVolunteers();
+      setVolunteers((prev) =>
+        prev.map((v) => (v.id === volId ? { ...v, hasLogin: false, username: null } : v))
+      );
     } catch (err) {
       addToast(err.response?.data?.detail || 'Failed to revoke login', 'error');
     }
@@ -3654,8 +4000,15 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
       await api.patch(`/admin/volunteers/${volId}`, {
         podId: newPodId || null
       });
-      addToast('Updated volunteer POD assignment', 'success');
-      fetchVolunteers();
+      addToast('Updated POD assignment', 'success');
+      const targetPod = pods.find((p) => p.id === newPodId);
+      setVolunteers((prev) =>
+        prev.map((v) =>
+          v.id === volId
+            ? { ...v, podId: newPodId || null, podName: targetPod ? targetPod.name : null }
+            : v
+        )
+      );
       fetchPodsPool();
     } catch (err) {
       addToast(err.response?.data?.detail || 'Failed to update assignment', 'error');
@@ -3667,12 +4020,13 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
     const { volId, volName } = deleteConfirmState;
     try {
       await api.delete(`/admin/volunteers/${volId}`);
-      addToast('Volunteer deleted successfully', 'success');
+      addToast('Person deleted successfully', 'success');
       setDeleteConfirmState(null);
-      fetchVolunteers();
+      setVolunteers((prev) => prev.filter((v) => v.id !== volId));
+      setTotal((prev) => Math.max(0, prev - 1));
       fetchPodsPool();
     } catch (err) {
-      addToast('Failed to delete volunteer', 'error');
+      addToast('Failed to delete person', 'error');
     }
   };
 
@@ -3710,18 +4064,39 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
     document.body.removeChild(link);
   };
 
+  const renderRoleBadge = (t) => {
+    const rolesMap = {
+      FACULTY: 'Faculty Lead',
+      JUDGE: 'Judge / Evaluator',
+      STUDENT_COORDINATOR: 'Student Coordinator',
+      VOLUNTEER: 'Volunteer / Monitor',
+      ORGANIZER: 'Event Organizer',
+      STUDENT: 'Student Assistant'
+    };
+    const displayLabel = rolesMap[t] || t || 'Member';
+    return (
+      <span style={{ fontSize: '0.75rem', background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8', border: '1px solid rgba(99, 102, 241, 0.3)', padding: '4px 8px', borderRadius: '6px', fontWeight: 700, display: 'inline-block' }}>
+        {displayLabel}
+      </span>
+    );
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Volunteers <span className="font-accent">Pool</span></h1>
+          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>People & Organizers <span className="font-accent">Directory</span></h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Faculty and student volunteers to monitor pods and physical check-ins.
+            Faculty leads, judges, student coordinators, volunteers, and event organizers.
           </p>
         </div>
 
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <button onClick={handleDownloadVolunteersTemplate} className="btn btn-secondary" title="Download Volunteers Import Template CSV">
+          <button onClick={() => setShowManageRolesModal(true)} className="btn btn-secondary" title="Manage Custom Roles">
+            <Layers size={16} />
+            Manage Roles
+          </button>
+          <button onClick={handleDownloadVolunteersTemplate} className="btn btn-secondary" title="Download Import Template CSV">
             <Download size={16} />
             Template CSV
           </button>
@@ -3734,7 +4109,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
             Export CSV
           </button>
           <button onClick={() => setShowAddModal(true)} className="btn btn-primary">
-            + Add Volunteer
+            + Add Person
           </button>
         </div>
       </div>
@@ -3746,7 +4121,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
             <Search size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             <input
               type="text"
-              placeholder="Search volunteers by name or contact details..."
+              placeholder="Search by name, contact or assignment remarks..."
               className="form-input"
               style={{ paddingLeft: '48px', width: '100%' }}
               value={search}
@@ -3754,16 +4129,17 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
             />
           </div>
 
-          <div style={{ flex: 1, minWidth: '150px' }}>
+          <div style={{ flex: 1, minWidth: '170px' }}>
             <select
               value={filters.type || ''}
               onChange={(e) => onFilterChange('type', e.target.value)}
               className="form-input"
               style={{ width: '100%', padding: '10px' }}
             >
-              <option value="">All Types</option>
-              <option value="FACULTY">Faculty</option>
-              <option value="STUDENT">Student</option>
+              <option value="">All Roles</option>
+              {peopleRoles.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
             </select>
           </div>
 
@@ -3799,31 +4175,34 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
       <DataTable
         columns={[
           {
-            header: 'Volunteer',
+            header: 'Name & Contact',
             accessor: 'name',
-            render: (v) => <div style={{ fontWeight: 600 }}>{v.name}</div>
-          },
-          {
-            header: 'Type',
-            accessor: 'type',
             render: (v) => (
-              <span style={{ fontSize: '0.75rem', background: v.type === 'FACULTY' ? 'rgba(99, 102, 241, 0.1)' : 'rgba(255,255,255,0.04)', color: v.type === 'FACULTY' ? 'var(--primary)' : 'var(--text-secondary)', padding: '3px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                {v.type}
-              </span>
+              <div>
+                <div style={{ fontWeight: 600 }}>{v.name}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                  {formatContact(v.contact).email || v.contact}
+                  {formatContact(v.contact).phone ? ` • ${formatContact(v.contact).phone}` : ''}
+                </div>
+              </div>
             )
           },
           {
-            header: 'Contact Details',
-            accessor: 'contact',
+            header: 'Role / Designation',
+            accessor: 'type',
+            render: (v) => renderRoleBadge(v.type)
+          },
+          {
+            header: 'Remarks / Notes',
+            accessor: 'remarks',
             render: (v) => (
-              <div>
-                <div>{formatContact(v.contact).email || v.contact}</div>
-                {formatContact(v.contact).phone && (
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                    {formatContact(v.contact).phone}
-                  </div>
-                )}
-              </div>
+              v.remarks ? (
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontStyle: 'italic', maxWidth: '240px', display: 'block' }}>
+                  {v.remarks}
+                </span>
+              ) : (
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>—</span>
+              )
             )
           },
           {
@@ -3834,7 +4213,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
                 value={v.podId || ''}
                 onChange={(e) => handleUpdatePodInline(v.id, e.target.value)}
                 className="form-input"
-                style={{ padding: '6px 12px', fontSize: '0.85rem', width: '180px' }}
+                style={{ padding: '6px 12px', fontSize: '0.85rem', width: '170px' }}
               >
                 <option value="">Unassigned</option>
                 {pods.map(p => (
@@ -3850,7 +4229,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
               v.hasLogin ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--success)' }}>
-                    Username: <code>{v.username}</code>
+                    User: <code>{v.username}</code>
                   </span>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button
@@ -3865,7 +4244,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
                       className="btn btn-secondary"
                       style={{ padding: '4px 8px', fontSize: '0.75rem', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)', minHeight: 0, height: 'auto' }}
                     >
-                      Revoke Login
+                      Revoke
                     </button>
                   </div>
                 </div>
@@ -3886,15 +4265,26 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
           {
             header: '',
             align: 'right',
-            width: '80px',
+            width: '100px',
             render: (v) => (
-              <button
-                onClick={() => setDeleteConfirmState({ isOpen: true, volId: v.id, volName: v.name })}
-                className="btn btn-secondary"
-                style={{ padding: '6px 10px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)' }}
-              >
-                ✕
-              </button>
+              <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => handleOpenEditModal(v)}
+                  className="btn btn-secondary"
+                  style={{ padding: '6px 10px' }}
+                  title="Edit details"
+                >
+                  <Edit2 size={14} />
+                </button>
+                <button
+                  onClick={() => setDeleteConfirmState({ isOpen: true, volId: v.id, volName: v.name })}
+                  className="btn btn-secondary"
+                  style={{ padding: '6px 10px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)' }}
+                  title="Delete"
+                >
+                  ✕
+                </button>
+              </div>
             )
           }
         ]}
@@ -3907,21 +4297,21 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
         emptyState={
           <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
             <UserCheck size={32} style={{ marginBottom: '12px' }} />
-            <p>No volunteers registered yet.</p>
+            <p>No organizers or people added yet.</p>
           </div>
         }
       />
 
-      {/* Add Volunteer Modal */}
-      {showAddModal && createPortal(
-        <div className="modal-overlay-fade" style={{ background: 'rgba(0,0,0,0)' }}>
-          <div className="glass-card modal-scale-up" style={{ width: '100%', maxWidth: '440px', padding: '24px', position: 'relative' }}>
-            <button onClick={() => setShowAddModal(false)} style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+      {/* Edit Person Modal */}
+      {showEditModal && createPortal(
+        <div className="modal-overlay-fade" style={{ background: 'rgba(0,0,0,0.5)' }}>
+          <div className="glass-card modal-scale-up" style={{ width: '100%', maxWidth: '480px', padding: '24px', position: 'relative' }}>
+            <button onClick={() => setShowEditModal(false)} style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
               <X size={20} />
             </button>
-            <h2 style={{ fontSize: '1.5rem', marginBottom: '16px' }} className="text-gradient">Add Volunteer</h2>
+            <h2 style={{ fontSize: '1.5rem', marginBottom: '16px' }} className="text-gradient">Edit Person / Organizer</h2>
 
-            <form onSubmit={handleAddSubmit}>
+            <form onSubmit={handleEditSubmit}>
               <div className="form-group">
                 <label className="form-label">Full Name</label>
                 <input
@@ -3936,10 +4326,11 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Volunteer Type</label>
+                <label className="form-label">Role Designation</label>
                 <select value={type} onChange={(e) => setType(e.target.value)} className="form-input" disabled={isSaving}>
-                  <option value="STUDENT">Student Volunteer</option>
-                  <option value="FACULTY">Faculty Mentor</option>
+                  {peopleRoles.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
                 </select>
               </div>
 
@@ -3968,8 +4359,113 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
                 />
               </div>
 
+              <div className="form-group">
+                <label className="form-label">Remarks / Assignment Notes</label>
+                <textarea
+                  placeholder="e.g. Evaluator for Pod A & B, judge for AI track"
+                  className="form-input"
+                  value={remarks}
+                  onChange={(e) => setRemarks(e.target.value)}
+                  rows={2}
+                  disabled={isSaving}
+                  style={{ width: '100%', resize: 'vertical' }}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="form-label">Assign to POD Group (Optional)</label>
+                <select value={podId} onChange={(e) => setPodId(e.target.value)} className="form-input" disabled={isSaving}>
+                  <option value="">Unassigned</option>
+                  {pods.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button type="button" onClick={() => setShowEditModal(false)} className="btn btn-secondary touch-target" disabled={isSaving}>Cancel</button>
+                <button type="submit" className="btn btn-primary touch-target" disabled={isSaving}>
+                  {isSaving ? <span className="spinner"></span> : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Add Person Modal */}
+      {showAddModal && createPortal(
+        <div className="modal-overlay-fade" style={{ background: 'rgba(0,0,0,0.5)' }}>
+          <div className="glass-card modal-scale-up" style={{ width: '100%', maxWidth: '480px', padding: '24px', position: 'relative' }}>
+            <button onClick={() => setShowAddModal(false)} style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+              <X size={20} />
+            </button>
+            <h2 style={{ fontSize: '1.5rem', marginBottom: '16px' }} className="text-gradient">Add Person / Organizer</h2>
+
+            <form onSubmit={handleAddSubmit}>
+              <div className="form-group">
+                <label className="form-label">Full Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Dr. John Doe"
+                  className="form-input"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                  disabled={isSaving}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Role Designation</label>
+                <select value={type} onChange={(e) => setType(e.target.value)} className="form-input" disabled={isSaving}>
+                  {peopleRoles.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Email Address</label>
+                <input
+                  type="email"
+                  placeholder="email@domain.com"
+                  className="form-input"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  disabled={isSaving}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Phone Number</label>
+                <input
+                  type="text"
+                  placeholder="e.g. +91 98765 43210"
+                  className="form-input"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  disabled={isSaving}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Remarks / Assignment Notes</label>
+                <textarea
+                  placeholder="e.g. Evaluator for Pod A & B, judge for AI track"
+                  className="form-input"
+                  value={remarks}
+                  onChange={(e) => setRemarks(e.target.value)}
+                  rows={2}
+                  disabled={isSaving}
+                  style={{ width: '100%', resize: 'vertical' }}
+                />
+              </div>
+
               <div className="form-group" style={{ marginBottom: '16px' }}>
-                <label className="form-label">Assign to POD (Optional)</label>
+                <label className="form-label">Assign to POD Group (Optional)</label>
                 <select value={podId} onChange={(e) => setPodId(e.target.value)} className="form-input" disabled={isSaving}>
                   <option value="">Unassigned</option>
                   {pods.map(p => (
@@ -3999,6 +4495,68 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Manage Custom Roles Modal */}
+      {showManageRolesModal && createPortal(
+        <div className="modal-overlay-fade" style={{ background: 'rgba(0,0,0,0.5)' }}>
+          <div className="glass-card modal-scale-up" style={{ width: '100%', maxWidth: '460px', padding: '24px', position: 'relative' }}>
+            <button onClick={() => setShowManageRolesModal(false)} style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+              <X size={20} />
+            </button>
+            <h2 style={{ fontSize: '1.4rem', marginBottom: '8px' }} className="text-gradient">Manage Custom Roles</h2>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '20px' }}>
+              Add or remove role designations available in dropdowns across the platform.
+            </p>
+
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+              <input
+                type="text"
+                placeholder="e.g. Technical Mentor, Guest Speaker"
+                className="form-input"
+                value={newRoleInput}
+                onChange={(e) => setNewRoleInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddRole(); } }}
+                style={{ flex: 1 }}
+              />
+              <button onClick={handleAddRole} className="btn btn-primary" style={{ padding: '0 16px', whiteSpace: 'nowrap' }}>
+                + Add Role
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto', paddingRight: '4px' }}>
+              {peopleRoles.map((roleName) => (
+                <div
+                  key={roleName}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justify: 'space-between',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)'
+                  }}
+                >
+                  <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{roleName}</span>
+                  <button
+                    onClick={() => handleDeleteRole(roleName)}
+                    className="btn btn-secondary"
+                    style={{ padding: '4px 8px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.2)' }}
+                    title="Remove Role"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowManageRolesModal(false)} className="btn btn-secondary">Done</button>
+            </div>
           </div>
         </div>,
         document.body

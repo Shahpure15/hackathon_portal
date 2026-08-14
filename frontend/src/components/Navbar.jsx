@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { LogOut, Menu, X, Sun, Moon } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { LogOut, Menu, X, Sun, Moon, ChevronLeft, ChevronRight } from 'lucide-react';
 import IconButton from './IconButton';
 import AmbientCursorGlow from './AmbientCursorGlow';
 import { useTheme } from '../contexts/ThemeContext';
@@ -17,11 +17,43 @@ export function Navbar({
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
   const { theme, toggleTheme } = useTheme();
 
+  const tabsRef = useRef(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkScroll = useCallback(() => {
+    if (tabsRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = tabsRef.current;
+      setCanScrollLeft(scrollLeft > 5);
+      setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 5);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkScroll();
+    const el = tabsRef.current;
+    if (el) {
+      el.addEventListener('scroll', checkScroll);
+      window.addEventListener('resize', checkScroll);
+      return () => {
+        el.removeEventListener('scroll', checkScroll);
+        window.removeEventListener('resize', checkScroll);
+      };
+    }
+  }, [checkScroll, navItems]);
+
+  const scrollTabs = (direction) => {
+    if (tabsRef.current) {
+      tabsRef.current.scrollBy({ left: direction * 220, behavior: 'smooth' });
+    }
+  };
+
   useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
       if (!mobile) setMobileOpen(false);
+      checkScroll();
     };
 
     let ticking = false;
@@ -41,7 +73,7 @@ export function Navbar({
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('scroll', handleScroll);
     };
-  }, []);
+  }, [checkScroll]);
 
   const handleNavClick = (tabId) => {
     setMobileOpen(false);
@@ -83,50 +115,110 @@ export function Navbar({
           )}
         </div>
 
-        {/* Center Section: Desktop Tabs (Smooth scrollable single row) */}
+        {/* Center Section: Desktop Tabs with Clickable Scroll Arrows */}
         {!isMobile && navItems.length > 0 && (
-          <div className="floating-nav-tabs">
-            {navItems.map((item) => {
-              const isActive = activeTab === item.id;
-              const isDisabled = !!item.disabled;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => {
-                    if (isDisabled) {
-                      item.onDisabledClick?.();
-                    } else {
-                      handleNavClick(item.id);
-                    }
-                  }}
-                  className={`btn tab-pill ${isActive ? 'btn-primary' : 'btn-secondary'}`}
-                  title={isDisabled ? item.disabledTitle || 'Not available' : undefined}
-                  style={{ 
-                    padding: '4px 10px', 
-                    border: 'none', 
-                    background: isActive ? undefined : 'transparent', 
-                    minHeight: 'auto', 
-                    height: '32px', 
-                    borderRadius: '999px', 
-                    fontSize: '0.78rem', 
-                    fontWeight: isActive ? 700 : 500,
-                    color: isActive ? undefined : isDisabled ? 'var(--text-muted)' : 'var(--text-secondary)',
-                    flexShrink: 0,
-                    whiteSpace: 'nowrap',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    opacity: isDisabled ? 0.5 : 1,
-                    cursor: isDisabled ? 'not-allowed' : 'pointer'
-                  }}
-                >
-                  {item.icon}
-                  <span>{item.label}</span>
-                  {isDisabled && item.disabledIcon}
-                </button>
-              );
-            })}
+          <div style={{ display: 'flex', alignItems: 'center', position: 'relative', overflow: 'hidden', flex: 1, minWidth: 0, margin: '0 4px' }}>
+            {canScrollLeft && (
+              <button
+                type="button"
+                onClick={() => scrollTabs(-1)}
+                title="Scroll navbar left"
+                style={{
+                  background: 'var(--primary-glow)',
+                  border: '1px solid var(--border-light)',
+                  borderRadius: '999px',
+                  width: '26px',
+                  height: '26px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: 'var(--primary)',
+                  marginRight: '4px',
+                  flexShrink: 0,
+                  backdropFilter: 'blur(8px)',
+                  WebkitBackdropFilter: 'blur(8px)',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+                  zIndex: 2,
+                  padding: 0
+                }}
+              >
+                <ChevronLeft size={14} />
+              </button>
+            )}
+
+            <div ref={tabsRef} className="floating-nav-tabs" style={{ scrollBehavior: 'smooth' }}>
+              {navItems.map((item) => {
+                const isActive = activeTab === item.id;
+                const isDisabled = !!item.disabled;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      if (isDisabled) {
+                        item.onDisabledClick?.();
+                      } else {
+                        handleNavClick(item.id);
+                      }
+                    }}
+                    className={`btn tab-pill ${isActive ? 'btn-primary' : 'btn-secondary'}`}
+                    title={isDisabled ? item.disabledTitle || 'Not available' : undefined}
+                    style={{ 
+                      padding: '4px 10px', 
+                      border: 'none', 
+                      background: isActive ? undefined : 'transparent', 
+                      minHeight: 'auto', 
+                      height: '32px', 
+                      borderRadius: '999px', 
+                      fontSize: '0.78rem', 
+                      fontWeight: isActive ? 700 : 500,
+                      color: isActive ? undefined : isDisabled ? 'var(--text-muted)' : 'var(--text-secondary)',
+                      flexShrink: 0,
+                      whiteSpace: 'nowrap',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      opacity: isDisabled ? 0.5 : 1,
+                      cursor: isDisabled ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {item.icon}
+                    <span>{item.label}</span>
+                    {isDisabled && item.disabledIcon}
+                  </button>
+                );
+              })}
+            </div>
+
+            {canScrollRight && (
+              <button
+                type="button"
+                onClick={() => scrollTabs(1)}
+                title="Scroll navbar right"
+                style={{
+                  background: 'var(--primary-glow)',
+                  border: '1px solid var(--border-light)',
+                  borderRadius: '999px',
+                  width: '26px',
+                  height: '26px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: 'var(--primary)',
+                  marginLeft: '4px',
+                  flexShrink: 0,
+                  backdropFilter: 'blur(8px)',
+                  WebkitBackdropFilter: 'blur(8px)',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+                  zIndex: 2,
+                  padding: 0
+                }}
+              >
+                <ChevronRight size={14} />
+              </button>
+            )}
           </div>
         )}
 

@@ -6,7 +6,6 @@ from sqlalchemy import text
 
 from app.config import settings
 from app.database import get_db, engine
-from app.models import Base
 from app.routers import auth, admin, leader, volunteer, ws
 from app.limiter import limiter
 from slowapi.errors import RateLimitExceeded
@@ -49,8 +48,11 @@ def startup_db_migration():
             conn.execute(text("ALTER TABLE evaluation_rounds ADD COLUMN IF NOT EXISTS description TEXT;"))
             conn.execute(text("ALTER TABLE evaluation_rounds ADD COLUMN IF NOT EXISTS fields JSONB DEFAULT '[]'::jsonb;"))
             conn.execute(text("ALTER TABLE submissions ADD COLUMN IF NOT EXISTS answers JSONB DEFAULT '{}'::jsonb;"))
+            conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS remarks TEXT;"))
+            conn.execute(text("ALTER TABLE volunteers ALTER COLUMN type TYPE VARCHAR(50);"))
+            conn.execute(text("ALTER TABLE event_configs ADD COLUMN IF NOT EXISTS \"peopleRoles\" JSONB DEFAULT '[]'::jsonb;"))
             conn.commit()
-            logger.info("Successfully executed startup schema migration for evaluation_rounds and submissions")
+            logger.info("Successfully executed startup schema migration for event_configs.peopleRoles")
     except Exception as e:
         logger.warning(f"Startup schema migration notice: {e}")
 

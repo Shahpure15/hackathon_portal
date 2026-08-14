@@ -32,7 +32,7 @@ const Modal = ({
   if (!isOpen) return null;
 
   const handleBackdropClick = (e) => {
-    if (modalRef.current && !modalRef.current.contains(e.target)) {
+    if (e.target === e.currentTarget) {
       onClose();
     }
   };

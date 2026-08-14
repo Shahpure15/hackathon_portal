@@ -175,8 +175,9 @@ class SubmissionResponse(BaseModel):
 # Volunteer Schemas
 class VolunteerBase(BaseModel):
     name: str
-    type: VolunteerType
+    type: str
     contact: str
+    remarks: Optional[str] = None
     podId: Optional[str] = None
 
 class VolunteerCreate(VolunteerBase):

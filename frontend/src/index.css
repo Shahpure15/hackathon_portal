@@ -109,15 +109,21 @@ h1, h2, h3, h4, h5, h6 {
 .glass-panel,
 .glass-card {
   position: relative;
-  background: rgba(253, 251, 247, 0.55);
-  backdrop-filter: blur(24px) saturate(200%) brightness(1.02);
+  background: rgba(253, 251, 247, 0.85);
   -webkit-backdrop-filter: blur(24px) saturate(200%) brightness(1.02);
-  border: 1px solid rgba(43, 33, 24, 0.10);
-  border-top-color: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 16px 40px -16px rgba(33, 26, 19, 0.18), inset 0 1px 1px rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(24px) saturate(200%) brightness(1.02);
+  border: 1px solid rgba(43, 33, 24, 0.12);
+  border-top-color: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 16px 40px -16px rgba(33, 26, 19, 0.14), inset 0 1px 1px rgba(255, 255, 255, 0.95);
   border-radius: var(--radius);
   transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.28s ease, background-color 0.28s ease;
-  overflow: hidden;
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .glass-panel,
+  .glass-card {
+    background: rgba(253, 251, 247, 0.96) !important;
+  }
 }
 
 .glass-panel::before,

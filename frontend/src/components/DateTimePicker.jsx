@@ -190,6 +190,8 @@ const DateTimePicker = ({
         backgroundColor: 'var(--bg-surface)',
         borderRadius: '16px',
       }}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
     >
       {/* Calendar Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', userSelect: 'none' }}>

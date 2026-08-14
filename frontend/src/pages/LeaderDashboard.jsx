@@ -191,6 +191,14 @@ const LeaderDashboard = () => {
       setTimeout(() => setUpdatedPsId(null), 800);
     } else if (data.type === 'checkin_update') {
       fetchVerificationStatus();
+    } else if (data.type === 'NEW_ROUND') {
+      addToast(`🎉 New Evaluation Round Added: "${data.roundName}"!`, 'info');
+      fetchEvalRounds?.();
+    } else if (data.type === 'ROUND_OPENED') {
+      addToast(`🚀 Evaluation Round ${data.roundNumber} ("${data.roundName}") is NOW OPEN for submissions!`, 'success');
+      fetchEvalRounds?.();
+    } else if (data.type === 'ROUND_UPDATED') {
+      fetchEvalRounds?.();
     }
   }, []);
 
@@ -255,7 +263,9 @@ const LeaderDashboard = () => {
     }
   };
 
-  // Countdown timer tick logic
+  // Countdown timer tick & units
+  const [countdownUnits, setCountdownUnits] = useState({ days: 0, hours: 0, mins: 0, secs: 0 });
+
   useEffect(() => {
     if (!psReleaseAt || isReleased) return;
 
@@ -269,13 +279,15 @@ const LeaderDashboard = () => {
         fetchProblemStatements();
         addToast('Problem statements are now released! Select your topic.', 'success');
       } else {
-        // Format countdown text
-        const hours = Math.floor(diff / (3600 * 1000));
+        // Format countdown text & units
+        const days = Math.floor(diff / (24 * 3600 * 1000));
+        const hours = Math.floor((diff % (24 * 3600 * 1000)) / (3600 * 1000));
         const mins = Math.floor((diff % (3600 * 1000)) / (60 * 1000));
         const secs = Math.floor((diff % (60 * 1000)) / 1000);
-        
+
+        setCountdownUnits({ days, hours, mins, secs });
         const pad = (n) => String(n).padStart(2, '0');
-        setCountdownText(`${pad(hours)}h : ${pad(mins)}m : ${pad(secs)}s`);
+        setCountdownText(`${days > 0 ? days + 'd ' : ''}${pad(hours)}h : ${pad(mins)}m : ${pad(secs)}s`);
       }
     }, 1000);
 
@@ -683,8 +695,25 @@ const LeaderDashboard = () => {
                         </p>
                         
                         {countdownText ? (
-                          <div style={{ fontSize: '2.5rem', fontWeight: 800, fontFamily: 'monospace', letterSpacing: '0.15em', background: 'var(--bg-main)', display: 'inline-block', padding: '16px 32px', borderRadius: '12px', border: '1px solid var(--border-light)' }}>
-                            {countdownText}
+                          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '16px', marginBottom: '8px' }}>
+                            {countdownUnits.days > 0 && (
+                              <div style={{ background: 'var(--cream)', border: '1px solid var(--border-strong)', borderRadius: '12px', padding: '10px 14px', textAlign: 'center', minWidth: '64px', flex: '1 1 60px', maxWidth: '84px' }}>
+                                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--primary)', lineHeight: 1.1 }}>{String(countdownUnits.days).padStart(2, '0')}</div>
+                                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginTop: '4px' }}>Days</div>
+                              </div>
+                            )}
+                            <div style={{ background: 'var(--cream)', border: '1px solid var(--border-strong)', borderRadius: '12px', padding: '10px 14px', textAlign: 'center', minWidth: '64px', flex: '1 1 60px', maxWidth: '84px' }}>
+                              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--primary)', lineHeight: 1.1 }}>{String(countdownUnits.hours).padStart(2, '0')}</div>
+                              <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginTop: '4px' }}>Hours</div>
+                            </div>
+                            <div style={{ background: 'var(--cream)', border: '1px solid var(--border-strong)', borderRadius: '12px', padding: '10px 14px', textAlign: 'center', minWidth: '64px', flex: '1 1 60px', maxWidth: '84px' }}>
+                              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--primary)', lineHeight: 1.1 }}>{String(countdownUnits.mins).padStart(2, '0')}</div>
+                              <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginTop: '4px' }}>Mins</div>
+                            </div>
+                            <div style={{ background: 'var(--cream)', border: '1px solid var(--border-strong)', borderRadius: '12px', padding: '10px 14px', textAlign: 'center', minWidth: '64px', flex: '1 1 60px', maxWidth: '84px' }}>
+                              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--primary)', lineHeight: 1.1 }}>{String(countdownUnits.secs).padStart(2, '0')}</div>
+                              <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginTop: '4px' }}>Secs</div>
+                            </div>
                           </div>
                         ) : (
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '10px 0' }}>

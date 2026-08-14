@@ -25,6 +25,10 @@ class TeamStatus(str, enum.Enum):
 
 class VolunteerType(str, enum.Enum):
     FACULTY = "FACULTY"
+    JUDGE = "JUDGE"
+    STUDENT_COORDINATOR = "STUDENT_COORDINATOR"
+    VOLUNTEER = "VOLUNTEER"
+    ORGANIZER = "ORGANIZER"
     STUDENT = "STUDENT"
 
 class Discipline(str, enum.Enum):
@@ -60,6 +64,7 @@ class EventConfig(Base):
     eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), unique=True, nullable=False)
     psReleaseAt = Column(DateTime, nullable=True)
     psGateCheckpointTypeId = Column(String(36), ForeignKey("checkpoint_types.id", ondelete="SET NULL"), nullable=True)
+    peopleRoles = Column(JSON, default=list, nullable=True)
 
     # Relationships
     event = relationship("Event", back_populates="config")
@@ -155,8 +160,9 @@ class Volunteer(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(255), nullable=False)
-    type = Column(Enum(VolunteerType, native_enum=False), nullable=False)
+    type = Column(String(100), default="VOLUNTEER", nullable=False)
     contact = Column(String(100), nullable=False)
+    remarks = Column(Text, nullable=True)
     podId = Column(String(36), ForeignKey("pods.id", ondelete="SET NULL"), nullable=True)
 
     # Relationships

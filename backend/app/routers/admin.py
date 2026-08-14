@@ -15,6 +15,8 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, and_, func
 
 import io
+import asyncio
+from app.websocket_manager import manager
 from app.database import get_db
 from app.logger import logger
 from app.models import (
@@ -194,6 +196,7 @@ async def get_teams(
         if team.psSelection:
             ps_code = team.psSelection.ps.code
             
+        cat_val = team.category.value if hasattr(team.category, 'value') else (team.category or "ENGINEERING")
         team_data = {
             "id": team.id,
             "eventId": team.eventId,
@@ -204,6 +207,8 @@ async def get_teams(
             "leaderPhone": team.leaderPhone,
             "collegeName": team.collegeName,
             "status": team.status,
+            "category": cat_val,
+            "deskNumber": team.deskNumber,
             "podId": team.podId,
             "podName": pod_name,
             "selectedPsCode": ps_code,
@@ -626,7 +631,9 @@ async def import_teams_confirm(
         # 1. Process New Teams
         for row in new_teams:
             reg_id = row["registrationId"]
-            
+            cat_val = row.get("category", "ENGINEERING")
+            cat_enum = Discipline.DESIGN if cat_val == "DESIGN" else Discipline.ENGINEERING
+
             # Create Team
             team = Team(
                 eventId=current_user.eventId,
@@ -636,7 +643,7 @@ async def import_teams_confirm(
                 leaderEmail=row["leaderEmail"],
                 leaderPhone=row["leaderPhone"],
                 collegeName=row["collegeName"],
-                category=Discipline(row.get("category", Discipline.ENGINEERING.value))
+                category=cat_enum
             )
             db.add(team)
             db.flush() # Populate team.id
@@ -691,11 +698,17 @@ async def import_teams_confirm(
             diff = {}
             
             # Log changes
-            for key in ["name", "leaderName", "leaderEmail", "leaderPhone", "collegeName"]:
+            for key in ["name", "leaderName", "leaderEmail", "leaderPhone", "collegeName", "category"]:
                 old_val = getattr(db_team, key)
-                if old_val != row[key]:
-                    diff[key] = {"from": old_val, "to": row[key]}
-                    setattr(db_team, key, row[key])
+                if hasattr(old_val, "value"):
+                    old_val = old_val.value
+                new_val = row[key]
+                if old_val != new_val:
+                    diff[key] = {"from": old_val, "to": new_val}
+                    if key == "category":
+                        setattr(db_team, key, Discipline.DESIGN if new_val == "DESIGN" else Discipline.ENGINEERING)
+                    else:
+                        setattr(db_team, key, new_val)
                     
             # Delete old team members and insert new ones
             db.query(TeamMember).filter(TeamMember.teamId == db_team.id).delete()
@@ -1114,6 +1127,8 @@ async def import_pods_preview(
             
     preview_data = {
         "new": [],
+        "changed": [],
+        "unchanged": [],
         "invalid": []
     }
     
@@ -1135,11 +1150,6 @@ async def import_pods_preview(
             continue
         unique_names.add(name.lower())
         
-        existing_pod = db.query(Pod).filter(Pod.name.ilike(name), Pod.eventId == current_user.eventId).first()
-        if existing_pod:
-            preview_data["invalid"].append({"row": row_num, "reason": f"POD Group '{name}' already exists in database"})
-            continue
-            
         capacity = None
         if capacity_raw is not None and pd.notna(capacity_raw) and str(capacity_raw).strip() != "":
             try:
@@ -1149,17 +1159,33 @@ async def import_pods_preview(
             except (ValueError, TypeError):
                 preview_data["invalid"].append({"row": row_num, "reason": f"Capacity must be a positive integer. Got '{capacity_raw}'"})
                 continue
-                
-        preview_data["new"].append({
-            "name": name,
-            "capacity": capacity,
-            "row": row_num
-        })
+        
+        existing_pod = db.query(Pod).filter(Pod.name.ilike(name), Pod.eventId == current_user.eventId).first()
+        if existing_pod:
+            changes = {}
+            if existing_pod.capacity != capacity:
+                changes["capacity"] = {"from": existing_pod.capacity, "to": capacity}
+            
+            if changes:
+                preview_data["changed"].append({
+                    "name": existing_pod.name,
+                    "changes": changes,
+                    "new_data": {"name": existing_pod.name, "capacity": capacity},
+                    "row": row_num
+                })
+            else:
+                preview_data["unchanged"].append({"name": existing_pod.name, "row": row_num})
+        else:
+            preview_data["new"].append({
+                "name": name,
+                "capacity": capacity,
+                "row": row_num
+            })
         
     pending = PendingImport(
         eventId=current_user.eventId,
         type="pod",
-        payload={"new": preview_data["new"]}
+        payload={"new": preview_data["new"], "changed": preview_data["changed"]}
     )
     db.add(pending)
     db.commit()
@@ -1168,9 +1194,12 @@ async def import_pods_preview(
         "importId": pending.id,
         "summary": {
             "new": len(preview_data["new"]),
+            "changed": len(preview_data["changed"]),
+            "unchanged": len(preview_data["unchanged"]),
             "invalid": len(preview_data["invalid"])
         },
         "details": {
+            "changed": preview_data["changed"],
             "invalid": preview_data["invalid"]
         }
     }
@@ -1179,6 +1208,7 @@ async def import_pods_preview(
 @router.post("/pods/import/confirm")
 async def import_pods_confirm(
     importId: str,
+    decisions: Optional[Dict[str, str]] = None,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
@@ -1192,8 +1222,11 @@ async def import_pods_confirm(
         
     payload = pending.payload
     new_pods = payload.get("new", [])
+    changed_pods = payload.get("changed", [])
+    decisions = decisions or {}
     
     try:
+        # 1. Insert new PODs
         for row in new_pods:
             pod = Pod(
                 eventId=current_user.eventId,
@@ -1202,9 +1235,19 @@ async def import_pods_confirm(
             )
             db.add(pod)
             
+        # 2. Update changed PODs
+        for item in changed_pods:
+            pod_name = item["name"]
+            if decisions.get(pod_name, "update") == "update":
+                pod = db.query(Pod).filter(Pod.name.ilike(pod_name), Pod.eventId == current_user.eventId).first()
+                if pod:
+                    new_data = item["new_data"]
+                    if "capacity" in new_data:
+                        pod.capacity = new_data["capacity"]
+            
         db.delete(pending)
         db.commit()
-        return {"message": f"Successfully imported {len(new_pods)} POD groups"}
+        return {"message": "Successfully processed POD groups import"}
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database write error: {str(e)}")
@@ -1356,8 +1399,9 @@ async def get_volunteers(
                 "id": v.id,
                 "eventId": v.eventId,
                 "name": v.name,
-                "type": v.type.value,
+                "type": v.type.value if hasattr(v.type, 'value') else str(v.type),
                 "contact": v.contact,
+                "remarks": v.remarks,
                 "podId": v.podId,
                 "podName": pod_name,
                 "username": user_rec.username if user_rec else None,
@@ -1382,14 +1426,74 @@ async def get_volunteers(
             "id": v.id,
             "eventId": v.eventId,
             "name": v.name,
-            "type": v.type.value,
+            "type": v.type.value if hasattr(v.type, 'value') else str(v.type),
             "contact": v.contact,
+            "remarks": v.remarks,
             "podId": v.podId,
             "podName": pod_name,
             "username": user_rec.username if user_rec else None,
             "hasLogin": user_rec is not None
         })
-    return results
+DEFAULT_PEOPLE_ROLES = [
+    "Faculty Lead",
+    "Judge / Evaluator",
+    "Student Coordinator",
+    "Volunteer / Monitor",
+    "Event Organizer",
+    "Student Assistant"
+]
+
+@router.get("/people-roles")
+def get_people_roles(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
+    if config and config.peopleRoles:
+        return config.peopleRoles
+    return DEFAULT_PEOPLE_ROLES
+
+@router.post("/people-roles")
+def add_people_role(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    role_name = str(payload.get("role", "")).strip()
+    if not role_name:
+        raise HTTPException(status_code=400, detail="Role name is required")
+
+    config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
+    if not config:
+        config = EventConfig(eventId=current_user.eventId, peopleRoles=DEFAULT_PEOPLE_ROLES)
+        db.add(config)
+        db.flush()
+
+    roles = list(config.peopleRoles or DEFAULT_PEOPLE_ROLES)
+    if role_name not in roles:
+        roles.append(role_name)
+        config.peopleRoles = roles
+        db.commit()
+    return roles
+
+@router.delete("/people-roles/{role_name}")
+def delete_people_role(
+    role_name: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
+    if not config:
+        config = EventConfig(eventId=current_user.eventId, peopleRoles=DEFAULT_PEOPLE_ROLES)
+        db.add(config)
+        db.flush()
+
+    roles = list(config.peopleRoles or DEFAULT_PEOPLE_ROLES)
+    if role_name in roles:
+        roles.remove(role_name)
+        config.peopleRoles = roles
+        db.commit()
+    return roles
 
 @router.post("/volunteers", response_model=VolunteerResponse)
 async def create_volunteer(
@@ -1400,15 +1504,13 @@ async def create_volunteer(
     name = str(payload.get("name", "")).strip()
     type_str = payload.get("type")
     contact = str(payload.get("contact", "")).strip()
+    remarks = str(payload.get("remarks", "")).strip() or None
     pod_id = payload.get("podId")
     
     if not name or not type_str or not contact:
         raise HTTPException(status_code=400, detail="Name, type, and contact are required")
         
-    try:
-        type_enum = VolunteerType(type_str)
-    except ValueError:
-        raise HTTPException(status_code=400, detail=f"Invalid volunteer type: {type_str}")
+    type_val = str(type_str).strip()
         
     if pod_id:
         pod = db.query(Pod).filter(Pod.id == pod_id, Pod.eventId == current_user.eventId).first()
@@ -1420,8 +1522,9 @@ async def create_volunteer(
     volunteer = Volunteer(
         eventId=current_user.eventId,
         name=name,
-        type=type_enum,
+        type=type_val,
         contact=contact,
+        remarks=remarks,
         podId=pod_id or None
     )
     db.add(volunteer)
@@ -1452,10 +1555,11 @@ async def create_volunteer(
         name=volunteer.name,
         type=volunteer.type,
         contact=volunteer.contact,
+        remarks=volunteer.remarks,
         podId=volunteer.podId,
         podName=pod_name,
         username=generated_username,
-        hasLogin=generate_login,
+        hasLogin=generated_username is not None,
         generatedPassword=generated_password
     )
 
@@ -1468,7 +1572,7 @@ async def update_volunteer(
 ):
     volunteer = db.query(Volunteer).filter(Volunteer.id == volunteer_id, Volunteer.eventId == current_user.eventId).first()
     if not volunteer:
-        raise HTTPException(status_code=404, detail="Volunteer not found")
+        raise HTTPException(status_code=404, detail="Volunteer/Person not found")
         
     diff = {}
     if "name" in payload:
@@ -1480,13 +1584,10 @@ async def update_volunteer(
             volunteer.name = name
             
     if "type" in payload:
-        try:
-            new_type = VolunteerType(payload["type"])
-            if volunteer.type != new_type:
-                diff["type"] = {"from": volunteer.type, "to": new_type}
-                volunteer.type = new_type
-        except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid type: {payload['type']}")
+        new_type = str(payload["type"]).strip()
+        if volunteer.type != new_type:
+            diff["type"] = {"from": volunteer.type, "to": new_type}
+            volunteer.type = new_type
             
     if "contact" in payload:
         contact = str(payload["contact"]).strip()
@@ -1495,6 +1596,12 @@ async def update_volunteer(
         if volunteer.contact != contact:
             diff["contact"] = {"from": volunteer.contact, "to": contact}
             volunteer.contact = contact
+
+    if "remarks" in payload:
+        remarks = str(payload["remarks"]).strip() or None
+        if volunteer.remarks != remarks:
+            diff["remarks"] = {"from": volunteer.remarks, "to": remarks}
+            volunteer.remarks = remarks
             
     if "podId" in payload:
         pod_id = payload["podId"]
@@ -1518,6 +1625,7 @@ async def update_volunteer(
         name=volunteer.name,
         type=volunteer.type,
         contact=volunteer.contact,
+        remarks=volunteer.remarks,
         podId=volunteer.podId,
         podName=pod_name
     )
@@ -1695,48 +1803,86 @@ async def import_volunteers_preview(
         raise HTTPException(status_code=400, detail=f"Error parsing CSV: {str(e)}")
         
     # Check headers
-    required = ["name", "type", "contact"]
+    required = ["name", "contact"]
     for col in required:
         if col not in df.columns:
             raise HTTPException(status_code=400, detail=f"Missing column: {col}")
             
     preview_data = {
         "new": [],
+        "changed": [],
+        "unchanged": [],
         "invalid": []
     }
+    
+    valid_types = [t.value for t in VolunteerType]
+    unique_contacts = set()
     
     for index, row_series in df.iterrows():
         row = row_series.to_dict()
         row_num = index + 1
         
         name = str(row.get("name", "")).strip()
-        type_str = str(row.get("type", "")).strip().upper()
+        type_str = str(row.get("type", "VOLUNTEER")).strip().upper()
         contact = str(row.get("contact", "")).strip()
+        remarks = str(row.get("remarks", "")).strip() if row.get("remarks") is not None and pd.notna(row.get("remarks")) else None
+        if remarks == "nan" or not remarks:
+            remarks = None
         
         if not name or name.lower() == "nan":
             preview_data["invalid"].append({"row": row_num, "reason": "Missing Name"})
             continue
             
-        if not type_str or type_str.lower() == "nan" or type_str not in ["FACULTY", "STUDENT"]:
-            preview_data["invalid"].append({"row": row_num, "reason": f"Type must be FACULTY or STUDENT. Got '{type_str}'"})
-            continue
+        if type_str not in valid_types:
+            type_str = "VOLUNTEER"
             
         if not contact or contact.lower() == "nan":
             preview_data["invalid"].append({"row": row_num, "reason": "Missing Contact Info"})
             continue
             
-        # Prep row payload
-        preview_data["new"].append({
-            "name": name,
-            "type": type_str,
-            "contact": contact,
-            "row": row_num
-        })
+        if contact.lower() in unique_contacts:
+            preview_data["invalid"].append({"row": row_num, "reason": f"Duplicate contact '{contact}' inside the CSV itself"})
+            continue
+        unique_contacts.add(contact.lower())
+        
+        # Primary Key match by contact
+        existing_vol = db.query(Volunteer).filter(
+            Volunteer.contact.ilike(contact),
+            Volunteer.eventId == current_user.eventId
+        ).first()
+        
+        if existing_vol:
+            changes = {}
+            if existing_vol.name != name:
+                changes["name"] = {"from": existing_vol.name, "to": name}
+            if existing_vol.type.value != type_str:
+                changes["type"] = {"from": existing_vol.type.value, "to": type_str}
+            if (existing_vol.remarks or "") != (remarks or ""):
+                changes["remarks"] = {"from": existing_vol.remarks or "None", "to": remarks or "None"}
+                
+            if changes:
+                preview_data["changed"].append({
+                    "name": existing_vol.name,
+                    "contact": contact,
+                    "changes": changes,
+                    "new_data": {"name": name, "type": type_str, "contact": contact, "remarks": remarks},
+                    "row": row_num
+                })
+            else:
+                preview_data["unchanged"].append({"name": existing_vol.name, "contact": contact, "row": row_num})
+        else:
+            preview_data["new"].append({
+                "name": name,
+                "type": type_str,
+                "contact": contact,
+                "remarks": remarks,
+                "row": row_num
+            })
         
     pending = PendingImport(
         eventId=current_user.eventId,
         type="volunteer",
-        payload={"new": preview_data["new"]}
+        payload={"new": preview_data["new"], "changed": preview_data["changed"]}
     )
     db.add(pending)
     db.commit()
@@ -1745,9 +1891,12 @@ async def import_volunteers_preview(
         "importId": pending.id,
         "summary": {
             "new": len(preview_data["new"]),
+            "changed": len(preview_data["changed"]),
+            "unchanged": len(preview_data["unchanged"]),
             "invalid": len(preview_data["invalid"])
         },
         "details": {
+            "changed": preview_data["changed"],
             "invalid": preview_data["invalid"]
         }
     }
@@ -1755,6 +1904,7 @@ async def import_volunteers_preview(
 @router.post("/volunteers/import/confirm")
 async def import_volunteers_confirm(
     importId: str,
+    decisions: Optional[Dict[str, str]] = None,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
@@ -1768,20 +1918,23 @@ async def import_volunteers_confirm(
         
     payload = pending.payload
     new_volunteers = payload.get("new", [])
+    changed_volunteers = payload.get("changed", [])
+    decisions = decisions or {}
     generated_credentials = []
     
     try:
+        # 1. Add new volunteers
         for row in new_volunteers:
             v = Volunteer(
                 eventId=current_user.eventId,
                 name=row["name"],
                 type=VolunteerType(row["type"]),
-                contact=row["contact"]
+                contact=row["contact"],
+                remarks=row.get("remarks")
             )
             db.add(v)
-            db.flush() # Populate ID
+            db.flush()
             
-            # Generate Login
             gen_username = generate_unique_volunteer_username(db, v.name)
             gen_password = generate_random_password()
             
@@ -1799,8 +1952,26 @@ async def import_volunteers_confirm(
                 "password": gen_password
             })
             
+        # 2. Update changed volunteers
+        for item in changed_volunteers:
+            contact = item["contact"]
+            if decisions.get(contact, "update") == "update":
+                vol = db.query(Volunteer).filter(
+                    Volunteer.contact.ilike(contact),
+                    Volunteer.eventId == current_user.eventId
+                ).first()
+                if vol:
+                    new_data = item["new_data"]
+                    vol.name = new_data["name"]
+                    vol.type = VolunteerType(new_data["type"])
+                    vol.remarks = new_data.get("remarks")
+            
         db.delete(pending)
         db.commit()
+        return {"credentials": generated_credentials, "message": "Successfully processed People & Organizers import"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database write error: {str(e)}")
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database write error: {str(e)}")
@@ -2014,6 +2185,8 @@ async def import_problem_statements_preview(
             
     preview_data = {
         "new": [],
+        "changed": [],
+        "unchanged": [],
         "invalid": []
     }
     
@@ -2056,19 +2229,52 @@ async def import_problem_statements_preview(
             preview_data["invalid"].append({"row": row_num, "reason": f"Capacity must be a positive integer. Got '{capacity_raw}'"})
             continue
             
-        preview_data["new"].append({
-            "code": code,
-            "title": title,
-            "description": description,
-            "capacity": capacity,
-            "requirements": requirements,
-            "row": row_num
-        })
+        existing_ps = db.query(ProblemStatement).filter(
+            ProblemStatement.code == code,
+            ProblemStatement.eventId == current_user.eventId
+        ).first()
+        
+        if existing_ps:
+            changes = {}
+            if existing_ps.title != title:
+                changes["title"] = {"from": existing_ps.title, "to": title}
+            if existing_ps.description != description:
+                changes["description"] = {"from": existing_ps.description, "to": description}
+            if existing_ps.capacity != capacity:
+                changes["capacity"] = {"from": existing_ps.capacity, "to": capacity}
+            if (existing_ps.requirements or "") != (requirements or ""):
+                changes["requirements"] = {"from": existing_ps.requirements or "None", "to": requirements or "None"}
+                
+            if changes:
+                preview_data["changed"].append({
+                    "code": code,
+                    "title": existing_ps.title,
+                    "changes": changes,
+                    "new_data": {
+                        "code": code,
+                        "title": title,
+                        "description": description,
+                        "capacity": capacity,
+                        "requirements": requirements
+                    },
+                    "row": row_num
+                })
+            else:
+                preview_data["unchanged"].append({"code": code, "title": existing_ps.title, "row": row_num})
+        else:
+            preview_data["new"].append({
+                "code": code,
+                "title": title,
+                "description": description,
+                "capacity": capacity,
+                "requirements": requirements,
+                "row": row_num
+            })
         
     pending = PendingImport(
         eventId=current_user.eventId,
         type="ps",
-        payload={"new": preview_data["new"]}
+        payload={"new": preview_data["new"], "changed": preview_data["changed"]}
     )
     db.add(pending)
     db.commit()
@@ -2077,9 +2283,12 @@ async def import_problem_statements_preview(
         "importId": pending.id,
         "summary": {
             "new": len(preview_data["new"]),
+            "changed": len(preview_data["changed"]),
+            "unchanged": len(preview_data["unchanged"]),
             "invalid": len(preview_data["invalid"])
         },
         "details": {
+            "changed": preview_data["changed"],
             "invalid": preview_data["invalid"]
         }
     }
@@ -2087,6 +2296,7 @@ async def import_problem_statements_preview(
 @router.post("/problem-statements/import/confirm")
 async def import_problem_statements_confirm(
     importId: str,
+    decisions: Optional[Dict[str, str]] = None,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
@@ -2100,8 +2310,11 @@ async def import_problem_statements_confirm(
         
     payload = pending.payload
     new_statements = payload.get("new", [])
+    changed_statements = payload.get("changed", [])
+    decisions = decisions or {}
     
     try:
+        # 1. Add new PS records
         for row in new_statements:
             ps = ProblemStatement(
                 eventId=current_user.eventId,
@@ -2113,13 +2326,27 @@ async def import_problem_statements_confirm(
             )
             db.add(ps)
             
+        # 2. Update changed PS records
+        for item in changed_statements:
+            ps_code = item["code"]
+            if decisions.get(ps_code, "update") == "update":
+                ps = db.query(ProblemStatement).filter(
+                    ProblemStatement.code == ps_code,
+                    ProblemStatement.eventId == current_user.eventId
+                ).first()
+                if ps:
+                    new_data = item["new_data"]
+                    ps.title = new_data["title"]
+                    ps.description = new_data["description"]
+                    ps.capacity = new_data["capacity"]
+                    ps.requirements = new_data.get("requirements")
+            
         db.delete(pending)
         db.commit()
+        return {"message": "Successfully processed Problem Statements import"}
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database write error: {str(e)}")
-        
-    return {"message": f"Successfully imported {len(new_statements)} problem statements"}
 
 @router.get("/problem-statements/{ps_id}/teams")
 async def get_ps_selected_teams(
@@ -2614,6 +2841,17 @@ def create_evaluation_round(
     db.commit()
     db.refresh(round_obj)
     logger.info(f"Created Evaluation Round '{round_obj.name}' (Number: {round_obj.roundNumber})")
+    
+    try:
+        asyncio.create_task(manager.broadcast(current_user.eventId, {
+            "type": "NEW_ROUND",
+            "roundId": round_obj.id,
+            "roundName": round_obj.name,
+            "roundNumber": round_obj.roundNumber
+        }))
+    except Exception as e:
+        logger.warning(f"Failed to broadcast NEW_ROUND event: {e}")
+
     return EvaluationRoundResponse(
         id=round_obj.id,
         eventId=round_obj.eventId,
@@ -2640,6 +2878,7 @@ def update_evaluation_round(
     if not round_obj:
         raise HTTPException(status_code=404, detail="Evaluation round not found")
 
+    was_open = round_obj.isSubmissionOpen
     if payload.name is not None:
         round_obj.name = payload.name
     if payload.roundNumber is not None:
@@ -2654,6 +2893,25 @@ def update_evaluation_round(
     db.commit()
     db.refresh(round_obj)
     logger.info(f"Updated Evaluation Round '{round_obj.name}' (isOpen={round_obj.isSubmissionOpen})")
+
+    try:
+        if not was_open and round_obj.isSubmissionOpen:
+            asyncio.create_task(manager.broadcast(current_user.eventId, {
+                "type": "ROUND_OPENED",
+                "roundId": round_obj.id,
+                "roundName": round_obj.name,
+                "roundNumber": round_obj.roundNumber
+            }))
+        else:
+            asyncio.create_task(manager.broadcast(current_user.eventId, {
+                "type": "ROUND_UPDATED",
+                "roundId": round_obj.id,
+                "roundName": round_obj.name,
+                "roundNumber": round_obj.roundNumber,
+                "isSubmissionOpen": round_obj.isSubmissionOpen
+            }))
+    except Exception as e:
+        logger.warning(f"Failed to broadcast round update event: {e}")
     count = db.query(Submission).filter(Submission.roundId == round_obj.id).count()
     return EvaluationRoundResponse(
         id=round_obj.id,
