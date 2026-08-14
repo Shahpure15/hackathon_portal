@@ -246,15 +246,15 @@ export function Navbar({
               </button>
             </>
           ) : (
-            <IconButton
-              size="36px"
+            <button
+              type="button"
               onClick={() => setMobileOpen(!mobileOpen)}
               title="Toggle Menu"
-              aria-label="Toggle Menu"
-              style={{ background: 'rgba(255,255,255,0.2)', border: '1px solid var(--border-light)' }}
+              className="mobile-navbar-toggle"
             >
-              {mobileOpen ? <X size={18} /> : <Menu size={18} />}
-            </IconButton>
+              {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+              <span className="mobile-navbar-toggle-label">Menu</span>
+            </button>
           )}
         </div>
       </nav>
@@ -264,6 +264,7 @@ export function Navbar({
         <>
           <div 
             onClick={() => setMobileOpen(false)}
+            className="modal-overlay-fade"
             style={{
               position: 'fixed',
               inset: 0,

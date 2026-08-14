@@ -110,7 +110,7 @@ def get_leader_team_info(
             "mentors": [
                 {
                     "name": m.name,
-                    "type": m.type.value,
+                    "type": m.type.value if hasattr(m.type, 'value') else str(m.type or ""),
                     "contact": m.contact
                 } for m in mentors
             ]

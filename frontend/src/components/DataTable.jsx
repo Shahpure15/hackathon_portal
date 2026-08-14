@@ -1,25 +1,62 @@
-import React from 'react';
-import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react';
+import React, { useState } from 'react';
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ArrowUpDown } from 'lucide-react';
 
 const DataTable = ({
   columns,
-  data,
+  data = [],
   page = 1,
   pages = 1,
   totalCount = 0,
   onPageChange,
-  sortKey,
-  sortDir,
+  sortKey: propSortKey,
+  sortDir: propSortDir,
   onSortChange,
   loading = false,
   emptyState,
   hideTopPagination = false
 }) => {
-  const handleHeaderClick = (col) => {
-    if (!col.sortable || !onSortChange) return;
-    const newDir = sortKey === col.accessor && sortDir === 'asc' ? 'desc' : 'asc';
-    onSortChange(col.accessor, newDir);
+  const [internalSortKey, setInternalSortKey] = useState(propSortKey || '');
+  const [internalSortDir, setInternalSortDir] = useState(propSortDir || 'asc');
+
+  const currentSortKey = propSortKey !== undefined && propSortKey !== '' ? propSortKey : internalSortKey;
+  const currentSortDir = propSortDir !== undefined && propSortDir !== '' ? propSortDir : internalSortDir;
+
+  const isColSortable = (col) => {
+    if (col.sortable === false) return false;
+    if (!col.accessor || col.accessor === 'checkbox' || col.accessor === 'actions') return false;
+    return true;
   };
+
+  const handleHeaderClick = (col) => {
+    if (!isColSortable(col)) return;
+    const nextDir = currentSortKey === col.accessor && currentSortDir === 'asc' ? 'desc' : 'asc';
+    
+    if (onSortChange) {
+      onSortChange(col.accessor, nextDir);
+    }
+    setInternalSortKey(col.accessor);
+    setInternalSortDir(nextDir);
+  };
+
+  const getSortValue = (item, accessor) => {
+    if (!item || !accessor) return '';
+    const val = item[accessor];
+    if (val === null || val === undefined) return '';
+    if (typeof val === 'number') return val;
+    if (typeof val === 'boolean') return val ? 1 : 0;
+    return String(val).toLowerCase();
+  };
+
+  const sortedData = React.useMemo(() => {
+    if (!currentSortKey || !data || data.length === 0) return data;
+    return [...data].sort((a, b) => {
+      const valA = getSortValue(a, currentSortKey);
+      const valB = getSortValue(b, currentSortKey);
+      if (valA < valB) return currentSortDir === 'asc' ? -1 : 1;
+      if (valA > valB) return currentSortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [data, currentSortKey, currentSortDir]);
 
   const renderPagination = (isTop = false) => {
     if (pages <= 1) return null;
@@ -119,7 +156,7 @@ const DataTable = ({
               </tbody>
             </table>
           </div>
-        ) : !data || data.length === 0 ? (
+        ) : !sortedData || sortedData.length === 0 ? (
           <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
             {emptyState || <p>No records found.</p>}
           </div>
@@ -128,35 +165,46 @@ const DataTable = ({
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-light)', background: 'rgba(255,255,255,0.01)' }}>
-                  {columns.map((col, idx) => (
-                    <th
-                      key={idx}
-                      onClick={() => handleHeaderClick(col)}
-                      style={{
-                        padding: '16px 24px',
-                        fontSize: '0.8rem',
-                        color: 'var(--text-muted)',
-                        textTransform: 'uppercase',
-                        cursor: col.sortable ? 'pointer' : 'default',
-                        userSelect: 'none',
-                        width: col.width || 'auto',
-                        textAlign: col.align || 'left'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: col.align === 'right' ? 'flex-end' : 'flex-start' }}>
-                        <span>{col.header}</span>
-                        {col.sortable && (
-                          <div style={{ display: 'flex', flexDirection: 'column', color: sortKey === col.accessor ? 'var(--primary)' : 'var(--text-muted)', opacity: sortKey === col.accessor ? 1 : 0.4 }}>
-                            {sortKey === col.accessor && sortDir === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
-                          </div>
-                        )}
-                      </div>
-                    </th>
-                  ))}
+                  {columns.map((col, idx) => {
+                    const sortable = isColSortable(col);
+                    const isActiveSort = currentSortKey === col.accessor;
+                    return (
+                      <th
+                        key={idx}
+                        onClick={() => handleHeaderClick(col)}
+                        style={{
+                          padding: '16px 24px',
+                          fontSize: '0.8rem',
+                          color: isActiveSort ? 'var(--primary)' : 'var(--text-muted)',
+                          fontWeight: isActiveSort ? 700 : 600,
+                          textTransform: 'uppercase',
+                          cursor: sortable ? 'pointer' : 'default',
+                          userSelect: 'none',
+                          width: col.width || 'auto',
+                          textAlign: col.align || 'left',
+                          transition: 'color 0.15s ease'
+                        }}
+                        title={sortable ? `Click to sort by ${col.header}` : undefined}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: col.align === 'right' ? 'flex-end' : 'flex-start' }}>
+                          <span>{col.header}</span>
+                          {sortable && (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', color: isActiveSort ? 'var(--primary)' : 'var(--text-muted)', opacity: isActiveSort ? 1 : 0.35 }}>
+                              {isActiveSort ? (
+                                currentSortDir === 'desc' ? <ChevronDown size={14} /> : <ChevronUp size={14} />
+                              ) : (
+                                <ArrowUpDown size={12} />
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
-                {data.map((row, rowIdx) => (
+                {sortedData.map((row, rowIdx) => (
                   <tr key={row.id || rowIdx} style={{ borderBottom: '1px solid var(--border-light)' }}>
                     {columns.map((col, colIdx) => (
                       <td

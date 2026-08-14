@@ -445,49 +445,48 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
   };
 
   return (
-    <div>
-      {/* Top Header Row */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
-          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Teams <span className="font-accent">Directory</span></h1>
-          <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Roster of {total} registered teams, statuses, and pod groupings.
-          </p>
-        </div>
+    <div style={{ marginBottom: '28px' }}>
+      {/* Title Section */}
+      <div style={{ marginBottom: '16px' }}>
+        <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Teams <span className="font-accent">Directory</span></h1>
+        <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
+          Roster of {total} registered teams, statuses, and pod groupings.
+        </p>
+      </div>
 
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <button onClick={handleDownloadTeamsTemplate} className="btn btn-secondary" title="Download Teams Import Template CSV">
-            <Download size={16} />
-            Template CSV
-          </button>
-          <button onClick={handleExport} className="btn btn-secondary">
-            <Download size={16} />
-            Export CSV
-          </button>
-          <button onClick={async () => {
-            try {
-              const res = await api.get('/admin/evaluation-sheet/export', { responseType: 'blob' });
-              const url = window.URL.createObjectURL(new Blob([res.data]));
-              const link = document.createElement('a');
-              link.href = url;
-              link.setAttribute('download', 'evaluation_roster.csv');
-              document.body.appendChild(link);
-              link.click();
-              link.remove();
-              window.URL.revokeObjectURL(url);
-              addToast('Evaluation roster downloaded!', 'success');
-            } catch (err) {
-              addToast('Failed to export evaluation roster', 'error');
-            }
-          }} className="btn btn-secondary">
-            <Download size={16} />
-            Evaluation Sheet CSV
-          </button>
-          <button onClick={() => setShowImportModal(true)} className="btn btn-primary">
-            <Upload size={16} />
-            Import CSV
-          </button>
-        </div>
+      {/* Action Grid Toolbar */}
+      <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
+        <button onClick={handleDownloadTeamsTemplate} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download Teams Import Template CSV">
+          <Download size={16} />
+          Template CSV
+        </button>
+        <button onClick={handleExport} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <Download size={16} />
+          Export CSV
+        </button>
+        <button onClick={async () => {
+          try {
+            const res = await api.get('/admin/evaluation-sheet/export', { responseType: 'blob' });
+            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', 'evaluation_roster.csv');
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+            addToast('Evaluation roster downloaded!', 'success');
+          } catch (err) {
+            addToast('Failed to export evaluation roster', 'error');
+          }
+        }} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <Download size={16} />
+          Evaluation Sheet CSV
+        </button>
+        <button onClick={() => setShowImportModal(true)} className="btn btn-primary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <Upload size={16} />
+          Import CSV
+        </button>
       </div>
 
       {selectedTeamIds.length > 0 && (
@@ -2265,28 +2264,29 @@ const PanelsView = () => {
   });
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
-          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Evaluation <span className="font-accent">Panels</span></h1>
-          <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Assign 1:1 judging panels to Problem Statements with assigned faculty leads and judges.
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <button onClick={handleDownloadPanelsTemplate} className="btn btn-secondary touch-target" title="Download Panels Template CSV">
-            <Download size={16} /> Template CSV
-          </button>
-          <button onClick={handleExportPanels} className="btn btn-secondary touch-target" title="Export Panels CSV">
-            <Download size={16} /> Export CSV
-          </button>
-          <button onClick={() => setShowImportModal(true)} className="btn btn-secondary touch-target" title="Import Panels CSV">
-            <Upload size={16} /> Import CSV
-          </button>
-          <button onClick={openCreateModal} className="btn btn-primary touch-target">
-            + Create Panel
-          </button>
-        </div>
+    <div style={{ marginBottom: '28px' }}>
+      {/* Title Section */}
+      <div style={{ marginBottom: '16px' }}>
+        <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Evaluation <span className="font-accent">Panels</span></h1>
+        <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
+          Assign 1:1 judging panels to Problem Statements with assigned faculty leads and judges.
+        </p>
+      </div>
+
+      {/* Action Grid Toolbar */}
+      <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
+        <button onClick={handleDownloadPanelsTemplate} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download Panels Template CSV">
+          <Download size={16} /> Template CSV
+        </button>
+        <button onClick={handleExportPanels} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Export Panels CSV">
+          <Download size={16} /> Export CSV
+        </button>
+        <button onClick={() => setShowImportModal(true)} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Import Panels CSV">
+          <Upload size={16} /> Import CSV
+        </button>
+        <button onClick={openCreateModal} className="btn btn-primary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          + Create Panel
+        </button>
       </div>
 
       {showImportModal && (
@@ -2674,31 +2674,32 @@ const EvalRoundsView = () => {
   });
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
-          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Evaluation <span className="font-accent">Rounds</span></h1>
-          <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Design submission form fields, toggle submission windows, and export team answers Excel workbook.
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <button onClick={handleExportMasterWorkbook} className="btn btn-primary touch-target" title="Export Multi-Sheet Excel Workbook for All Rounds">
-            <Download size={16} /> Export All Rounds (Excel)
-          </button>
-          <button onClick={handleDownloadRoundsTemplate} className="btn btn-secondary touch-target" title="Download Rounds Template CSV">
-            <Download size={16} /> Template CSV
-          </button>
-          <button onClick={handleExportRounds} className="btn btn-secondary touch-target" title="Export Rounds CSV">
-            <Download size={16} /> Export CSV
-          </button>
-          <button onClick={() => setShowImportModal(true)} className="btn btn-secondary touch-target" title="Import Rounds CSV">
-            <Upload size={16} /> Import CSV
-          </button>
-          <button onClick={openCreateModal} className="btn btn-primary touch-target">
-            + Add Round
-          </button>
-        </div>
+    <div style={{ marginBottom: '28px' }}>
+      {/* Title Section */}
+      <div style={{ marginBottom: '16px' }}>
+        <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Evaluation <span className="font-accent">Rounds</span></h1>
+        <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
+          Design submission form fields, toggle submission windows, and export team answers Excel workbook.
+        </p>
+      </div>
+
+      {/* Action Grid Toolbar */}
+      <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
+        <button onClick={handleExportMasterWorkbook} className="btn btn-primary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Export Multi-Sheet Excel Workbook for All Rounds">
+          <Download size={16} /> Export All Rounds (Excel)
+        </button>
+        <button onClick={handleDownloadRoundsTemplate} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download Rounds Template CSV">
+          <Download size={16} /> Template CSV
+        </button>
+        <button onClick={handleExportRounds} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Export Rounds CSV">
+          <Download size={16} /> Export CSV
+        </button>
+        <button onClick={() => setShowImportModal(true)} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Import Rounds CSV">
+          <Upload size={16} /> Import CSV
+        </button>
+        <button onClick={openCreateModal} className="btn btn-primary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          + Add Round
+        </button>
       </div>
 
       {showImportModal && (
@@ -3018,31 +3019,32 @@ const PodsView = ({ pods, fetchPodsPool }) => {
   const filteredPods = pods.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
-          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>POD <span className="font-accent">Groupings</span></h1>
-          <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Groupings for mentor assignments and team checkpoints.
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <button onClick={handleDownloadPodsTemplate} className="btn btn-secondary touch-target" title="Download PODs Import Template CSV">
-            <Download size={16} />
-            Template CSV
-          </button>
-          <button onClick={() => setShowImportModal(true)} className="btn btn-secondary touch-target">
-            <Upload size={16} />
-            Import CSV
-          </button>
-          <button onClick={handleExportPods} className="btn btn-secondary touch-target">
-            <Download size={16} />
-            Export CSV
-          </button>
-          <button onClick={() => setShowCreateModal(true)} className="btn btn-primary touch-target">
-            + Create POD Group
-          </button>
-        </div>
+    <div style={{ marginBottom: '28px' }}>
+      {/* Title Section */}
+      <div style={{ marginBottom: '16px' }}>
+        <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>POD <span className="font-accent">Groupings</span></h1>
+        <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
+          Groupings for mentor assignments and team checkpoints.
+        </p>
+      </div>
+
+      {/* Action Grid Toolbar */}
+      <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
+        <button onClick={handleDownloadPodsTemplate} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download PODs Import Template CSV">
+          <Download size={16} />
+          Template CSV
+        </button>
+        <button onClick={() => setShowImportModal(true)} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <Upload size={16} />
+          Import CSV
+        </button>
+        <button onClick={handleExportPods} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <Download size={16} />
+          Export CSV
+        </button>
+        <button onClick={() => setShowCreateModal(true)} className="btn btn-primary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          + Create POD Group
+        </button>
       </div>
 
       {/* Search Controls under Page Title */}
@@ -4082,36 +4084,36 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
   };
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
-          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>People & Organizers <span className="font-accent">Directory</span></h1>
-          <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Faculty leads, judges, student coordinators, volunteers, and event organizers.
-          </p>
-        </div>
+    <div style={{ marginBottom: '28px' }}>
+      {/* Title Section */}
+      <div style={{ marginBottom: '16px' }}>
+        <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>People & Organizers <span className="font-accent">Directory</span></h1>
+        <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
+          Faculty leads, judges, student coordinators, volunteers, and event organizers.
+        </p>
+      </div>
 
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <button onClick={() => setShowManageRolesModal(true)} className="btn btn-secondary" title="Manage Custom Roles">
-            <Layers size={16} />
-            Manage Roles
-          </button>
-          <button onClick={handleDownloadVolunteersTemplate} className="btn btn-secondary" title="Download Import Template CSV">
-            <Download size={16} />
-            Template CSV
-          </button>
-          <button onClick={() => setShowImportModal(true)} className="btn btn-secondary">
-            <Upload size={16} />
-            Import CSV
-          </button>
-          <button onClick={handleExportVolunteers} className="btn btn-secondary">
-            <Download size={16} />
-            Export CSV
-          </button>
-          <button onClick={() => setShowAddModal(true)} className="btn btn-primary">
-            + Add Person
-          </button>
-        </div>
+      {/* Action Grid Toolbar */}
+      <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
+        <button onClick={() => setShowManageRolesModal(true)} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Manage Custom Roles">
+          <Layers size={16} />
+          Manage Roles
+        </button>
+        <button onClick={handleDownloadVolunteersTemplate} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download Import Template CSV">
+          <Download size={16} />
+          Template CSV
+        </button>
+        <button onClick={() => setShowImportModal(true)} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <Upload size={16} />
+          Import CSV
+        </button>
+        <button onClick={handleExportVolunteers} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <Download size={16} />
+          Export CSV
+        </button>
+        <button onClick={() => setShowAddModal(true)} className="btn btn-primary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          + Add Person
+        </button>
       </div>
 
       {/* Search and Filters */}
@@ -5051,28 +5053,29 @@ const CheckpointsView = () => {
   };
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
-          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Attendance <span className="font-accent">Slots</span></h1>
-          <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Configure and manage checkpoints (check-in, lunch, workshops) that volunteers can verify.
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <button onClick={handleDownloadSlotsTemplate} className="btn btn-secondary touch-target" title="Download Slots Template CSV">
-            <Download size={16} /> Template CSV
-          </button>
-          <button onClick={handleExportSlots} className="btn btn-secondary touch-target" title="Export Slots CSV">
-            <Download size={16} /> Export CSV
-          </button>
-          <button onClick={() => setShowImportModal(true)} className="btn btn-secondary touch-target" title="Import Slots CSV">
-            <Upload size={16} /> Import CSV
-          </button>
-          <button onClick={() => setShowAddModal(true)} className="btn btn-primary touch-target">
-            + Add Attendance Slot
-          </button>
-        </div>
+    <div style={{ marginBottom: '28px' }}>
+      {/* Title Section */}
+      <div style={{ marginBottom: '16px' }}>
+        <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Attendance <span className="font-accent">Slots</span></h1>
+        <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
+          Configure and manage checkpoints (check-in, lunch, workshops) that volunteers can verify.
+        </p>
+      </div>
+
+      {/* Action Grid Toolbar */}
+      <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
+        <button onClick={handleDownloadSlotsTemplate} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download Slots Template CSV">
+          <Download size={16} /> Template CSV
+        </button>
+        <button onClick={handleExportSlots} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Export Slots CSV">
+          <Download size={16} /> Export CSV
+        </button>
+        <button onClick={() => setShowImportModal(true)} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Import Slots CSV">
+          <Upload size={16} /> Import CSV
+        </button>
+        <button onClick={() => setShowAddModal(true)} className="btn btn-primary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          + Add Attendance Slot
+        </button>
       </div>
 
       {showImportModal && (
@@ -5471,28 +5474,29 @@ const PSView = () => {
   };
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
-        <div>
-          <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Problem <span className="font-accent">Statements</span></h1>
-          <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Upload challenges and manage leader selection schedules.
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <button onClick={handleDownloadPSTemplate} className="btn btn-secondary" title="Download PS Import Template CSV">
-            <Download size={16} />
-            Template CSV
-          </button>
-          <button onClick={() => setShowImportModal(true)} className="btn btn-secondary">
-            <Upload size={16} />
-            Import PS CSV
-          </button>
-          <button onClick={handleExportPS} className="btn btn-primary">
-            <Download size={16} />
-            Export CSV
-          </button>
-        </div>
+    <div style={{ marginBottom: '28px' }}>
+      {/* Title Section */}
+      <div style={{ marginBottom: '16px' }}>
+        <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Problem <span className="font-accent">Statements</span></h1>
+        <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
+          Upload challenges and manage leader selection schedules.
+        </p>
+      </div>
+
+      {/* Action Grid Toolbar */}
+      <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
+        <button onClick={handleDownloadPSTemplate} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download PS Import Template CSV">
+          <Download size={16} />
+          Template CSV
+        </button>
+        <button onClick={() => setShowImportModal(true)} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <Upload size={16} />
+          Import PS CSV
+        </button>
+        <button onClick={handleExportPS} className="btn btn-primary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <Download size={16} />
+          Export CSV
+        </button>
       </div>
 
       {/* Release Configuration Card */}

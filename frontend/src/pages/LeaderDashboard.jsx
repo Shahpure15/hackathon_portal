@@ -756,14 +756,28 @@ const LeaderDashboard = () => {
                       </div>
                     )}
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
-                      <div>
+                    <div style={{ marginBottom: '24px' }}>
+                      <div style={{ marginBottom: '12px' }}>
                         <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>Select Your Problem Statement</h2>
                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '2px' }}>
                           Hard caps apply in real-time. Buttons disable automatically once topics fill up.
                         </p>
                       </div>
-                      <button onClick={fetchProblemStatements} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '0.8rem', minHeight: 0 }}>
+                      <button 
+                        onClick={fetchProblemStatements} 
+                        className="btn btn-secondary" 
+                        style={{ 
+                          padding: '8px 16px', 
+                          fontSize: '0.85rem', 
+                          fontWeight: 600,
+                          height: '38px', 
+                          minHeight: '38px', 
+                          display: 'inline-flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'center',
+                          gap: '6px'
+                        }}
+                      >
                         Refresh Capacities
                       </button>
                     </div>

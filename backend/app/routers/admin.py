@@ -234,6 +234,88 @@ async def get_teams(
         "results": results
     }
 
+@router.get("/teams/export")
+async def export_teams(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    teams = db.query(Team).filter(Team.eventId == current_user.eventId).order_by(Team.registrationId).all()
+    
+    import io
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    headers = [
+        "Team Code", "Team Name", "Leader Name", "Leader Email", "Leader Phone", 
+        "College Name", "Status", "POD Grouping", "Selected PS Code", "Selected PS Title"
+    ]
+    for i in range(1, 6):
+        headers.extend([
+            f"Member {i} Name", f"Member {i} Email", f"Member {i} Phone", f"Member {i} ID Verified"
+        ])
+    writer.writerow(headers)
+    
+    for team in teams:
+        pod_name = team.pod.name if team.pod else "Unassigned"
+        ps_code = team.psSelection.ps.code if team.psSelection else "None"
+        ps_title = team.psSelection.ps.title if team.psSelection else "None"
+        status_val = team.status.value if hasattr(team.status, 'value') else str(team.status or "")
+        
+        row = [
+            team.registrationId,
+            team.name,
+            team.leaderName,
+            team.leaderEmail,
+            team.leaderPhone,
+            team.collegeName,
+            status_val,
+            pod_name,
+            ps_code,
+            ps_title
+        ]
+        
+        members = team.members
+        for i in range(5):
+            if i < len(members):
+                m = members[i]
+                row.extend([m.name, m.email, m.phone, "Yes" if m.idVerified else "No"])
+            else:
+                row.extend(["", "", "", ""])
+                
+        writer.writerow(row)
+        
+    output.seek(0)
+    
+    headers = {
+        'Content-Disposition': 'attachment; filename="teams_roster_export.csv"',
+        'Content-Type': 'text/csv'
+    }
+    return StreamingResponse(iter([output.getvalue()]), headers=headers)
+
+@router.get("/teams/unresolved-leaders")
+def get_unresolved_leaders_report(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    teams = db.query(Team).filter(Team.eventId == current_user.eventId).all()
+    unresolved = []
+    for t in teams:
+        has_leader = db.query(TeamMember).filter(
+            TeamMember.teamId == t.id,
+            TeamMember.isTeamLeader == True
+        ).first() is not None
+        if not has_leader:
+            unresolved.append({
+                "teamId": t.id,
+                "name": t.name,
+                "registrationId": t.registrationId,
+                "leaderEmail": t.leaderEmail
+            })
+    return {
+        "totalUnresolved": len(unresolved),
+        "teams": unresolved
+    }
+
 @router.get("/teams/{team_id}", response_model=TeamDetailResponse)
 async def get_team_detail(
     team_id: str,
@@ -757,64 +839,6 @@ async def import_teams_confirm(
         "credentials": generated_credentials
     }
 
-@router.get("/teams/export")
-async def export_teams(
-    db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
-):
-    teams = db.query(Team).filter(Team.eventId == current_user.eventId).order_by(Team.registrationId).all()
-    
-    import io
-    output = io.StringIO()
-    writer = csv.writer(output)
-    
-    headers = [
-        "Team Code", "Team Name", "Leader Name", "Leader Email", "Leader Phone", 
-        "College Name", "Status", "POD Grouping", "Selected PS Code", "Selected PS Title"
-    ]
-    for i in range(1, 6):
-        headers.extend([
-            f"Member {i} Name", f"Member {i} Email", f"Member {i} Phone", f"Member {i} ID Verified"
-        ])
-    writer.writerow(headers)
-    
-    for team in teams:
-        pod_name = team.pod.name if team.pod else "Unassigned"
-        ps_code = team.psSelection.ps.code if team.psSelection else "None"
-        ps_title = team.psSelection.ps.title if team.psSelection else "None"
-        
-        row = [
-            team.registrationId,
-            team.name,
-            team.leaderName,
-            team.leaderEmail,
-            team.leaderPhone,
-            team.collegeName,
-            team.status.value,
-            pod_name,
-            ps_code,
-            ps_title
-        ]
-        
-        members = team.members
-        for i in range(5):
-            if i < len(members):
-                m = members[i]
-                row.extend([m.name, m.email, m.phone, "Yes" if m.idVerified else "No"])
-            else:
-                row.extend(["", "", "", ""])
-                
-        writer.writerow(row)
-        
-    output.seek(0)
-    
-    headers = {
-        'Content-Disposition': 'attachment; filename="teams_roster_export.csv"',
-        'Content-Type': 'text/csv'
-    }
-    return StreamingResponse(iter([output.getvalue()]), headers=headers)
-
-
 # ==========================================
 # PODS (GROUPING) MANAGEMENT
 # ==========================================
@@ -1276,7 +1300,8 @@ async def export_pod_roster(
     writer.writerow(["Name", "Type", "Contact Details"])
     volunteers = db.query(Volunteer).filter(Volunteer.podId == pod.id).all()
     for v in volunteers:
-        writer.writerow([v.name, v.type.value, v.contact])
+        vol_type_str = v.type.value if hasattr(v.type, 'value') else str(v.type or "")
+        writer.writerow([v.name, vol_type_str, v.contact])
     writer.writerow([])
     
     # Section 2: Assigned Teams
@@ -1336,9 +1361,10 @@ async def export_volunteers(
         has_login = "Yes" if v.user else "No"
         username = v.user.username if v.user else ""
         
+        vol_type_str = v.type.value if hasattr(v.type, 'value') else str(v.type or "")
         writer.writerow([
             v.name,
-            v.type.value,
+            vol_type_str,
             email,
             phone,
             pod_name,
@@ -1855,8 +1881,9 @@ async def import_volunteers_preview(
             changes = {}
             if existing_vol.name != name:
                 changes["name"] = {"from": existing_vol.name, "to": name}
-            if existing_vol.type.value != type_str:
-                changes["type"] = {"from": existing_vol.type.value, "to": type_str}
+            vol_type_str = existing_vol.type.value if hasattr(existing_vol.type, 'value') else str(existing_vol.type or "")
+            if vol_type_str != type_str:
+                changes["type"] = {"from": vol_type_str, "to": type_str}
             if (existing_vol.remarks or "") != (remarks or ""):
                 changes["remarks"] = {"from": existing_vol.remarks or "None", "to": remarks or "None"}
                 
@@ -2449,30 +2476,6 @@ def update_ps_release_time(
         "message": "Event config updated successfully!",
         "psReleaseAt": config.psReleaseAt.replace(tzinfo=timezone.utc) if config.psReleaseAt else None,
         "psGateCheckpointTypeId": config.psGateCheckpointTypeId
-    }
-
-@router.get("/teams/unresolved-leaders")
-def get_unresolved_leaders_report(
-    db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
-):
-    teams = db.query(Team).filter(Team.eventId == current_user.eventId).all()
-    unresolved = []
-    for t in teams:
-        has_leader = db.query(TeamMember).filter(
-            TeamMember.teamId == t.id,
-            TeamMember.isTeamLeader == True
-        ).first() is not None
-        if not has_leader:
-            unresolved.append({
-                "teamId": t.id,
-                "name": t.name,
-                "registrationId": t.registrationId,
-                "leaderEmail": t.leaderEmail
-            })
-    return {
-        "totalUnresolved": len(unresolved),
-        "teams": unresolved
     }
 
 
