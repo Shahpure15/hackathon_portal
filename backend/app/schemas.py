@@ -179,6 +179,7 @@ class VolunteerBase(BaseModel):
     contact: str
     remarks: Optional[str] = None
     podId: Optional[str] = None
+    panelId: Optional[str] = None
     problemStatementId: Optional[str] = None
     teamId: Optional[str] = None
 
@@ -189,6 +190,7 @@ class VolunteerResponse(VolunteerBase):
     id: str
     eventId: str
     podName: Optional[str] = None
+    panelName: Optional[str] = None
     problemStatementCode: Optional[str] = None
     problemStatementTitle: Optional[str] = None
     teamName: Optional[str] = None

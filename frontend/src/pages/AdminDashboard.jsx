@@ -3897,7 +3897,9 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
   const [newRoleInput, setNewRoleInput] = useState('');
   const [newRoleTarget, setNewRoleTarget] = useState('pod');
   const [problemStatements, setProblemStatements] = useState([]);
+  const [panels, setPanels] = useState([]);
   const [allTeams, setAllTeams] = useState([]);
+  const [panelId, setPanelId] = useState('');
   const [problemStatementId, setProblemStatementId] = useState('');
   const [teamId, setTeamId] = useState('');
 
@@ -3935,6 +3937,15 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
     }
   };
 
+  const fetchPanelsList = async () => {
+    try {
+      const res = await api.get('/admin/panels');
+      setPanels(res.data || []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const fetchAllTeams = async () => {
     try {
       const res = await api.get('/admin/teams', { params: { limit: 1000 } });
@@ -3946,21 +3957,23 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
 
   const handleUpdateAssignmentInline = async (volId, targetType, val) => {
     try {
-      const payload = {
-        podId: targetType === 'pod' ? (val || null) : null,
-        problemStatementId: targetType === 'ps' ? (val || null) : null,
-        teamId: targetType === 'team' ? (val || null) : null
-      };
-      await api.patch(`/admin/volunteers/${volId}`, payload);
-      setVolunteers(prev => prev.map(v => v.id === volId ? {
-        ...v,
-        podId: payload.podId,
-        problemStatementId: payload.problemStatementId,
-        teamId: payload.teamId
-      } : v));
+      let payload = {};
+      if (targetType === 'pod') {
+        payload = { podId: val || null };
+      } else if (targetType === 'team') {
+        payload = { teamId: val || null };
+      } else if (targetType === 'panel') {
+        payload = { panelId: val || null };
+      } else if (targetType === 'create_ps') {
+        payload = { problemStatementId: val };
+      }
+      const res = await api.patch(`/admin/volunteers/${volId}`, payload);
+      const updatedVol = res.data;
+      setVolunteers(prev => prev.map(v => v.id === volId ? updatedVol : v));
+      fetchPanelsList();
       addToast('Assignment updated successfully!', 'success');
     } catch (err) {
-      addToast('Failed to update assignment', 'error');
+      addToast(err.response?.data?.detail || 'Failed to update assignment', 'error');
     }
   };
 
@@ -3978,6 +3991,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
   useEffect(() => {
     fetchPeopleRoles();
     fetchPSList();
+    fetchPanelsList();
     fetchAllTeams();
   }, []);
 
@@ -4057,6 +4071,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
     setPhone(parsedPhone || '');
     setRemarks(v.remarks || '');
     setPodId(v.podId || '');
+    setPanelId(v.panelId || '');
     setProblemStatementId(v.problemStatementId || '');
     setTeamId(v.teamId || '');
     setShowEditModal(true);
@@ -4070,13 +4085,15 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
     try {
       const combinedContact = phone.trim() ? `${email.trim()} | ${phone.trim()}` : email.trim();
       const target = getRoleTarget(type);
+      const isCreatePs = panelId && panelId.startsWith('create_ps_');
       const payload = {
         name: name.trim(),
         type,
         contact: combinedContact,
         remarks: remarks.trim() || null,
         podId: target === 'pod' ? (podId || null) : null,
-        problemStatementId: target === 'ps' ? (problemStatementId || null) : null,
+        panelId: target === 'ps' ? (isCreatePs ? null : (panelId || null)) : null,
+        problemStatementId: target === 'ps' ? (isCreatePs ? panelId.replace('create_ps_', '') : (problemStatementId || null)) : null,
         teamId: target === 'team' ? (teamId || null) : null
       };
       const res = await api.patch(`/admin/volunteers/${editingVolunteer.id}`, payload);
@@ -4086,6 +4103,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
 
       const updatedVol = res.data;
       setVolunteers((prev) => prev.map((v) => (v.id === updatedVol.id ? updatedVol : v)));
+      fetchPanelsList();
       fetchPodsPool();
     } catch (err) {
       addToast(err.response?.data?.detail || 'Failed to update details', 'error');
@@ -4102,13 +4120,15 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
     try {
       const combinedContact = `${email.trim()} | ${phone.trim()}`;
       const target = getRoleTarget(type);
+      const isCreatePs = panelId && panelId.startsWith('create_ps_');
       const payload = {
         name: name.trim(),
         type,
         contact: combinedContact,
         remarks: remarks.trim() || null,
         podId: target === 'pod' ? (podId || null) : null,
-        problemStatementId: target === 'ps' ? (problemStatementId || null) : null,
+        panelId: target === 'ps' ? (isCreatePs ? null : (panelId || null)) : null,
+        problemStatementId: target === 'ps' ? (isCreatePs ? panelId.replace('create_ps_', '') : (problemStatementId || null)) : null,
         teamId: target === 'team' ? (teamId || null) : null,
         generateLogin: generateLogin
       };
@@ -4126,6 +4146,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
       setPhone('');
       setRemarks('');
       setPodId('');
+      setPanelId('');
       setProblemStatementId('');
       setTeamId('');
       setGenerateLogin(true);
@@ -4135,6 +4156,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
       const newVol = res.data;
       setVolunteers((prev) => [newVol, ...prev]);
       setTotal((prev) => prev + 1);
+      fetchPanelsList();
       fetchPodsPool();
     } catch (err) {
       addToast(err.response?.data?.detail || 'Failed to add record', 'error');
@@ -4403,19 +4425,39 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
             render: (v) => {
               const target = getRoleTarget(v.type);
               if (target === 'ps') {
+                const unassignedPS = problemStatements.filter(ps => !panels.some(p => p.problemStatementId === ps.id));
                 return (
                   <select
-                    value={v.problemStatementId || ''}
-                    onChange={(e) => handleUpdateAssignmentInline(v.id, 'ps', e.target.value)}
+                    value={v.panelId || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val.startsWith('create_ps_')) {
+                        const psId = val.replace('create_ps_', '');
+                        handleUpdateAssignmentInline(v.id, 'create_ps', psId);
+                      } else {
+                        handleUpdateAssignmentInline(v.id, 'panel', val);
+                      }
+                    }}
                     onClick={(e) => e.stopPropagation()}
                     className="form-input"
-                    style={{ padding: '6px 12px', fontSize: '0.85rem', width: '190px', borderColor: 'var(--primary)', fontWeight: 500 }}
-                    title="Assigned Problem Statement"
+                    style={{ padding: '6px 12px', fontSize: '0.85rem', width: '220px', borderColor: 'var(--primary)', fontWeight: 500 }}
+                    title="Assigned Panel (linked to Problem Statement)"
                   >
-                    <option value="">-- No PS Assigned --</option>
-                    {problemStatements.map(ps => (
-                      <option key={ps.id} value={ps.id}>[{ps.code}] {ps.title}</option>
+                    <option value="">-- No Panel Assigned --</option>
+                    {panels.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} {p.problemStatementCode ? `[${p.problemStatementCode}]` : '[No PS]'}
+                      </option>
                     ))}
+                    {unassignedPS.length > 0 && (
+                      <optgroup label="Auto-Create Panel for PS">
+                        {unassignedPS.map(ps => (
+                          <option key={`ps_${ps.id}`} value={`create_ps_${ps.id}`}>
+                            + Create Panel for [{ps.code}] {ps.title}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                 );
               }
@@ -4609,12 +4651,37 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
 
               {getRoleTarget(type) === 'ps' && (
                 <div className="form-group" style={{ marginBottom: '20px' }}>
-                  <label className="form-label">Assign to Problem Statement (For Judges / Evaluators)</label>
-                  <select value={problemStatementId} onChange={(e) => setProblemStatementId(e.target.value)} className="form-input" disabled={isSaving}>
-                    <option value="">-- No PS Assigned --</option>
-                    {problemStatements.map(ps => (
-                      <option key={ps.id} value={ps.id}>[{ps.code}] {ps.title}</option>
+                  <label className="form-label">Assign Panel / Problem Statement (For Judges / Evaluators)</label>
+                  <select
+                    value={panelId || (problemStatementId ? `create_ps_${problemStatementId}` : '')}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val.startsWith('create_ps_')) {
+                        setPanelId('');
+                        setProblemStatementId(val.replace('create_ps_', ''));
+                      } else {
+                        setPanelId(val);
+                        setProblemStatementId('');
+                      }
+                    }}
+                    className="form-input"
+                    disabled={isSaving}
+                  >
+                    <option value="">-- No Panel Assigned --</option>
+                    {panels.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} {p.problemStatementCode ? `[${p.problemStatementCode}]` : '[No PS]'}
+                      </option>
                     ))}
+                    {problemStatements.filter(ps => !panels.some(p => p.problemStatementId === ps.id)).length > 0 && (
+                      <optgroup label="Auto-Create Panel for PS">
+                        {problemStatements.filter(ps => !panels.some(p => p.problemStatementId === ps.id)).map(ps => (
+                          <option key={`ps_${ps.id}`} value={`create_ps_${ps.id}`}>
+                            + Create Panel for [{ps.code}] {ps.title}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                 </div>
               )}
@@ -4729,12 +4796,37 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
 
               {getRoleTarget(type) === 'ps' && (
                 <div className="form-group" style={{ marginBottom: '16px' }}>
-                  <label className="form-label">Assign to Problem Statement (For Judges / Evaluators)</label>
-                  <select value={problemStatementId} onChange={(e) => setProblemStatementId(e.target.value)} className="form-input" disabled={isSaving}>
-                    <option value="">-- No PS Assigned --</option>
-                    {problemStatements.map(ps => (
-                      <option key={ps.id} value={ps.id}>[{ps.code}] {ps.title}</option>
+                  <label className="form-label">Assign Panel / Problem Statement (For Judges / Evaluators)</label>
+                  <select
+                    value={panelId || (problemStatementId ? `create_ps_${problemStatementId}` : '')}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val.startsWith('create_ps_')) {
+                        setPanelId('');
+                        setProblemStatementId(val.replace('create_ps_', ''));
+                      } else {
+                        setPanelId(val);
+                        setProblemStatementId('');
+                      }
+                    }}
+                    className="form-input"
+                    disabled={isSaving}
+                  >
+                    <option value="">-- No Panel Assigned --</option>
+                    {panels.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} {p.problemStatementCode ? `[${p.problemStatementCode}]` : '[No PS]'}
+                      </option>
                     ))}
+                    {problemStatements.filter(ps => !panels.some(p => p.problemStatementId === ps.id)).length > 0 && (
+                      <optgroup label="Auto-Create Panel for PS">
+                        {problemStatements.filter(ps => !panels.some(p => p.problemStatementId === ps.id)).map(ps => (
+                          <option key={`ps_${ps.id}`} value={`create_ps_${ps.id}`}>
+                            + Create Panel for [{ps.code}] {ps.title}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                 </div>
               )}

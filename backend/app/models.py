@@ -164,12 +164,14 @@ class Volunteer(Base):
     contact = Column(String(100), nullable=False)
     remarks = Column(Text, nullable=True)
     podId = Column(String(36), ForeignKey("pods.id", ondelete="SET NULL"), nullable=True)
+    panelId = Column(String(36), ForeignKey("panels.id", ondelete="SET NULL"), nullable=True)
     problemStatementId = Column(String(36), ForeignKey("problem_statements.id", ondelete="SET NULL"), nullable=True)
     teamId = Column(String(36), ForeignKey("teams.id", ondelete="SET NULL"), nullable=True)
 
     # Relationships
     event = relationship("Event", back_populates="volunteers")
     pod = relationship("Pod", back_populates="volunteers")
+    panel = relationship("Panel", back_populates="volunteers")
     problemStatement = relationship("ProblemStatement")
     team = relationship("Team")
     user = relationship("User", back_populates="volunteer", uselist=False, cascade="all, delete-orphan")
@@ -237,6 +239,7 @@ class Panel(Base):
 
     event = relationship("Event", back_populates="panels")
     problemStatement = relationship("ProblemStatement", back_populates="panel", uselist=False)
+    volunteers = relationship("Volunteer", back_populates="panel")
 
     __table_args__ = (
         UniqueConstraint("eventId", "name", name="uq_panel_event_name"),

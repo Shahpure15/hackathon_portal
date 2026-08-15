@@ -1405,6 +1405,7 @@ def get_volunteers(
 ):
     query = db.query(Volunteer).options(
         joinedload(Volunteer.pod),
+        joinedload(Volunteer.panel),
         joinedload(Volunteer.problemStatement),
         joinedload(Volunteer.user)
     ).filter(Volunteer.eventId == current_user.eventId)
@@ -1433,8 +1434,10 @@ def get_volunteers(
         results = []
         for v in volunteers:
             pod_name = v.pod.name if v.pod else None
-            ps_code = v.problemStatement.code if v.problemStatement else None
-            ps_title = v.problemStatement.title if v.problemStatement else None
+            panel_id = v.panelId or (v.panel.id if v.panel else None)
+            panel_name = v.panel.name if v.panel else None
+            ps_code = v.problemStatement.code if v.problemStatement else (v.panel.problemStatement.code if v.panel and v.panel.problemStatement else None)
+            ps_title = v.problemStatement.title if v.problemStatement else (v.panel.problemStatement.title if v.panel and v.panel.problemStatement else None)
             team_name = v.team.name if v.team else None
             user_rec = v.user
             results.append({
@@ -1446,6 +1449,8 @@ def get_volunteers(
                 "remarks": v.remarks,
                 "podId": v.podId,
                 "podName": pod_name,
+                "panelId": panel_id,
+                "panelName": panel_name,
                 "problemStatementId": v.problemStatementId,
                 "problemStatementCode": ps_code,
                 "problemStatementTitle": ps_title,
@@ -1468,8 +1473,10 @@ def get_volunteers(
     results = []
     for v in volunteers:
         pod_name = v.pod.name if v.pod else None
-        ps_code = v.problemStatement.code if v.problemStatement else None
-        ps_title = v.problemStatement.title if v.problemStatement else None
+        panel_id = v.panelId or (v.panel.id if v.panel else None)
+        panel_name = v.panel.name if v.panel else None
+        ps_code = v.problemStatement.code if v.problemStatement else (v.panel.problemStatement.code if v.panel and v.panel.problemStatement else None)
+        ps_title = v.problemStatement.title if v.problemStatement else (v.panel.problemStatement.title if v.panel and v.panel.problemStatement else None)
         team_name = v.team.name if v.team else None
         user_rec = v.user
         results.append({
@@ -1481,6 +1488,8 @@ def get_volunteers(
             "remarks": v.remarks,
             "podId": v.podId,
             "podName": pod_name,
+            "panelId": panel_id,
+            "panelName": panel_name,
             "problemStatementId": v.problemStatementId,
             "problemStatementCode": ps_code,
             "problemStatementTitle": ps_title,
@@ -1572,6 +1581,83 @@ def delete_people_role(
     db.commit()
     return filtered
 
+def sync_volunteer_panel_assignment(
+    db: Session,
+    volunteer: Volunteer,
+    panel_id: Optional[str] = None,
+    ps_id: Optional[str] = None,
+    event_id: str = None
+):
+    """
+    Guarantees that a volunteer/judge is ALWAYS assigned to a Panel (and via Panel to a Problem Statement).
+    Prevents orphaned judges by automatically creating a Panel for a Problem Statement if one doesn't exist.
+    Bidirectionally syncs volunteer.panelId, volunteer.problemStatementId, panel.memberNames, and panel.facultyMemberName.
+    """
+    event_id = event_id or volunteer.eventId
+
+    # 1. Remove volunteer from any existing Panel where their name appears in memberNames or facultyMemberName
+    existing_panels = db.query(Panel).filter(Panel.eventId == event_id).all()
+    for p in existing_panels:
+        if p.facultyMemberName == volunteer.name and (panel_id != p.id):
+            p.facultyMemberName = None
+        if p.memberNames and volunteer.name in p.memberNames and (panel_id != p.id):
+            p.memberNames = [m for m in p.memberNames if m != volunteer.name]
+
+    # 2. Find or auto-create target Panel
+    target_panel = None
+    if panel_id:
+        target_panel = db.query(Panel).filter(Panel.id == panel_id, Panel.eventId == event_id).first()
+    elif ps_id:
+        target_panel = db.query(Panel).filter(Panel.problemStatementId == ps_id, Panel.eventId == event_id).first()
+        if not target_panel:
+            ps_obj = db.query(ProblemStatement).filter(ProblemStatement.id == ps_id, ProblemStatement.eventId == event_id).first()
+            if ps_obj:
+                target_panel = Panel(
+                    eventId=event_id,
+                    name=f"Panel {ps_obj.code}",
+                    problemStatementId=ps_obj.id,
+                    memberNames=[]
+                )
+                db.add(target_panel)
+                db.flush()
+                logger.info(f"Auto-created Panel '{target_panel.name}' for Problem Statement {ps_obj.code}")
+
+    # 3. Apply assignment
+    if target_panel:
+        volunteer.panelId = target_panel.id
+        volunteer.problemStatementId = target_panel.problemStatementId
+
+        is_faculty = "faculty" in str(volunteer.type).lower()
+        if is_faculty:
+            target_panel.facultyMemberName = volunteer.name
+        else:
+            members = list(target_panel.memberNames or [])
+            if volunteer.name not in members:
+                members.append(volunteer.name)
+                target_panel.memberNames = members
+    else:
+        volunteer.panelId = None
+        volunteer.problemStatementId = None
+
+def sync_panel_volunteers(db: Session, panel: Panel, event_id: str):
+    """
+    Ensures all volunteers listed in panel.memberNames or panel.facultyMemberName
+    have their volunteer.panelId and volunteer.problemStatementId synced to this panel.
+    Also clears panelId for volunteers who were removed from this panel.
+    """
+    all_volunteers = db.query(Volunteer).filter(Volunteer.eventId == event_id).all()
+    panel_member_names = set(panel.memberNames or [])
+    if panel.facultyMemberName:
+        panel_member_names.add(panel.facultyMemberName)
+
+    for v in all_volunteers:
+        if v.name in panel_member_names:
+            v.panelId = panel.id
+            v.problemStatementId = panel.problemStatementId
+        elif v.panelId == panel.id and v.name not in panel_member_names:
+            v.panelId = None
+            v.problemStatementId = None
+
 @router.post("/volunteers", response_model=VolunteerResponse)
 def create_volunteer(
     payload: Dict[str, Any],
@@ -1583,6 +1669,9 @@ def create_volunteer(
     contact = str(payload.get("contact", "")).strip()
     remarks = str(payload.get("remarks", "")).strip() or None
     pod_id = payload.get("podId")
+    panel_id = payload.get("panelId")
+    ps_id = payload.get("problemStatementId")
+    team_id = payload.get("teamId")
     
     if not name or not type_str or not contact:
         raise HTTPException(status_code=400, detail="Name, type, and contact are required")
@@ -1593,14 +1682,6 @@ def create_volunteer(
         pod = db.query(Pod).filter(Pod.id == pod_id, Pod.eventId == current_user.eventId).first()
         if not pod:
             raise HTTPException(status_code=404, detail="POD group not found")
-            
-    ps_id = payload.get("problemStatementId")
-    team_id = payload.get("teamId")
-
-    if ps_id:
-        ps = db.query(ProblemStatement).filter(ProblemStatement.id == ps_id, ProblemStatement.eventId == current_user.eventId).first()
-        if not ps:
-            raise HTTPException(status_code=404, detail="Problem Statement not found")
 
     if team_id:
         t_rec = db.query(Team).filter(Team.id == team_id, Team.eventId == current_user.eventId).first()
@@ -1616,10 +1697,14 @@ def create_volunteer(
         contact=contact,
         remarks=remarks,
         podId=pod_id or None,
-        problemStatementId=ps_id or None,
         teamId=team_id or None
     )
     db.add(volunteer)
+    db.flush()
+
+    if panel_id or ps_id:
+        sync_volunteer_panel_assignment(db, volunteer, panel_id=panel_id, ps_id=ps_id, event_id=current_user.eventId)
+
     db.commit()
     db.refresh(volunteer)
     
@@ -1641,8 +1726,9 @@ def create_volunteer(
         db.refresh(volunteer)
     
     pod_name = volunteer.pod.name if volunteer.pod else None
-    ps_code = volunteer.problemStatement.code if volunteer.problemStatement else None
-    ps_title = volunteer.problemStatement.title if volunteer.problemStatement else None
+    panel_name = volunteer.panel.name if volunteer.panel else None
+    ps_code = volunteer.problemStatement.code if volunteer.problemStatement else (volunteer.panel.problemStatement.code if volunteer.panel and volunteer.panel.problemStatement else None)
+    ps_title = volunteer.problemStatement.title if volunteer.problemStatement else (volunteer.panel.problemStatement.title if volunteer.panel and volunteer.panel.problemStatement else None)
     team_name = volunteer.team.name if volunteer.team else None
 
     return VolunteerResponse(
@@ -1654,6 +1740,8 @@ def create_volunteer(
         remarks=volunteer.remarks,
         podId=volunteer.podId,
         podName=pod_name,
+        panelId=volunteer.panelId,
+        panelName=panel_name,
         problemStatementId=volunteer.problemStatementId,
         problemStatementCode=ps_code,
         problemStatementTitle=ps_title,
@@ -1715,15 +1803,10 @@ def update_volunteer(
             diff["podId"] = {"from": volunteer.podId, "to": pod_id}
             volunteer.podId = pod_id or None
 
-    if "problemStatementId" in payload:
-        ps_id = payload["problemStatementId"]
-        if ps_id:
-            ps = db.query(ProblemStatement).filter(ProblemStatement.id == ps_id, ProblemStatement.eventId == current_user.eventId).first()
-            if not ps:
-                raise HTTPException(status_code=404, detail="Problem Statement not found")
-        if volunteer.problemStatementId != ps_id:
-            diff["problemStatementId"] = {"from": volunteer.problemStatementId, "to": ps_id}
-            volunteer.problemStatementId = ps_id or None
+    if "panelId" in payload or "problemStatementId" in payload:
+        panel_id = payload.get("panelId")
+        ps_id = payload.get("problemStatementId")
+        sync_volunteer_panel_assignment(db, volunteer, panel_id=panel_id, ps_id=ps_id, event_id=current_user.eventId)
 
     if "teamId" in payload:
         t_id = payload["teamId"]
@@ -1737,12 +1820,14 @@ def update_volunteer(
             
     if diff:
         log_audit(db, current_user.id, "volunteer.edit", "Volunteer", volunteer.id, diff)
-        db.commit()
-        db.refresh(volunteer)
+
+    db.commit()
+    db.refresh(volunteer)
         
     pod_name = volunteer.pod.name if volunteer.pod else None
-    ps_code = volunteer.problemStatement.code if volunteer.problemStatement else None
-    ps_title = volunteer.problemStatement.title if volunteer.problemStatement else None
+    panel_name = volunteer.panel.name if volunteer.panel else None
+    ps_code = volunteer.problemStatement.code if volunteer.problemStatement else (volunteer.panel.problemStatement.code if volunteer.panel and volunteer.panel.problemStatement else None)
+    ps_title = volunteer.problemStatement.title if volunteer.problemStatement else (volunteer.panel.problemStatement.title if volunteer.panel and volunteer.panel.problemStatement else None)
     team_name = volunteer.team.name if volunteer.team else None
 
     return VolunteerResponse(
@@ -1754,6 +1839,8 @@ def update_volunteer(
         remarks=volunteer.remarks,
         podId=volunteer.podId,
         podName=pod_name,
+        panelId=volunteer.panelId,
+        panelName=panel_name,
         problemStatementId=volunteer.problemStatementId,
         problemStatementCode=ps_code,
         problemStatementTitle=ps_title,
@@ -2785,6 +2872,10 @@ def create_panel(
     db.add(panel)
     db.commit()
     db.refresh(panel)
+
+    sync_panel_volunteers(db, panel, current_user.eventId)
+    db.commit()
+
     logger.info(f"Created Panel '{panel.name}' (ID: {panel.id})")
     ps_code = panel.problemStatement.code if panel.problemStatement else None
     return PanelResponse(
@@ -2828,6 +2919,10 @@ def update_panel(
 
     db.commit()
     db.refresh(panel)
+
+    sync_panel_volunteers(db, panel, current_user.eventId)
+    db.commit()
+
     logger.info(f"Updated Panel '{panel.name}' (ID: {panel.id})")
     ps_code = panel.problemStatement.code if panel.problemStatement else None
     return PanelResponse(
@@ -2849,6 +2944,11 @@ def delete_panel(
     panel = db.query(Panel).filter(Panel.id == panel_id, Panel.eventId == current_user.eventId).first()
     if not panel:
         raise HTTPException(status_code=404, detail="Panel not found")
+        
+    db.query(Volunteer).filter(Volunteer.panelId == panel_id).update(
+        {"panelId": None, "problemStatementId": None},
+        synchronize_session=False
+    )
     db.delete(panel)
     db.commit()
     logger.info(f"Deleted Panel '{panel.name}' (ID: {panel_id})")
