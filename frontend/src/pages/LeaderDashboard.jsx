@@ -373,7 +373,7 @@ const LeaderDashboard = () => {
               <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>{teamInfo.name}</h1>
               {teamInfo.psSelection ? (
                 <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '999px', background: 'rgba(62, 125, 71, 0.15)', color: 'var(--success)', border: '1px solid rgba(62, 125, 71, 0.3)' }}>
-                  Topic Locked [{teamInfo.psSelection.problemStatement.code}]
+                  Topic Locked [{teamInfo.psSelection.code || teamInfo.psSelection.problemStatement?.code}]
                 </span>
               ) : (
                 <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '999px', background: 'rgba(224, 92, 26, 0.15)', color: 'var(--warning)', border: '1px solid rgba(224, 92, 26, 0.3)' }}>
@@ -640,11 +640,11 @@ const LeaderDashboard = () => {
                 
                 <div style={{ background: 'rgba(255,255,255,0.02)', padding: '20px', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
                   <span style={{ fontSize: '0.75rem', background: 'rgba(62,125,71,0.1)', color: 'var(--success)', padding: '3px 8px', borderRadius: '6px', fontWeight: 700 }}>
-                    {teamInfo.psSelection.code}
+                    {teamInfo.psSelection.code || teamInfo.psSelection.problemStatement?.code}
                   </span>
-                  <h3 style={{ fontSize: '1.3rem', fontWeight: 700, margin: '8px 0' }}>{teamInfo.psSelection.title}</h3>
+                  <h3 style={{ fontSize: '1.3rem', fontWeight: 700, margin: '8px 0' }}>{teamInfo.psSelection.title || teamInfo.psSelection.problemStatement?.title}</h3>
                   <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                    {teamInfo.psSelection.description}
+                    {teamInfo.psSelection.description || teamInfo.psSelection.problemStatement?.description}
                   </p>
                   <button 
                     onClick={() => setViewingPS(teamInfo.psSelection)} 

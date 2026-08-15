@@ -41,6 +41,16 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 def escape_like_string(s: str) -> str:
     return s.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
 
+# Helper: CSV formula injection prevention
+def csv_safe(value: Any) -> str:
+    s = str(value) if value is not None else ""
+    if s and s[0] in ('=', '+', '-', '@'):
+        return "'" + s
+    return s
+
+def safe_writerow(writer: Any, row: List[Any]) -> None:
+    writer.writerow([csv_safe(v) for v in row])
+
 # Helper: Serialize diff data for JSON serialization (convert datetime to string)
 def serialize_diff(diff: Any) -> Any:
     if isinstance(diff, dict):
@@ -116,7 +126,7 @@ def parse_members_from_row(row: Dict[str, Any]) -> List[Dict[str, Any]]:
 # ==========================================
 
 @router.get("/teams")
-async def get_teams(
+def get_teams(
     search: Optional[str] = None,
     status: Optional[TeamStatus] = None,
     category: Optional[str] = None,
@@ -235,7 +245,7 @@ async def get_teams(
     }
 
 @router.get("/teams/export")
-async def export_teams(
+def export_teams(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
@@ -253,7 +263,7 @@ async def export_teams(
         headers.extend([
             f"Member {i} Name", f"Member {i} Email", f"Member {i} Phone", f"Member {i} ID Verified"
         ])
-    writer.writerow(headers)
+    safe_writerow(writer, headers)
     
     for team in teams:
         pod_name = team.pod.name if team.pod else "Unassigned"
@@ -282,7 +292,7 @@ async def export_teams(
             else:
                 row.extend(["", "", "", ""])
                 
-        writer.writerow(row)
+        safe_writerow(writer, row)
         
     output.seek(0)
     
@@ -317,7 +327,7 @@ def get_unresolved_leaders_report(
     }
 
 @router.get("/teams/{team_id}", response_model=TeamDetailResponse)
-async def get_team_detail(
+def get_team_detail(
     team_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
@@ -689,7 +699,7 @@ async def import_teams_preview(
 # ==========================================
 
 @router.post("/teams/import/confirm")
-async def import_teams_confirm(
+def import_teams_confirm(
     importId: str,
     decisions: Dict[str, str], # key: registrationId, value: "update" | "skip"
     db: Session = Depends(get_db),
@@ -845,7 +855,7 @@ async def import_teams_confirm(
 # ==========================================
 
 @router.get("/pods", response_model=List[PodResponse])
-async def get_pods(
+def get_pods(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
@@ -868,7 +878,7 @@ async def get_pods(
     return results
 
 @router.post("/pods", response_model=PodResponse)
-async def create_pod(
+def create_pod(
     payload: Dict[str, Any],
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
@@ -908,7 +918,7 @@ async def create_pod(
 
 @router.put("/pods/{pod_id}", response_model=PodResponse)
 @router.patch("/pods/{pod_id}", response_model=PodResponse)
-async def update_pod(
+def update_pod(
     pod_id: str,
     payload: Dict[str, Any],
     db: Session = Depends(get_db),
@@ -976,7 +986,7 @@ async def update_pod(
     )
 
 @router.delete("/pods/{pod_id}")
-async def delete_pod(
+def delete_pod(
     pod_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
@@ -999,7 +1009,7 @@ async def delete_pod(
     return {"message": "POD deleted successfully"}
 
 @router.post("/pods/assign-teams")
-async def assign_teams_to_pod(
+def assign_teams_to_pod(
     payload: Dict[str, Any],
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
@@ -1085,7 +1095,7 @@ async def assign_teams_to_pod(
     return {"message": msg}
 
 @router.get("/pods/export")
-async def export_pods(
+def export_pods(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
@@ -1098,7 +1108,7 @@ async def export_pods(
     output = io.StringIO()
     writer = csv.writer(output)
     
-    writer.writerow([
+    safe_writerow(writer, [
         "POD Name", "Capacity Limit", "Current Team Count", 
         "Assigned Faculty", "Assigned Student Volunteers", "Assigned Teams"
     ])
@@ -1108,7 +1118,7 @@ async def export_pods(
         students = [v.name for v in p.volunteers if v.type == VolunteerType.STUDENT]
         teams_list = [t.name for t in p.teams]
         
-        writer.writerow([
+        safe_writerow(writer, [
             p.name,
             p.capacity if p.capacity is not None else "",
             len(p.teams),
@@ -1232,7 +1242,7 @@ async def import_pods_preview(
 
 
 @router.post("/pods/import/confirm")
-async def import_pods_confirm(
+def import_pods_confirm(
     importId: str,
     decisions: Optional[Dict[str, str]] = None,
     db: Session = Depends(get_db),
@@ -1280,7 +1290,7 @@ async def import_pods_confirm(
 
 
 @router.get("/pods/{pod_id}/export")
-async def export_pod_roster(
+def export_pod_roster(
     pod_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
@@ -1294,24 +1304,24 @@ async def export_pod_roster(
     writer = csv.writer(output)
     
     # Title
-    writer.writerow([f"ROSTER FOR POD GROUP: {pod.name.upper()}"])
-    writer.writerow([])
+    safe_writerow(writer, [f"ROSTER FOR POD GROUP: {pod.name.upper()}"])
+    safe_writerow(writer, [])
     
     # Section 1: Assigned Volunteers
-    writer.writerow(["VOLUNTEERS POOL"])
-    writer.writerow(["Name", "Type", "Contact Details"])
+    safe_writerow(writer, ["VOLUNTEERS POOL"])
+    safe_writerow(writer, ["Name", "Type", "Contact Details"])
     volunteers = db.query(Volunteer).filter(Volunteer.podId == pod.id).all()
     for v in volunteers:
         vol_type_str = v.type.value if hasattr(v.type, 'value') else str(v.type or "")
-        writer.writerow([v.name, vol_type_str, v.contact])
-    writer.writerow([])
+        safe_writerow(writer, [v.name, vol_type_str, v.contact])
+    safe_writerow(writer, [])
     
     # Section 2: Assigned Teams
-    writer.writerow(["ASSIGNED TEAMS"])
-    writer.writerow(["Team Code", "Team Name", "Leader Name", "Leader Email", "Leader Phone", "College Name", "Status"])
+    safe_writerow(writer, ["ASSIGNED TEAMS"])
+    safe_writerow(writer, ["Team Code", "Team Name", "Leader Name", "Leader Email", "Leader Phone", "College Name", "Status"])
     teams = db.query(Team).filter(Team.podId == pod.id).order_by(Team.registrationId).all()
     for t in teams:
-        writer.writerow([t.registrationId, t.name, t.leaderName, t.leaderEmail, t.leaderPhone, t.collegeName, t.status.value])
+        safe_writerow(writer, [t.registrationId, t.name, t.leaderName, t.leaderEmail, t.leaderPhone, t.collegeName, t.status.value])
         
     output.seek(0)
     
@@ -1328,7 +1338,7 @@ async def export_pod_roster(
 # ==========================================
 
 @router.get("/volunteers/export")
-async def export_volunteers(
+def export_volunteers(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
@@ -1341,7 +1351,7 @@ async def export_volunteers(
     output = io.StringIO()
     writer = csv.writer(output)
     
-    writer.writerow([
+    safe_writerow(writer, [
         "Name", "Type", "Email", "Phone", "Assigned POD Group", "Login Access Created", "Username"
     ])
     
@@ -1364,7 +1374,7 @@ async def export_volunteers(
         username = v.user.username if v.user else ""
         
         vol_type_str = v.type.value if hasattr(v.type, 'value') else str(v.type or "")
-        writer.writerow([
+        safe_writerow(writer, [
             v.name,
             vol_type_str,
             email,
@@ -1384,7 +1394,7 @@ async def export_volunteers(
 
 
 @router.get("/volunteers")
-async def get_volunteers(
+def get_volunteers(
     search: Optional[str] = None,
     type: Optional[str] = None,
     podId: Optional[str] = None,
@@ -1563,7 +1573,7 @@ def delete_people_role(
     return filtered
 
 @router.post("/volunteers", response_model=VolunteerResponse)
-async def create_volunteer(
+def create_volunteer(
     payload: Dict[str, Any],
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
@@ -1656,7 +1666,7 @@ async def create_volunteer(
 
 @router.put("/volunteers/{volunteer_id}", response_model=VolunteerResponse)
 @router.patch("/volunteers/{volunteer_id}", response_model=VolunteerResponse)
-async def update_volunteer(
+def update_volunteer(
     volunteer_id: str,
     payload: Dict[str, Any],
     db: Session = Depends(get_db),
@@ -1752,7 +1762,7 @@ async def update_volunteer(
     )
 
 @router.delete("/volunteers/{volunteer_id}")
-async def delete_volunteer(
+def delete_volunteer(
     volunteer_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
@@ -1768,7 +1778,7 @@ async def delete_volunteer(
 
 
 @router.post("/volunteers/{volunteer_id}/login", response_model=VolunteerResponse)
-async def create_volunteer_login(
+def create_volunteer_login(
     volunteer_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
@@ -1810,7 +1820,7 @@ async def create_volunteer_login(
 
 
 @router.delete("/volunteers/{volunteer_id}/login")
-async def revoke_volunteer_login(
+def revoke_volunteer_login(
     volunteer_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
@@ -1829,7 +1839,7 @@ async def revoke_volunteer_login(
 
 
 @router.post("/volunteers/{volunteer_id}/reset-password")
-async def reset_volunteer_password(
+def reset_volunteer_password(
     volunteer_id: str,
     payload: Dict[str, Any] = None,
     db: Session = Depends(get_db),
@@ -1857,7 +1867,7 @@ async def reset_volunteer_password(
 
 
 @router.post("/teams/{team_id}/reset-password")
-async def reset_team_password(
+def reset_team_password(
     team_id: str,
     payload: Dict[str, Any] = None,
     db: Session = Depends(get_db),
@@ -2024,7 +2034,7 @@ async def import_volunteers_preview(
     }
 
 @router.post("/volunteers/import/confirm")
-async def import_volunteers_confirm(
+def import_volunteers_confirm(
     importId: str,
     decisions: Optional[Dict[str, str]] = None,
     db: Session = Depends(get_db),
@@ -2237,7 +2247,7 @@ def delete_problem_statement(
     return {"success": True}
 
 @router.get("/problem-statements/export")
-async def export_problem_statements(
+def export_problem_statements(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
@@ -2249,7 +2259,7 @@ async def export_problem_statements(
     output = io.StringIO()
     writer = csv.writer(output)
     
-    writer.writerow([
+    safe_writerow(writer, [
         "Code", "Title", "Description", "Capacity", "Slots Remaining", "Assigned Teams", "Selection Times"
     ])
     
@@ -2261,7 +2271,7 @@ async def export_problem_statements(
             sel_time = sel.selectedAt.strftime("%Y-%m-%d %H:%M:%S") if sel.selectedAt else ""
             selection_times.append(f"{sel.team.name}: {sel_time}")
             
-        writer.writerow([
+        safe_writerow(writer, [
             s.code,
             s.title,
             s.description,
@@ -2417,7 +2427,7 @@ async def import_problem_statements_preview(
     }
 
 @router.post("/problem-statements/import/confirm")
-async def import_problem_statements_confirm(
+def import_problem_statements_confirm(
     importId: str,
     decisions: Optional[Dict[str, str]] = None,
     db: Session = Depends(get_db),
@@ -2472,7 +2482,7 @@ async def import_problem_statements_confirm(
         raise HTTPException(status_code=500, detail=f"Database write error: {str(e)}")
 
 @router.get("/problem-statements/{ps_id}/teams")
-async def get_ps_selected_teams(
+def get_ps_selected_teams(
     ps_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
@@ -2581,14 +2591,14 @@ def update_ps_release_time(
 # ==========================================
 
 @router.get("/checkpoints", response_model=List[CheckpointTypeResponse])
-async def get_checkpoints(
+def get_checkpoints(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
     return db.query(CheckpointType).filter(CheckpointType.eventId == current_user.eventId).order_by(CheckpointType.name).all()
 
 @router.post("/checkpoints", response_model=CheckpointTypeResponse)
-async def create_checkpoint(
+def create_checkpoint(
     payload: CheckpointTypeCreate,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
@@ -2618,7 +2628,7 @@ async def create_checkpoint(
 
 @router.put("/checkpoints/{id}", response_model=CheckpointTypeResponse)
 @router.patch("/checkpoints/{id}", response_model=CheckpointTypeResponse)
-async def update_checkpoint(
+def update_checkpoint(
     id: str,
     payload: CheckpointTypeUpdate,
     db: Session = Depends(get_db),
@@ -2661,7 +2671,7 @@ async def update_checkpoint(
     return cp
 
 @router.delete("/checkpoints/{id}")
-async def delete_checkpoint(
+def delete_checkpoint(
     id: str,
     force: bool = False,
     db: Session = Depends(get_db),
@@ -2700,7 +2710,7 @@ async def delete_checkpoint(
 
 
 @router.delete("/checkpoints/{id}/records")
-async def clear_checkpoint_records(
+def clear_checkpoint_records(
     id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
@@ -3294,11 +3304,11 @@ def export_panels(
     panels = db.query(Panel).filter(Panel.eventId == current_user.eventId).order_by(Panel.name).all()
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Panel Name", "Problem Statement Code", "Faculty Lead", "Judges"])
+    safe_writerow(writer, ["Panel Name", "Problem Statement Code", "Faculty Lead", "Judges"])
     for p in panels:
         ps_code = p.problemStatement.code if p.problemStatement else ""
         judges_str = "; ".join(p.memberNames) if p.memberNames else ""
-        writer.writerow([p.name, ps_code, p.facultyMemberName or "", judges_str])
+        safe_writerow(writer, [p.name, ps_code, p.facultyMemberName or "", judges_str])
 
     output.seek(0)
     return StreamingResponse(
@@ -3373,9 +3383,9 @@ def export_evaluation_rounds(
     rounds = db.query(EvaluationRound).filter(EvaluationRound.eventId == current_user.eventId).order_by(EvaluationRound.roundNumber).all()
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Round Name", "Sequence Order", "Submissions Open"])
+    safe_writerow(writer, ["Round Name", "Sequence Order", "Submissions Open"])
     for r in rounds:
-        writer.writerow([r.name, r.roundNumber, "YES" if r.isSubmissionOpen else "NO"])
+        safe_writerow(writer, [r.name, r.roundNumber, "YES" if r.isSubmissionOpen else "NO"])
 
     output.seek(0)
     return StreamingResponse(
@@ -3438,9 +3448,9 @@ def export_attendance_slots(
     slots = db.query(CheckpointType).filter(CheckpointType.eventId == current_user.eventId).order_by(CheckpointType.name).all()
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Slot Name", "Description"])
+    safe_writerow(writer, ["Slot Name", "Description"])
     for s in slots:
-        writer.writerow([s.name, s.description or ""])
+        safe_writerow(writer, [s.name, s.description or ""])
 
     output.seek(0)
     return StreamingResponse(

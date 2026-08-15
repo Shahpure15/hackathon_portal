@@ -51,10 +51,15 @@ api.interceptors.response.use(
     const { config, response } = error;
     const originalRequest = config;
 
+    // Guard against missing originalRequest or originalRequest.url
+    if (!originalRequest || !originalRequest.url) {
+      return Promise.reject(error);
+    }
+
     // If unauthorized and we haven't already retried this request
     if (response && response.status === 401 && !originalRequest._retry) {
-      // Avoid infinite retries on login endpoint
-      if (originalRequest.url.includes('/auth/login')) {
+      // Avoid infinite retries on login and refresh endpoints
+      if (originalRequest.url.includes('/auth/login') || originalRequest.url.includes('/auth/refresh')) {
         return Promise.reject(error);
       }
 

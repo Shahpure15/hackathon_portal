@@ -5617,6 +5617,7 @@ const PSView = () => {
   // Modals state
   const [showImportModal, setShowImportModal] = useState(false);
   const [selectedPS, setSelectedPS] = useState(null);
+  const [editingPS, setEditingPS] = useState(null);
   const [showReleaseModal, setShowReleaseModal] = useState(false);
   const [showLockConfirm, setShowLockConfirm] = useState(false);
 
@@ -5767,6 +5768,10 @@ const PSView = () => {
 
       {/* Action Grid Toolbar */}
       <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
+        <button onClick={() => setEditingPS({})} className="btn btn-primary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <Plus size={16} />
+          Add Problem Statement
+        </button>
         <button onClick={handleDownloadPSTemplate} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download PS Import Template CSV">
           <Download size={16} />
           Template CSV
@@ -5775,7 +5780,7 @@ const PSView = () => {
           <Upload size={16} />
           Import PS CSV
         </button>
-        <button onClick={handleExportPS} className="btn btn-primary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+        <button onClick={handleExportPS} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
           <Download size={16} />
           Export CSV
         </button>
@@ -5952,7 +5957,21 @@ const PSView = () => {
                   <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden', marginBottom: '16px' }}>
                     <div style={{ width: `${fillPercent}%`, height: '100%', background: isFull ? 'var(--danger)' : 'var(--accent-blue)', borderRadius: '2px' }}></div>
                   </div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 600 }}>Click card to view selections ➔</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 600 }}>Click card to view selections ➔</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingPS(s);
+                      }}
+                      className="btn btn-secondary"
+                      style={{ padding: '4px 10px', fontSize: '0.75rem', height: '28px', minHeight: '28px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      title="Edit problem statement details"
+                    >
+                      <Edit2 size={12} /> Edit Details
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -5970,11 +5989,25 @@ const PSView = () => {
         />
       )}
 
+      {/* Edit / Create PS Modal */}
+      {editingPS && (
+        <PSEditModal
+          ps={editingPS.id ? editingPS : null}
+          onClose={() => setEditingPS(null)}
+          onSaveSuccess={fetchPS}
+          onDeleteSuccess={fetchPS}
+        />
+      )}
+
       {/* Selections details modal */}
       {selectedPS && (
         <PSTeamsModal
           ps={selectedPS}
           onClose={() => setSelectedPS(null)}
+          onEdit={(psToEdit) => {
+            setSelectedPS(null);
+            setEditingPS(psToEdit);
+          }}
         />
       )}
 
@@ -6422,9 +6455,215 @@ const PodImportModal = ({ onClose }) => {
 
 
 // ==========================================
+// PS EDIT / CREATE MODAL
+// ==========================================
+const PSEditModal = ({ ps, onClose, onSaveSuccess, onDeleteSuccess }) => {
+  const { addToast } = useToast();
+  const isEdit = !!ps?.id;
+
+  const [code, setCode] = useState(ps?.code || '');
+  const [title, setTitle] = useState(ps?.title || '');
+  const [description, setDescription] = useState(ps?.description || '');
+  const [requirements, setRequirements] = useState(ps?.requirements || '');
+  const [capacity, setCapacity] = useState(ps?.capacity ?? 10);
+  const [discipline, setDiscipline] = useState(ps?.discipline || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!code.trim() || !title.trim() || !description.trim()) {
+      addToast('Code, Title, and Description are required', 'error');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const payload = {
+        code: code.trim().toUpperCase(),
+        title: title.trim(),
+        description: description.trim(),
+        requirements: requirements.trim() || null,
+        capacity: parseInt(capacity, 10) || 1,
+        discipline: discipline || null
+      };
+
+      if (isEdit) {
+        await api.put(`/admin/problem-statements/${ps.id}`, payload);
+        addToast(`Problem statement [${payload.code}] updated successfully!`, 'success');
+      } else {
+        await api.post('/admin/problem-statements', payload);
+        addToast(`Problem statement [${payload.code}] created successfully!`, 'success');
+      }
+      onSaveSuccess();
+      onClose();
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to save problem statement', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await api.delete(`/admin/problem-statements/${ps.id}`);
+      addToast(`Problem statement [${ps.code}] deleted successfully!`, 'success');
+      onDeleteSuccess();
+      onClose();
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to delete problem statement', 'error');
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
+  return (
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title={isEdit ? `Edit Problem Statement Details` : 'Add New Problem Statement'}
+      maxWidth="620px"
+    >
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr', gap: '12px' }}>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Code *</label>
+            <input
+              type="text"
+              placeholder="e.g. PS01"
+              className="form-input touch-target"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              required
+              disabled={isSaving}
+            />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Title *</label>
+            <input
+              type="text"
+              placeholder="Title of Problem Statement"
+              className="form-input touch-target"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+              disabled={isSaving}
+            />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Capacity *</label>
+            <input
+              type="number"
+              min="1"
+              max="500"
+              className="form-input touch-target"
+              value={capacity}
+              onChange={(e) => setCapacity(e.target.value)}
+              required
+              disabled={isSaving}
+            />
+          </div>
+        </div>
+
+        <div className="form-group" style={{ marginBottom: 0 }}>
+          <label className="form-label">Discipline / Track Category</label>
+          <select
+            className="form-input touch-target"
+            value={discipline}
+            onChange={(e) => setDiscipline(e.target.value)}
+            disabled={isSaving}
+          >
+            <option value="">All Categories (Common / Unrestricted)</option>
+            <option value="engineering">Engineering</option>
+            <option value="design">Design</option>
+          </select>
+        </div>
+
+        <div className="form-group" style={{ marginBottom: 0 }}>
+          <label className="form-label">Description *</label>
+          <textarea
+            className="form-input"
+            rows={4}
+            placeholder="Brief problem statement summary..."
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            required
+            disabled={isSaving}
+            style={{ resize: 'vertical', minHeight: '80px' }}
+          />
+        </div>
+
+        <div className="form-group" style={{ marginBottom: 0 }}>
+          <label className="form-label">Detailed Requirements & Instructions</label>
+          <textarea
+            className="form-input"
+            rows={5}
+            placeholder="Technical guidelines, submission criteria, required tools..."
+            value={requirements}
+            onChange={(e) => setRequirements(e.target.value)}
+            disabled={isSaving}
+            style={{ resize: 'vertical', minHeight: '100px' }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-light)' }}>
+          {isEdit ? (
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="btn btn-secondary touch-target"
+              style={{ color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.2)', padding: '8px 16px', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              disabled={isSaving}
+            >
+              <Trash2 size={16} /> Delete PS
+            </button>
+          ) : <div></div>}
+
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              type="button"
+              onClick={onClose}
+              className="btn btn-secondary touch-target"
+              style={{ minHeight: '38px', height: '38px', padding: '6px 16px', fontSize: '0.85rem' }}
+              disabled={isSaving}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary touch-target"
+              style={{ minHeight: '38px', height: '38px', padding: '6px 20px', fontSize: '0.85rem' }}
+              disabled={isSaving}
+            >
+              {isSaving ? <span className="spinner spinner-white" style={{ width: '14px', height: '14px' }}></span> : (isEdit ? 'Save Changes' : 'Create Statement')}
+            </button>
+          </div>
+        </div>
+      </form>
+
+      {showDeleteConfirm && (
+        <ConfirmDialog
+          isOpen={true}
+          title={`Delete Problem Statement [${ps.code}]`}
+          message={`Are you sure you want to delete "${ps.title}"? This action will permanently delete the problem statement.`}
+          confirmLabel="Delete Problem Statement"
+          danger={true}
+          onConfirm={handleDelete}
+          onCancel={() => setShowDeleteConfirm(false)}
+          loading={isDeleting}
+        />
+      )}
+    </Modal>
+  );
+};
+
+// ==========================================
 // PS SELECTIONS LIST MODAL
 // ==========================================
-const PSTeamsModal = ({ ps, onClose }) => {
+const PSTeamsModal = ({ ps, onClose, onEdit }) => {
   const { addToast } = useToast();
   const [selections, setSelections] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -6467,7 +6706,18 @@ const PSTeamsModal = ({ ps, onClose }) => {
           <X size={20} />
         </button>
 
-        <h2 style={{ fontSize: '1.5rem', marginBottom: '4px', fontWeight: 700 }}>[{ps.code}] {ps.title} Selections</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', paddingRight: '28px' }}>
+          <h2 style={{ fontSize: '1.4rem', margin: 0, fontWeight: 700 }}>[{ps.code}] {ps.title}</h2>
+          {onEdit && (
+            <button
+              onClick={() => onEdit(ps)}
+              className="btn btn-secondary touch-target"
+              style={{ padding: '6px 12px', fontSize: '0.8rem', height: '34px', minHeight: '34px', display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}
+            >
+              <Edit2 size={14} /> Edit Details
+            </button>
+          )}
+        </div>
 
         <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-light)', marginBottom: '20px', marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div>

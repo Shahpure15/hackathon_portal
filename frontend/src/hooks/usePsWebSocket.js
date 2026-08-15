@@ -11,9 +11,9 @@ export function usePsWebSocket({ eventId, token, onMessage, enabled = true }) {
     if (!eventId || !token || !enabled) return;
 
     try {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.host;
-      const wsUrl = `${protocol}//${host}/ws/ps-updates/${eventId}?token=${encodeURIComponent(token)}`;
+      const apiUrl = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.host}`;
+      const wsBase = apiUrl.replace(/^http/, 'ws').replace(/\/api\/?$/, '');
+      const wsUrl = `${wsBase}/ws/ps-updates/${eventId}?token=${encodeURIComponent(token)}`;
 
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;

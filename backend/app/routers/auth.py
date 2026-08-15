@@ -20,7 +20,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 DUMMY_HASH = "$argon2id$v=19$m=65536,t=3,p=4$2q1gXp5eF9S16aC07V0mDw$Z7u4D1Z258Yy02+o3l/Kq8mO372h2Z1o0O392o2m0o8"
 
 @router.post("/login", response_model=TokenResponse)
-@limiter.limit("5/minute")
+@limiter.limit("30/minute")
 def login(
     request: Request,
     login_data: UserLogin, 

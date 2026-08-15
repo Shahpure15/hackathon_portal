@@ -12,6 +12,16 @@ from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 from app.logger import logger
 
+# Insecure defaults guard
+_INSECURE_DEFAULTS = {
+    "9a6b98e72e1f40d39e2621cb039b4b0e8c89c8a9d0f04fa18dbd846fa5cf613c",
+    "2e84d4b1a43a41cb982e0a295c52c2f0f81d11e8a8d052b0f4a8b7ea8b9c02ff",
+}
+if settings.ENVIRONMENT == "production" and (
+    settings.JWT_SECRET_KEY in _INSECURE_DEFAULTS or settings.JWT_REFRESH_SECRET_KEY in _INSECURE_DEFAULTS
+):
+    raise RuntimeError("Refusing to start: JWT secrets are still on insecure defaults in production")
+
 # Initialize Sentry if DSN is provided
 if settings.SENTRY_DSN:
     sentry_sdk.init(
@@ -35,28 +45,11 @@ origins = [origin.strip() for origin in settings.CORS_ALLOWED_ORIGINS.split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"https?://.*",
+    allow_origin_regex=r"^https://[a-z0-9-]+\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-@app.on_event("startup")
-def startup_db_migration():
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE evaluation_rounds ADD COLUMN IF NOT EXISTS description TEXT;"))
-            conn.execute(text("ALTER TABLE evaluation_rounds ADD COLUMN IF NOT EXISTS fields JSONB DEFAULT '[]'::jsonb;"))
-            conn.execute(text("ALTER TABLE submissions ADD COLUMN IF NOT EXISTS answers JSONB DEFAULT '{}'::jsonb;"))
-            conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS remarks TEXT;"))
-            conn.execute(text("ALTER TABLE volunteers ALTER COLUMN type TYPE VARCHAR(50);"))
-            conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS \"problemStatementId\" VARCHAR(36);"))
-            conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS \"teamId\" VARCHAR(36);"))
-            conn.execute(text("ALTER TABLE event_configs ADD COLUMN IF NOT EXISTS \"peopleRoles\" JSONB DEFAULT '[]'::jsonb;"))
-            conn.commit()
-            logger.info("Successfully executed startup schema migration for volunteers.teamId, volunteers.problemStatementId and event_configs.peopleRoles")
-    except Exception as e:
-        logger.warning(f"Startup schema migration notice: {e}")
 
 @app.get("/health")
 def health_check(db: Session = Depends(get_db)):
