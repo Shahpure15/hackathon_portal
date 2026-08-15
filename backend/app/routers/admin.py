@@ -2874,7 +2874,7 @@ def export_evaluation_sheet(
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow([
+    safe_writerow(writer, [
         "Pod", "Desk/Bench Number", "Team Name", "Team ID", "Leader Name",
         "PS Title", "Panel Number", "Panel Judges", "Faculty Member"
     ])
@@ -2882,7 +2882,7 @@ def export_evaluation_sheet(
         pod = team.pod
         ps = team.psSelection.ps if team.psSelection else None
         panel = ps.panel if ps else None
-        writer.writerow([
+        safe_writerow(writer, [
             pod.name if pod else "Unassigned",
             team.deskNumber or "",
             team.name,

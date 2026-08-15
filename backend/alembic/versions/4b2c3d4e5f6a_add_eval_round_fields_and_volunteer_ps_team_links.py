@@ -41,6 +41,22 @@ def upgrade() -> None:
     if 'teamId' not in vol_cols and 'teamid' not in vol_cols:
         op.add_column('volunteers', sa.Column('teamId', sa.String(length=36), sa.ForeignKey('teams.id', ondelete='SET NULL'), nullable=True))
     
+    # Drop any legacy check constraint on volunteers.type (allowing custom/new roles JUDGE, STUDENT_COORDINATOR, etc.)
+    try:
+        constraints = inspector.get_check_constraints('volunteers')
+        for c in constraints:
+            c_name = c['name']
+            if 'type' in c_name.lower() or 'enum' in c_name.lower():
+                op.drop_constraint(c_name, 'volunteers', type_='check')
+    except Exception:
+        pass
+
+    try:
+        op.execute(sa.text("ALTER TABLE volunteers DROP CONSTRAINT IF EXISTS volunteers_type_check;"))
+        op.execute(sa.text("ALTER TABLE volunteers DROP CONSTRAINT IF EXISTS type_check;"))
+    except Exception:
+        pass
+    
     # 4. event_configs
     ec_cols = [c['name'] for c in inspector.get_columns('event_configs')]
     if 'peopleRoles' not in ec_cols and 'peopleroles' not in ec_cols:
