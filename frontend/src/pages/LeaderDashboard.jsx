@@ -329,7 +329,7 @@ const LeaderDashboard = () => {
     return (
       <div style={{ minHeight: '100vh', background: 'var(--bg-main)', position: 'relative' }}>
         <AmbientCursorGlow />
-        <div style={{ padding: '120px 24px 40px', maxWidth: '1280px', margin: '0 auto' }}>
+        <div style={{ padding: '76px 24px 40px', maxWidth: '1600px', margin: '0 auto' }}>
           <Skeleton variant="card" count={3} style={{ marginBottom: '16px' }} />
         </div>
       </div>
@@ -359,8 +359,8 @@ const LeaderDashboard = () => {
       <div 
         className="main-content" 
         style={{ 
-          padding: '110px 24px 40px 24px', 
-          maxWidth: '1280px', 
+          padding: '76px 24px 40px 24px', 
+          maxWidth: '1600px', 
           margin: '0 auto',
           width: '100%',
           boxSizing: 'border-box'
@@ -371,9 +371,15 @@ const LeaderDashboard = () => {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>{teamInfo.name}</h1>
-              <span className={`status-badge status-${teamInfo.status.toLowerCase()}`} style={{ fontSize: '0.75rem' }}>
-                {teamInfo.status}
-              </span>
+              {teamInfo.psSelection ? (
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '999px', background: 'rgba(62, 125, 71, 0.15)', color: 'var(--success)', border: '1px solid rgba(62, 125, 71, 0.3)' }}>
+                  Topic Locked [{teamInfo.psSelection.problemStatement.code}]
+                </span>
+              ) : (
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '999px', background: 'rgba(224, 92, 26, 0.15)', color: 'var(--warning)', border: '1px solid rgba(224, 92, 26, 0.3)' }}>
+                  Pending Topic Selection
+                </span>
+              )}
             </div>
             <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
               Team Code: <strong style={{ color: 'var(--text-primary)' }}>{teamInfo.registrationId}</strong> | {teamInfo.collegeName}
@@ -423,7 +429,7 @@ const LeaderDashboard = () => {
                     </div>
                   </div>
                   <div style={{ flex: 1, padding: '12px', borderRadius: '8px', background: 'rgba(62, 125, 71, 0.08)', border: '1px solid rgba(62, 125, 71, 0.2)' }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Desk / Bench #</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Desk / Bench</div>
                     <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--success)', marginTop: '2px' }}>
                       {teamInfo.deskNumber || 'Not assigned yet'}
                     </div>
@@ -695,23 +701,23 @@ const LeaderDashboard = () => {
                         </p>
                         
                         {countdownText ? (
-                          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '16px', marginBottom: '8px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginTop: '16px', marginBottom: '8px' }}>
                             {countdownUnits.days > 0 && (
-                              <div style={{ background: 'var(--cream)', border: '1px solid var(--border-strong)', borderRadius: '12px', padding: '10px 14px', textAlign: 'center', minWidth: '64px', flex: '1 1 60px', maxWidth: '84px' }}>
-                                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--primary)', lineHeight: 1.1 }}>{String(countdownUnits.days).padStart(2, '0')}</div>
+                              <div style={{ background: 'var(--cream)', border: '1px solid var(--border-strong)', borderRadius: '14px', width: '72px', height: '72px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', flexShrink: 0, aspectRatio: '1 / 1' }}>
+                                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--primary)', lineHeight: 1 }}>{String(countdownUnits.days).padStart(2, '0')}</div>
                                 <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginTop: '4px' }}>Days</div>
                               </div>
                             )}
-                            <div style={{ background: 'var(--cream)', border: '1px solid var(--border-strong)', borderRadius: '12px', padding: '10px 14px', textAlign: 'center', minWidth: '64px', flex: '1 1 60px', maxWidth: '84px' }}>
-                              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--primary)', lineHeight: 1.1 }}>{String(countdownUnits.hours).padStart(2, '0')}</div>
+                            <div style={{ background: 'var(--cream)', border: '1px solid var(--border-strong)', borderRadius: '14px', width: '72px', height: '72px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', flexShrink: 0, aspectRatio: '1 / 1' }}>
+                              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--primary)', lineHeight: 1 }}>{String(countdownUnits.hours).padStart(2, '0')}</div>
                               <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginTop: '4px' }}>Hours</div>
                             </div>
-                            <div style={{ background: 'var(--cream)', border: '1px solid var(--border-strong)', borderRadius: '12px', padding: '10px 14px', textAlign: 'center', minWidth: '64px', flex: '1 1 60px', maxWidth: '84px' }}>
-                              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--primary)', lineHeight: 1.1 }}>{String(countdownUnits.mins).padStart(2, '0')}</div>
+                            <div style={{ background: 'var(--cream)', border: '1px solid var(--border-strong)', borderRadius: '14px', width: '72px', height: '72px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', flexShrink: 0, aspectRatio: '1 / 1' }}>
+                              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--primary)', lineHeight: 1 }}>{String(countdownUnits.mins).padStart(2, '0')}</div>
                               <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginTop: '4px' }}>Mins</div>
                             </div>
-                            <div style={{ background: 'var(--cream)', border: '1px solid var(--border-strong)', borderRadius: '12px', padding: '10px 14px', textAlign: 'center', minWidth: '64px', flex: '1 1 60px', maxWidth: '84px' }}>
-                              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--primary)', lineHeight: 1.1 }}>{String(countdownUnits.secs).padStart(2, '0')}</div>
+                            <div style={{ background: 'var(--cream)', border: '1px solid var(--border-strong)', borderRadius: '14px', width: '72px', height: '72px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', flexShrink: 0, aspectRatio: '1 / 1' }}>
+                              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--primary)', lineHeight: 1 }}>{String(countdownUnits.secs).padStart(2, '0')}</div>
                               <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginTop: '4px' }}>Secs</div>
                             </div>
                           </div>

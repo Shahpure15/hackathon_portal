@@ -107,8 +107,8 @@ const AdminDashboard = () => {
       <div 
         className="main-content" 
         style={{ 
-          padding: '110px 24px 40px 24px', 
-          maxWidth: '1280px', 
+          padding: '80px 20px 40px 20px', 
+          maxWidth: '1400px', 
           margin: '0 auto',
           width: '100%',
           boxSizing: 'border-box'
@@ -619,13 +619,13 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
               style={{ width: '170px' }}
             >
               <option value="">All Desk Statuses</option>
-              <option value="true">Assigned Desk #</option>
+              <option value="true">Assigned Desk</option>
               <option value="false">Unassigned Desk</option>
             </select>
 
             <input
               type="text"
-              placeholder="Desk # (e.g. Desk 14)"
+              placeholder="Desk (e.g. Desk 14)"
               className="form-input"
               style={{ width: '160px' }}
               value={filters.deskNumber || ''}

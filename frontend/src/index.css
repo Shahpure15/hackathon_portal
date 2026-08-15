@@ -897,95 +897,6 @@ a:focus-visible {
   flex-wrap: nowrap;
 }
 
-.floating-nav-tabs::-webkit-scrollbar {
-  display: none;
-}
-
-@keyframes mobileMenuSlideDown {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -12px) scale(0.97);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, 0) scale(1);
-  }
-}
-
-.mobile-glass-dropdown {
-  position: fixed;
-  top: 76px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: calc(100% - 24px);
-  max-width: 500px;
-  background: rgba(253, 251, 247, 0.88);
-  backdrop-filter: blur(28px) saturate(195%);
-  -webkit-backdrop-filter: blur(28px) saturate(195%);
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  border-top-color: rgba(255, 255, 255, 0.95);
-  border-radius: 20px;
-  padding: 16px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
-  z-index: 999;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  animation: mobileMenuSlideDown 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  will-change: transform, opacity;
-}
-
-@media (max-width: 768px) {
-  .floating-nav {
-    top: 10px;
-    width: calc(100% - 20px);
-    height: 56px;
-    padding: 0 16px;
-    border-radius: 28px;
-  }
-  .mobile-glass-dropdown {
-    top: 72px;
-    width: calc(100% - 20px);
-    border-radius: 20px;
-  }
-}
-
-/* Global Circular & Icon Button Anti-Squish Safeguards */
-.icon-btn,
-.btn-circle,
-.btn-icon,
-button[style*="border-radius: 50%"],
-button[style*="border-radius: 999"] {
-  flex-shrink: 0 !important;
-}
-
-.icon-btn,
-button[style*="border-radius: 50%"] {
-  aspect-ratio: 1 / 1 !important;
-  box-sizing: border-box !important;
-}
-
-/* Password show/hide toggle fix */
-.pw-toggle {
-  position: absolute;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px;
-  line-height: 1;
-}
-
-.pw-toggle:active {
-  transform: translateY(-50%) scale(0.96) !important;
-}
-
 /* Touch-friendly controls & mobile optimizations */
 .touch-target {
   min-height: 44px;
@@ -1027,12 +938,12 @@ a:focus-visible {
 /* Floating Glass Notch Navigation */
 .floating-nav {
   position: fixed;
-  top: 36px;
+  top: 16px;
   left: 50%;
   transform: translateX(-50%);
-  width: calc(100% - 24px);
-  max-width: 1440px;
-  height: 60px;
+  width: calc(100% - 32px);
+  max-width: 1400px;
+  height: 52px;
   border-radius: 999px;
   display: flex;
   align-items: center;
@@ -1157,16 +1068,16 @@ a:focus-visible {
 
 @media (max-width: 768px) {
   .floating-nav {
-    top: 20px;
-    width: calc(100% - 20px);
-    height: 56px;
-    padding: 0 12px;
-    border-radius: 28px;
+    top: 14px;
+    width: calc(100% - 24px);
+    height: 50px;
+    padding: 0 14px;
+    border-radius: 999px;
     box-sizing: border-box;
   }
   .mobile-glass-dropdown {
-    top: 86px;
-    width: calc(100% - 20px);
+    top: 72px;
+    width: calc(100% - 24px);
     border-radius: 20px;
   }
 }

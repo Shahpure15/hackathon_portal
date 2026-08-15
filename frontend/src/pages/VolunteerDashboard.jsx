@@ -204,8 +204,8 @@ const VolunteerDashboard = () => {
       <div 
         className="main-content" 
         style={{ 
-          padding: '110px 24px 40px 24px', 
-          maxWidth: '1280px', 
+          padding: '80px 20px 40px 20px', 
+          maxWidth: '1400px', 
           margin: '0 auto',
           width: '100%',
           boxSizing: 'border-box'
