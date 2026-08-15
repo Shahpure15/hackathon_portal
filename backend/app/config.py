@@ -3,8 +3,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./event_portal.db"
-    JWT_SECRET_KEY: str = "d8f4e6a2b0c1d3e5f7a9b8c6d4e2f0a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3"
-    JWT_REFRESH_SECRET_KEY: str = "e1c3a5b7d9f2e4a6c8b0d2e4f6a8b1c3d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5"
+    JWT_SECRET_KEY: str = "CHANGE_ME_INSECURE_DEFAULT_SECRET_KEY"
+    JWT_REFRESH_SECRET_KEY: str = "CHANGE_ME_INSECURE_DEFAULT_REFRESH_KEY"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     CORS_ALLOWED_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"

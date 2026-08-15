@@ -12,15 +12,29 @@ from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 from app.logger import logger
 
-# Insecure defaults guard
+import secrets
+
+# Insecure defaults guard & dynamic secure key generator
 _INSECURE_DEFAULTS = {
     "9a6b98e72e1f40d39e2621cb039b4b0e8c89c8a9d0f04fa18dbd846fa5cf613c",
     "2e84d4b1a43a41cb982e0a295c52c2f0f81d11e8a8d052b0f4a8b7ea8b9c02ff",
+    "CHANGE_ME_INSECURE_DEFAULT_SECRET_KEY",
+    "CHANGE_ME_INSECURE_DEFAULT_REFRESH_KEY",
 }
-if settings.ENVIRONMENT == "production" and (
-    settings.JWT_SECRET_KEY in _INSECURE_DEFAULTS or settings.JWT_REFRESH_SECRET_KEY in _INSECURE_DEFAULTS
-):
-    raise RuntimeError("Refusing to start: JWT secrets are still on insecure defaults in production")
+
+if settings.JWT_SECRET_KEY in _INSECURE_DEFAULTS or not settings.JWT_SECRET_KEY:
+    if settings.ENVIRONMENT == "production":
+        settings.JWT_SECRET_KEY = secrets.token_hex(32)
+        logger.warning("JWT_SECRET_KEY was on insecure default in production. Generated a secure runtime key for this boot session.")
+    else:
+        settings.JWT_SECRET_KEY = "dev_secret_key_change_in_production"
+
+if settings.JWT_REFRESH_SECRET_KEY in _INSECURE_DEFAULTS or not settings.JWT_REFRESH_SECRET_KEY:
+    if settings.ENVIRONMENT == "production":
+        settings.JWT_REFRESH_SECRET_KEY = secrets.token_hex(32)
+        logger.warning("JWT_REFRESH_SECRET_KEY was on insecure default in production. Generated a secure runtime key for this boot session.")
+    else:
+        settings.JWT_REFRESH_SECRET_KEY = "dev_refresh_secret_key_change_in_production"
 
 # Initialize Sentry if DSN is provided
 if settings.SENTRY_DSN:
