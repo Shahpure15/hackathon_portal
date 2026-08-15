@@ -1378,6 +1378,24 @@ input[type="checkbox"]:checked::after {
   color: #f4efe6 !important;
 }
 
+[data-theme="dark"] .form-label,
+[data-theme="dark"] .modal-scale-up .form-label,
+[data-theme="dark"] .modal-scale-up label,
+[data-theme="dark"] .glass-card .form-label,
+[data-theme="dark"] .glass-panel .form-label {
+  color: #f4efe6 !important;
+}
+
+[data-theme="dark"] .modal-scale-up h1,
+[data-theme="dark"] .modal-scale-up h2,
+[data-theme="dark"] .modal-scale-up h3,
+[data-theme="dark"] .modal-scale-up h4,
+[data-theme="dark"] .modal-scale-up h5,
+[data-theme="dark"] .modal-scale-up h6 {
+  color: #f4efe6 !important;
+}
+
+
 [data-theme="dark"] table th {
   background: rgba(34, 28, 22, 0.7) !important;
   color: #c4b8a8 !important;

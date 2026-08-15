@@ -3296,9 +3296,50 @@ const PodRosterModal = ({ pod, onClose }) => {
 
   // New volunteer form states
   const [newVolName, setNewVolName] = useState('');
-  const [newVolType, setNewVolType] = useState('FACULTY');
+  const [newVolType, setNewVolType] = useState('Faculty Lead');
   const [newVolEmail, setNewVolEmail] = useState('');
   const [newVolPhone, setNewVolPhone] = useState('');
+  const [peopleRoles, setPeopleRoles] = useState([
+    { name: "Faculty Lead", target: "pod" },
+    { name: "Judge / Evaluator", target: "ps" },
+    { name: "Student Coordinator", target: "pod" },
+    { name: "Volunteer / Monitor", target: "pod" },
+    { name: "Event Organizer", target: "pod" },
+    { name: "Student Assistant", target: "pod" }
+  ]);
+
+  const normalizeRoles = (rolesData) => {
+    if (!Array.isArray(rolesData)) return [];
+    return rolesData.map(r => {
+      if (typeof r === 'object' && r !== null) {
+        return { name: r.name || '', target: r.target || 'pod' };
+      }
+      const str = String(r);
+      const target = (str.toLowerCase().includes('judge') || str.toLowerCase().includes('evaluator')) ? 'ps' : 'pod';
+      return { name: str, target };
+    });
+  };
+
+  const fetchPeopleRoles = async () => {
+    try {
+      const res = await api.get('/admin/people-roles');
+      if (res.data && res.data.length > 0) {
+        const norm = normalizeRoles(res.data);
+        setPeopleRoles(norm);
+        if (norm.length > 0) {
+          const firstRoleName = typeof norm[0] === 'object' ? norm[0].name : norm[0];
+          setNewVolType(firstRoleName);
+        }
+      }
+    } catch (err) {
+      // Keep defaults
+    }
+  };
+
+  useEffect(() => {
+    fetchPeopleRoles();
+  }, []);
+
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -3436,7 +3477,8 @@ const PodRosterModal = ({ pod, onClose }) => {
       setNewVolName('');
       setNewVolEmail('');
       setNewVolPhone('');
-      setNewVolType('MENTOR');
+      const defaultRole = (peopleRoles[0] && (typeof peopleRoles[0] === 'object' ? peopleRoles[0].name : peopleRoles[0])) || 'Faculty Lead';
+      setNewVolType(defaultRole);
       setShowCreateNew(false);
       await fetchRoster();
       await fetchVolunteersPool();
@@ -3616,8 +3658,10 @@ const PodRosterModal = ({ pod, onClose }) => {
                       className="form-input"
                       style={{ padding: '6px 12px', fontSize: '0.85rem' }}
                     >
-                      <option value="STUDENT">Student</option>
-                      <option value="MENTOR">Mentor</option>
+                      {peopleRoles.map((r) => {
+                        const rName = typeof r === 'object' ? r.name : r;
+                        return <option key={rName} value={rName}>{rName}</option>;
+                      })}
                     </select>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
