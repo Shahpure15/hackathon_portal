@@ -6,14 +6,39 @@ export const ToastProvider = ({ children }) => {
   const [toasts, setToasts] = useState([]);
 
   const addToast = useCallback((message, type = 'info', duration = 4500) => {
+    let textMessage = message;
+
+    if (message && typeof message === 'object') {
+      if (typeof message.detail === 'string') {
+        textMessage = message.detail;
+      } else if (Array.isArray(message.detail)) {
+        textMessage = message.detail.map((d) => (typeof d === 'object' && d?.msg ? d.msg : String(d))).join(', ');
+      } else if (Array.isArray(message)) {
+        textMessage = message.map((d) => (typeof d === 'object' && d?.msg ? d.msg : String(d))).join(', ');
+      } else if (typeof message.message === 'string') {
+        textMessage = message.message;
+      } else if (message instanceof Error) {
+        textMessage = message.message || 'An error occurred';
+      } else {
+        try {
+          textMessage = JSON.stringify(message);
+        } catch (e) {
+          textMessage = 'An unexpected error occurred';
+        }
+      }
+    } else if (typeof message !== 'string') {
+      textMessage = String(message || '');
+    }
+
     const id = Math.random().toString(36).substring(2, 9);
-    setToasts((prev) => [...prev, { id, message, type }]);
+    setToasts((prev) => [...prev, { id, message: textMessage, type }]);
 
     // Auto-dismiss all toast notifications after 4.5 seconds
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, duration);
   }, []);
+
 
   const removeToast = useCallback((id) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
