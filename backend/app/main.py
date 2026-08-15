@@ -51,6 +51,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from alembic.config import Config
+from alembic import command
+import os
+
+@app.on_event("startup")
+def run_migrations_on_startup():
+    try:
+        backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        alembic_ini_path = os.path.join(backend_dir, "alembic.ini")
+        if os.path.exists(alembic_ini_path):
+            alembic_cfg = Config(alembic_ini_path)
+            alembic_cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+            command.upgrade(alembic_cfg, "head")
+            logger.info("Alembic database migrations applied successfully to head on startup.")
+    except Exception as e:
+        logger.error(f"Error running automatic Alembic startup migration: {e}")
+
 @app.get("/health")
 def health_check(db: Session = Depends(get_db)):
     """Health check route validating database connectivity and backend version."""
