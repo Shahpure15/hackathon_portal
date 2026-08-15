@@ -99,12 +99,12 @@ export function Navbar({
             {title}
           </span>
           {user?.role && (
-            <span style={{ 
-              fontSize: '0.6rem', 
-              background: 'var(--primary-glow)', 
-              color: 'var(--primary)', 
-              padding: '2px 6px', 
-              borderRadius: '999px', 
+            <span style={{
+              fontSize: '0.6rem',
+              background: 'var(--primary-glow)',
+              color: 'var(--primary)',
+              padding: '2px 6px',
+              borderRadius: '999px',
               fontWeight: 700,
               textTransform: 'uppercase',
               letterSpacing: '0.3px',
@@ -164,14 +164,14 @@ export function Navbar({
                     }}
                     className={`btn tab-pill ${isActive ? 'btn-primary' : 'btn-secondary'}`}
                     title={isDisabled ? item.disabledTitle || 'Not available' : undefined}
-                    style={{ 
-                      padding: '4px 10px', 
-                      border: 'none', 
-                      background: isActive ? undefined : 'transparent', 
-                      minHeight: 'auto', 
-                      height: '32px', 
-                      borderRadius: '999px', 
-                      fontSize: '0.78rem', 
+                    style={{
+                      padding: '4px 10px',
+                      border: 'none',
+                      background: isActive ? undefined : 'transparent',
+                      minHeight: 'auto',
+                      height: '32px',
+                      borderRadius: '999px',
+                      fontSize: '0.78rem',
                       fontWeight: isActive ? 700 : 500,
                       color: isActive ? undefined : isDisabled ? 'var(--text-muted)' : 'var(--text-secondary)',
                       flexShrink: 0,
@@ -262,7 +262,7 @@ export function Navbar({
       {/* Mobile Glass Dropdown Menu */}
       {isMobile && mobileOpen && (
         <>
-          <div 
+          <div
             onClick={() => setMobileOpen(false)}
             className="modal-overlay-fade"
             style={{
