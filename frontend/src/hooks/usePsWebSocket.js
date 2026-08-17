@@ -7,6 +7,11 @@ export function usePsWebSocket({ eventId, token, onMessage, enabled = true }) {
   const retryCountRef = useRef(0);
   const timeoutRef = useRef(null);
 
+  const onMessageRef = useRef(onMessage);
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+  }, [onMessage]);
+
   const connect = useCallback(() => {
     if (!eventId || !token || !enabled) return;
 
@@ -27,8 +32,8 @@ export function usePsWebSocket({ eventId, token, onMessage, enabled = true }) {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (onMessage) {
-            onMessage(data);
+          if (onMessageRef.current) {
+            onMessageRef.current(data);
           }
         } catch (e) {
           console.error('Failed to parse WebSocket message', e);
@@ -56,7 +61,7 @@ export function usePsWebSocket({ eventId, token, onMessage, enabled = true }) {
       console.error('WebSocket connection error:', e);
       setIsPollingFallback(true);
     }
-  }, [eventId, token, enabled, onMessage]);
+  }, [eventId, token, enabled]);
 
   useEffect(() => {
     if (enabled && eventId && token) {

@@ -11,6 +11,11 @@ export function useCheckinWebSocket({ eventId, token, onMessage, enabled = true 
   const retryCountRef = useRef(0);
   const timeoutRef = useRef(null);
 
+  const onMessageRef = useRef(onMessage);
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+  }, [onMessage]);
+
   const connect = useCallback(() => {
     if (!eventId || !token || !enabled) return;
 
@@ -30,7 +35,7 @@ export function useCheckinWebSocket({ eventId, token, onMessage, enabled = true 
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (onMessage) onMessage(data);
+          if (onMessageRef.current) onMessageRef.current(data);
         } catch (e) {
           console.error("[useCheckinWebSocket] Failed to parse message", e);
         }
@@ -50,7 +55,7 @@ export function useCheckinWebSocket({ eventId, token, onMessage, enabled = true 
     } catch (e) {
       console.error("[useCheckinWebSocket] Connection error:", e);
     }
-  }, [eventId, token, enabled, onMessage]);
+  }, [eventId, token, enabled]);
 
   useEffect(() => {
     if (enabled && eventId && token) connect();
