@@ -168,8 +168,11 @@ def mark_attendance_checkin(
     if not member_id or not checkpoint_id:
         raise HTTPException(status_code=400, detail="teamMemberId and checkpointTypeId are required")
         
-    # Verify team member exists
-    member = db.query(TeamMember).filter(TeamMember.id == member_id).first()
+    # Verify team member exists AND belongs to this volunteer's event (tenant isolation)
+    member = db.query(TeamMember).join(Team, TeamMember.teamId == Team.id).filter(
+        TeamMember.id == member_id,
+        Team.eventId == current_user.eventId
+    ).first()
     if not member:
         raise HTTPException(status_code=404, detail="Team member not found")
         

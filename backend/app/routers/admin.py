@@ -2,6 +2,7 @@ import re
 import csv
 import uuid
 import random
+import secrets
 import string
 import pandas as pd
 import openpyxl
@@ -23,7 +24,7 @@ from app.models import (
     User, Role, Team, TeamMember, TeamStatus, Pod, Volunteer, 
     VolunteerType, ProblemStatement, PSSelection, AuditLog, 
     PendingImport, EventConfig, CheckpointType, AttendanceRecord,
-    Panel, EvaluationRound, Submission, Discipline
+    Panel, EvaluationRound, Submission, Discipline, RefreshToken
 )
 from app.auth import require_role, CurrentUser, get_password_hash
 from app.schemas import (
@@ -74,10 +75,17 @@ def log_audit(db: Session, actor_id: str, action: str, entity_type: str, entity_
     db.add(audit)
     db.flush()
 
-# Helper: Generate random password
-def generate_random_password(length: int = 10) -> str:
+# Helper: Generate random password (CSPRNG)
+def generate_random_password(length: int = 12) -> str:
     chars = string.ascii_letters + string.digits
-    return "".join(random.choice(chars) for _ in range(length))
+    return "".join(secrets.choice(chars) for _ in range(length))
+
+# Helper: Revoke all active refresh tokens for a user (force logout of all sessions)
+def revoke_all_sessions(db: Session, user_id: str):
+    db.query(RefreshToken).filter(
+        RefreshToken.userId == user_id,
+        RefreshToken.revoked == False
+    ).update({"revoked": True})
 
 # Helper: Generate unique volunteer username
 def generate_unique_volunteer_username(db: Session, name: str) -> str:
@@ -1944,6 +1952,7 @@ def reset_volunteer_password(
         password = generate_random_password()
         
     v.user.passwordHash = get_password_hash(password)
+    revoke_all_sessions(db, v.user.id)
     db.commit()
     
     return {
@@ -1987,6 +1996,7 @@ def reset_team_password(
         password = generate_random_password()
         
     team.user.passwordHash = get_password_hash(password)
+    revoke_all_sessions(db, team.user.id)
     db.commit()
     
     return {

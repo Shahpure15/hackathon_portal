@@ -19,6 +19,12 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 # A pre-computed dummy hash of "dummy" to run verifying check for timing-attack safety
 DUMMY_HASH = "$argon2id$v=19$m=65536,t=3,p=4$2q1gXp5eF9S16aC07V0mDw$Z7u4D1Z258Yy02+o3l/Kq8mO372h2Z1o0O392o2m0o8"
 
+def _revoke_all_sessions(db: Session, user_id: str):
+    db.query(RefreshToken).filter(
+        RefreshToken.userId == user_id,
+        RefreshToken.revoked == False
+    ).update({"revoked": True})
+
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("30/minute")
 def login(
@@ -55,6 +61,9 @@ def login(
     }
     if user.teamId:
         token_payload["teamId"] = user.teamId
+
+    # Revoke any existing sessions for this user before issuing a new one (single active session)
+    _revoke_all_sessions(db, user.id)
 
     # Create Access & Refresh Tokens
     access_token = create_access_token(data=token_payload)
