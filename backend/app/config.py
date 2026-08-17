@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     JWT_REFRESH_SECRET_KEY: str = "CHANGE_ME_INSECURE_DEFAULT_REFRESH_KEY"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
-    CORS_ALLOWED_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+    CORS_ALLOWED_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,https://mitindia.vercel.app,https://mitinida-hackathon-portal.vercel.app,https://hackathon.mitindia.com,https://www.hackathon.mitindia.com"
     ENVIRONMENT: str = "development"
     SENTRY_DSN: str = ""
     BACKEND_VERSION: str = "9.1.0"

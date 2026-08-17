@@ -5,7 +5,8 @@ from app.config import settings
 # For SQLite, we need connect_args={"check_same_thread": False}
 connect_args = {}
 engine_kwargs = {
-    "pool_pre_ping": True
+    "pool_pre_ping": True,
+    "pool_recycle": 300
 }
 if settings.DATABASE_URL.startswith("sqlite"):
     connect_args["check_same_thread"] = False

@@ -52,14 +52,26 @@ app = FastAPI(
 
 # Set up limiter state
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+async def cors_rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    response = JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={"detail": "Rate limit exceeded"}
+    )
+    origin = request.headers.get("origin")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
+
+app.add_exception_handler(RateLimitExceeded, cors_rate_limit_exceeded_handler)
 
 # Configure CORS middleware
 origins = [origin.strip() for origin in settings.CORS_ALLOWED_ORIGINS.split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"^https://[a-z0-9-]+\.vercel\.app$",
+    allow_origin_regex=r"^https://([a-z0-9-]+\.vercel\.app|([a-z0-9-]+\.)*mitindia\.com)$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

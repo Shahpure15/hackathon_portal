@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, and_, func
 from sqlalchemy.exc import IntegrityError
 
@@ -71,15 +71,11 @@ def get_volunteer_teams(
         )
         
     total_count = query.count()
-    teams = query.order_by(Team.registrationId).offset((page - 1) * limit).limit(limit).all()
+    teams = query.options(joinedload(Team.members)).order_by(Team.registrationId).offset((page - 1) * limit).limit(limit).all()
     
     results = []
     for team in teams:
-        # Count verified members
-        verified_count = db.query(TeamMember).filter(
-            TeamMember.teamId == team.id,
-            TeamMember.idVerified == True
-        ).count()
+        verified_count = sum(1 for m in team.members if m.idVerified)
         
         results.append({
             "id": team.id,
@@ -106,7 +102,7 @@ def get_volunteer_team_detail(
     current_user: CurrentUser = Depends(require_role(Role.VOLUNTEER))
 ):
     """Detailed team list for check-in including attendance status per member."""
-    team = db.query(Team).filter(
+    team = db.query(Team).options(joinedload(Team.members)).filter(
         Team.id == team_id,
         Team.eventId == current_user.eventId
     ).first()
@@ -117,15 +113,22 @@ def get_volunteer_team_detail(
     # Get all checkpoints for this event
     checkpoints = db.query(CheckpointType).filter(CheckpointType.eventId == current_user.eventId).all()
     
-    members_data = []
-    for m in team.members:
-        # Find attendance logs for this member
-        attendance_logs = db.query(AttendanceRecord).filter(AttendanceRecord.teamMemberId == m.id).all()
-        attendance_map = {log.checkpointTypeId: {
+    # Fetch all attendance logs for member IDs in a single query
+    member_ids = [m.id for m in team.members]
+    attendance_logs = db.query(AttendanceRecord).filter(AttendanceRecord.teamMemberId.in_(member_ids)).all() if member_ids else []
+    
+    attendance_by_member = {}
+    for log in attendance_logs:
+        if log.teamMemberId not in attendance_by_member:
+            attendance_by_member[log.teamMemberId] = {}
+        attendance_by_member[log.teamMemberId][log.checkpointTypeId] = {
             "markedBy": log.markedBy,
             "timestamp": log.timestamp
-        } for log in attendance_logs}
+        }
         
+    members_data = []
+    for m in team.members:
+        attendance_map = attendance_by_member.get(m.id, {})
         checkpoints_status = []
         for cp in checkpoints:
             record = attendance_map.get(cp.id)

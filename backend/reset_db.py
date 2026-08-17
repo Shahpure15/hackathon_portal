@@ -15,6 +15,7 @@ from app.models import (
 )
 from app.auth import get_password_hash
 from app.config import settings
+from backup_utils import perform_full_backup
 
 def generate_random_password(length=16):
     alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
@@ -24,6 +25,9 @@ def reset_db():
     print("Connecting to database...")
     db = SessionLocal()
     try:
+        # Perform mandatory auto-backup of existing platform data before clearing
+        perform_full_backup(db)
+
         print("Cleaning existing database data...")
         
         # Delete child records first to satisfy foreign keys

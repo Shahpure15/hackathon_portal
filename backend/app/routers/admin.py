@@ -315,13 +315,10 @@ def get_unresolved_leaders_report(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
-    teams = db.query(Team).filter(Team.eventId == current_user.eventId).all()
+    teams = db.query(Team).options(joinedload(Team.members)).filter(Team.eventId == current_user.eventId).all()
     unresolved = []
     for t in teams:
-        has_leader = db.query(TeamMember).filter(
-            TeamMember.teamId == t.id,
-            TeamMember.isTeamLeader == True
-        ).first() is not None
+        has_leader = any(m.isTeamLeader for m in t.members)
         if not has_leader:
             unresolved.append({
                 "teamId": t.id,
@@ -867,20 +864,20 @@ def get_pods(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
-    pods = db.query(Pod).filter(Pod.eventId == current_user.eventId).order_by(Pod.name).all()
+    pods = db.query(Pod).options(
+        joinedload(Pod.teams),
+        joinedload(Pod.volunteers)
+    ).filter(Pod.eventId == current_user.eventId).order_by(Pod.name).all()
     
     results = []
     for pod in pods:
-        team_count = db.query(Team).filter(Team.podId == pod.id).count()
-        volunteer_count = db.query(Volunteer).filter(Volunteer.podId == pod.id).count()
-        
         results.append(PodResponse(
             id=pod.id,
             eventId=pod.eventId,
             name=pod.name,
             capacity=pod.capacity,
-            teamCount=team_count,
-            volunteerCount=volunteer_count
+            teamCount=len(pod.teams),
+            volunteerCount=len(pod.volunteers)
         ))
         
     return results

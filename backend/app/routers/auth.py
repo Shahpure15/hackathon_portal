@@ -99,6 +99,7 @@ def login(
     )
 
 @router.post("/refresh", response_model=TokenResponse)
+@limiter.exempt
 def refresh(
     request: Request,
     response: Response,
