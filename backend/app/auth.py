@@ -11,8 +11,11 @@ from app.config import settings
 from app.database import get_db
 from app.models import User, Role, RefreshToken
 
-# Configure CryptContext for Argon2 password hashing
-pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+# Configure CryptContext: bcrypt is now the primary scheme for all new hashes.
+# argon2 is kept as a fallback so existing users' stored hashes remain verifiable
+# during the transition — passlib marks argon2 hashes "deprecated" and they get
+# lazily upgraded to bcrypt on next successful login (see routers/auth.py login()).
+pwd_context = CryptContext(schemes=["bcrypt", "argon2"], deprecated="auto")
 
 # JWT configuration
 ALGORITHM = "HS256"

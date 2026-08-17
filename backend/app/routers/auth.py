@@ -10,7 +10,8 @@ from app.schemas import UserLogin, TokenResponse
 from app.config import settings
 from app.auth import (
     verify_password, get_password_hash, create_access_token, 
-    create_refresh_token, rotate_refresh_token, get_current_user, CurrentUser
+    create_refresh_token, rotate_refresh_token, get_current_user, CurrentUser,
+    pwd_context
 )
 from app.limiter import limiter
 
@@ -46,12 +47,18 @@ def login(
             detail="Invalid username or password"
         )
 
-    # Verify password
-    if not verify_password(login_data.password, user.passwordHash):
+    # Verify password, and lazily upgrade the stored hash if it's on a
+    # deprecated scheme (i.e. still argon2) — this migrates users to bcrypt
+    # transparently, one login at a time, with no forced logout or reset.
+    is_valid, new_hash = pwd_context.verify_and_update(login_data.password, user.passwordHash)
+    if not is_valid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password"
         )
+    if new_hash is not None:
+        user.passwordHash = new_hash
+        db.commit()
 
     # Generate payloads
     token_payload = {

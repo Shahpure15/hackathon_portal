@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     CORS_ALLOWED_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,https://mitindia.vercel.app,https://mitinida-hackathon-portal.vercel.app,https://hackathon.mitindia.com,https://www.hackathon.mitindia.com"
     ENVIRONMENT: str = "development"
     SENTRY_DSN: str = ""
-    BACKEND_VERSION: str = "9.1.0"
+    BACKEND_VERSION: str = "10.0.0"
 
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"),
