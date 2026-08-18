@@ -4,6 +4,12 @@ from fastapi import Request
 from jose import JWTError, jwt
 from app.config import settings
 
+def get_real_ip(request: Request) -> str:
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return get_remote_address(request)
+
 def team_key_func(request: Request) -> str:
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
@@ -15,6 +21,7 @@ def team_key_func(request: Request) -> str:
                 return f"team:{team_id}"
         except JWTError:
             pass
-    return get_remote_address(request)
+    return get_real_ip(request)
 
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(key_func=get_real_ip)
+

@@ -57,18 +57,32 @@ app.state.limiter = limiter
 async def cors_rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
     response = JSONResponse(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        content={"detail": "Rate limit exceeded"}
+        content={"detail": "Rate limit exceeded. Please wait a minute before retrying."}
     )
     origin = request.headers.get("origin")
     if origin:
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "*"
     return response
 
 app.add_exception_handler(RateLimitExceeded, cors_rate_limit_exceeded_handler)
 
+import time
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    duration_ms = (time.time() - start_time) * 1000
+    client_ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else "unknown").split(",")[0].strip()
+    logger.info(f"{client_ip} - \"{request.method} {request.url.path}\" {response.status_code} ({duration_ms:.1f}ms)")
+    return response
+
 # Configure CORS middleware
 origins = [origin.strip() for origin in settings.CORS_ALLOWED_ORIGINS.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
