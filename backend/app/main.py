@@ -74,11 +74,17 @@ import time
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
-    response = await call_next(request)
-    duration_ms = (time.time() - start_time) * 1000
-    client_ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else "unknown").split(",")[0].strip()
-    logger.info(f"{client_ip} - \"{request.method} {request.url.path}\" {response.status_code} ({duration_ms:.1f}ms)")
-    return response
+    try:
+        response = await call_next(request)
+        duration_ms = (time.time() - start_time) * 1000
+        client_ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else "unknown").split(",")[0].strip()
+        logger.info(f"{client_ip} - \"{request.method} {request.url.path}\" {response.status_code} ({duration_ms:.1f}ms)")
+        return response
+    except Exception as exc:
+        duration_ms = (time.time() - start_time) * 1000
+        client_ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else "unknown").split(",")[0].strip()
+        logger.error(f"{client_ip} - \"{request.method} {request.url.path}\" ERROR ({duration_ms:.1f}ms) - {exc}")
+        raise exc
 
 # Configure CORS middleware
 origins = [origin.strip() for origin in settings.CORS_ALLOWED_ORIGINS.split(",") if origin.strip()]
