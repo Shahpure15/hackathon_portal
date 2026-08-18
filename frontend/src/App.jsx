@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
@@ -6,9 +6,16 @@ import { ThemeProvider } from './contexts/ThemeContext';
 
 // Pages
 import Login from './pages/Login';
-import AdminDashboard from './pages/AdminDashboard';
-import VolunteerDashboard from './pages/VolunteerDashboard';
-import LeaderDashboard from './pages/LeaderDashboard';
+
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const VolunteerDashboard = lazy(() => import('./pages/VolunteerDashboard'));
+const LeaderDashboard = lazy(() => import('./pages/LeaderDashboard'));
+
+const DashboardFallback = (
+  <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg-main)' }}>
+    <span className="spinner" style={{ width: '40px', height: '40px' }}></span>
+  </div>
+);
 
 // Guard for protected routes
 const ProtectedRoute = ({ children, allowedRole }) => {
@@ -78,7 +85,9 @@ const App = () => {
                 path="/admin/*"
                 element={
                   <ProtectedRoute allowedRole="ADMIN">
-                    <AdminDashboard />
+                    <Suspense fallback={DashboardFallback}>
+                      <AdminDashboard />
+                    </Suspense>
                   </ProtectedRoute>
                 }
               />
@@ -86,7 +95,9 @@ const App = () => {
                 path="/volunteer/*"
                 element={
                   <ProtectedRoute allowedRole="VOLUNTEER">
-                    <VolunteerDashboard />
+                    <Suspense fallback={DashboardFallback}>
+                      <VolunteerDashboard />
+                    </Suspense>
                   </ProtectedRoute>
                 }
               />
@@ -94,7 +105,9 @@ const App = () => {
                 path="/leader/*"
                 element={
                   <ProtectedRoute allowedRole="LEADER">
-                    <LeaderDashboard />
+                    <Suspense fallback={DashboardFallback}>
+                      <LeaderDashboard />
+                    </Suspense>
                   </ProtectedRoute>
                 }
               />

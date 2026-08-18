@@ -13,12 +13,12 @@ from app.auth import (
     create_refresh_token, rotate_refresh_token, get_current_user, CurrentUser,
     pwd_context
 )
-from app.limiter import limiter
+from app.limiter import limiter, login_key_func
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# A pre-computed dummy hash of "dummy" to run verifying check for timing-attack safety
-DUMMY_HASH = "$argon2id$v=19$m=65536,t=3,p=4$2q1gXp5eF9S16aC07V0mDw$Z7u4D1Z258Yy02+o3l/Kq8mO372h2Z1o0O392o2m0o8"
+# A pre-computed bcrypt hash of "dummy" to run verifying check for timing-attack safety
+DUMMY_HASH = "$2b$12$QeSL4DyEE6fPuAJYx2W4Ke8XFnX0X1yL3tpyufi1FPV8MeZHwESdi"
 
 def _revoke_all_sessions(db: Session, user_id: str):
     db.query(RefreshToken).filter(
@@ -27,13 +27,19 @@ def _revoke_all_sessions(db: Session, user_id: str):
     ).update({"revoked": True})
 
 @router.post("/login", response_model=TokenResponse)
-@limiter.limit("30/minute")
+@limiter.limit("30/minute", key_func=login_key_func)
 def login(
     request: Request,
     login_data: UserLogin, 
     response: Response, 
     db: Session = Depends(get_db)
 ):
+    # Make the submitted username available to login_key_func (see limiter.py) —
+    # slowapi evaluates the key func before this function body runs for the
+    # rate-limit check itself, but FastAPI has already parsed login_data by then,
+    # so we stash it on request.state for the key func to read.
+    request.state._login_username = login_data.username
+
     # Retrieve user case-insensitively
     user = db.query(User).filter(
         func.lower(User.username) == func.lower(login_data.username)

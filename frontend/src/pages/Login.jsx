@@ -7,6 +7,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import IconButton from '../components/IconButton';
 import AmbientCursorGlow from '../components/AmbientCursorGlow';
 import logoMitIndia from '../assets/logo_mitindia.jpg';
+import logoDarkMode from '../assets/logo_darkmode.png';
 
 const Login = () => {
   const [username, setUsername] = useState('');
@@ -63,7 +64,7 @@ const Login = () => {
         </div>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <img 
-            src={logoMitIndia} 
+            src={theme === 'dark' ? logoDarkMode : logoMitIndia} 
             alt="MIT India Hackathon Logo" 
             style={{ height: '70px', objectFit: 'contain', marginBottom: '16px', borderRadius: '4px' }}
           />

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Optional, List
+# pyrefly: ignore [missing-import]
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
@@ -11,11 +12,12 @@ from app.config import settings
 from app.database import get_db
 from app.models import User, Role, RefreshToken
 
-# Configure CryptContext: bcrypt is now the primary scheme for all new hashes.
-# argon2 is kept as a fallback so existing users' stored hashes remain verifiable
-# during the transition — passlib marks argon2 hashes "deprecated" and they get
-# lazily upgraded to bcrypt on next successful login (see routers/auth.py login()).
-pwd_context = CryptContext(schemes=["bcrypt", "argon2"], deprecated="auto")
+# Configure CryptContext: bcrypt only. argon2 was removed entirely — all
+# existing password hashes were flushed and reset to bcrypt, so there is no
+# remaining argon2-format hash in the database that needs a fallback. This
+# also permanently removes any risk of the old, memory-heavy argon2
+# verification path ever running again under a login rush.
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # JWT configuration
 ALGORITHM = "HS256"

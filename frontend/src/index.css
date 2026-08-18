@@ -1201,31 +1201,42 @@ input[type="checkbox"]:checked::after {
 }
 
 .ps-row-pulse {
-  animation: capacityPulse 600ms ease-out;
+  animation: capacityPulse 800ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .ps-count-scale {
   display: inline-block;
-  animation: numberScale 200ms ease-out;
+  animation: numberScale 800ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes capacityPulse {
   0% {
     background-color: var(--primary-glow);
+    box-shadow: 0 0 24px rgba(59, 130, 246, 0.45);
+    border-color: var(--primary);
+    transform: translateY(-1px);
   }
-
+  50% {
+    box-shadow: 0 0 16px rgba(59, 130, 246, 0.3);
+  }
   100% {
     background-color: transparent;
+    box-shadow: none;
+    transform: translateY(0);
   }
 }
 
 @keyframes numberScale {
   0% {
+    transform: scale(1.35);
+    box-shadow: 0 0 14px var(--primary);
+  }
+  50% {
     transform: scale(1.15);
   }
-
   100% {
     transform: scale(1);
+    box-shadow: none;
   }
 }
 
