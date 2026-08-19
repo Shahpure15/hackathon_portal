@@ -14,20 +14,11 @@ from app.models import (
 from app.auth import require_role, CurrentUser
 from app.schemas import ProblemStatementResponse, SubmissionCreate
 from app.limiter import limiter, team_key_func
-from app.websocket_manager import manager
 
 router = APIRouter(prefix="/leader", tags=["leader"])
 
-async def _broadcast_ps_update(event_id: str, ps_id: str, selected_count: int, capacity: int):
-    try:
-        await manager.broadcast(event_id, {
-            "type": "ps_capacity_update",
-            "psId": ps_id,
-            "selectedCount": selected_count,
-            "remainingCapacity": max(capacity - selected_count, 0)
-        })
-    except Exception as e:
-        logger.warning(f"Failed to broadcast ps_capacity_update for ps={ps_id}: {e}")
+
+
 def _is_ps_released(config: Any) -> bool:
     if not config or not config.psReleaseAt:
         return False
@@ -282,16 +273,6 @@ def select_problem_statement(
         db.add(selection)
         db.commit()
 
-        # Fetch updated PS for broadcast
-        ps_obj = db.query(ProblemStatement).filter(ProblemStatement.id == ps_id).first()
-        if ps_obj:
-            background_tasks.add_task(
-                _broadcast_ps_update,
-                current_user.eventId,
-                ps_id,
-                ps_obj.selectedCount,
-                ps_obj.capacity
-            )
         
     except IntegrityError:
         db.rollback()

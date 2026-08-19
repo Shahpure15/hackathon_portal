@@ -13,8 +13,8 @@ import Navbar from '../components/Navbar';
 import Skeleton from '../components/Skeleton';
 import IconButton from '../components/IconButton';
 import AmbientCursorGlow from '../components/AmbientCursorGlow';
-import usePsWebSocket from '../hooks/usePsWebSocket';
 import TeamQRCode from '../components/TeamQRCode';
+
 
 
 const formatContact = (contactStr) => {
@@ -177,41 +177,9 @@ const LeaderDashboard = () => {
     }
   };
 
-  const handleWsMessage = React.useCallback((data) => {
-    if (data.type === 'ps_capacity_update') {
-      setUpdatedPsId(data.psId);
-      setStatements((prev) =>
-        prev.map((s) => {
-          if (s.id === data.psId) {
-            return {
-              ...s,
-              selectedCount: data.selectedCount,
-              remainingCapacity: data.remainingCapacity
-            };
-          }
-          return s;
-        })
-      );
-      setTimeout(() => setUpdatedPsId(null), 800);
-    } else if (data.type === 'checkin_update') {
-      fetchVerificationStatus();
-    } else if (data.type === 'NEW_ROUND') {
-      addToast(`🎉 New Evaluation Round Added: "${data.roundName}"!`, 'info');
-      fetchEvalRounds?.();
-    } else if (data.type === 'ROUND_OPENED') {
-      addToast(`🚀 Evaluation Round ${data.roundNumber} ("${data.roundName}") is NOW OPEN for submissions!`, 'success');
-      fetchEvalRounds?.();
-    } else if (data.type === 'ROUND_UPDATED') {
-      fetchEvalRounds?.();
-    }
-  }, []);
 
-  usePsWebSocket({
-    eventId: teamInfo?.eventId,
-    token: localStorage.getItem('access_token'),
-    onMessage: handleWsMessage,
-    enabled: !!teamInfo
-  });
+
+
 
 
 

@@ -1,89 +1,115 @@
 import { useState, useEffect, useCallback } from 'react';
-import api, { getAccessToken } from '../services/api';
-import usePsWebSocket from '../hooks/usePsWebSocket';
+import api from '../services/api';
+import { Layers, RefreshCw } from 'lucide-react';
 
-export default function AdminPSOverview({ eventId }) {
+export default function AdminPSOverview() {
   const [statements, setStatements] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [updatedPsId, setUpdatedPsId] = useState(null);
 
   const fetchStatements = useCallback(async () => {
     try {
       const res = await api.get('/admin/problem-statements');
-      setStatements(res.data);
+      setStatements(res.data || []);
     } catch (e) {
-      console.error('Failed to fetch problem statements', e);
+      // Silent catch
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { fetchStatements(); }, [fetchStatements]);
+  useEffect(() => {
+    fetchStatements();
+    const interval = setInterval(fetchStatements, 10000);
+    return () => clearInterval(interval);
+  }, [fetchStatements]);
 
-  const handleWsMessage = useCallback((data) => {
-    if (data.type === 'ps_capacity_update') {
-      setUpdatedPsId(data.psId);
-      setStatements((prev) =>
-        prev.map((s) =>
-          s.id === data.psId
-            ? { ...s, selectedCount: data.selectedCount, remainingCapacity: data.remainingCapacity }
-            : s
-        )
-      );
-      setTimeout(() => setUpdatedPsId(null), 800);
-    }
-  }, []);
-
-  usePsWebSocket({
-    eventId,
-    token: getAccessToken() || localStorage.getItem('access_token'),
-    onMessage: handleWsMessage,
-    enabled: !!eventId,
-  });
-
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', minHeight: '40vh', alignItems: 'center', justifyContent: 'center' }}>
-        <span className="spinner" style={{ width: '40px', height: '40px' }}></span>
-      </div>
-    );
-  }
+  const totalCapacity = statements.reduce((sum, s) => sum + (s.capacity || 0), 0);
+  const totalSelected = statements.reduce((sum, s) => sum + (s.selectedCount || 0), 0);
 
   return (
-    <div>
-      <h2 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '16px' }}>Problem Statement Capacity — Live</h2>
-      <div className="glass-card" style={{ padding: '20px', overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: 'left', padding: '12px', borderBottom: '2px solid var(--border-color, #333)' }}>Code</th>
-              <th style={{ textAlign: 'left', padding: '12px', borderBottom: '2px solid var(--border-color, #333)' }}>Title</th>
-              <th style={{ textAlign: 'right', padding: '12px', borderBottom: '2px solid var(--border-color, #333)' }}>Selected</th>
-              <th style={{ textAlign: 'right', padding: '12px', borderBottom: '2px solid var(--border-color, #333)' }}>Capacity</th>
-              <th style={{ textAlign: 'right', padding: '12px', borderBottom: '2px solid var(--border-color, #333)' }}>Remaining</th>
-            </tr>
-          </thead>
-          <tbody>
-            {statements.map((ps) => (
-              <tr
-                key={ps.id}
-                style={{
-                  borderTop: '1px solid var(--border-color, #333)',
-                  transition: 'background-color 0.6s',
-                  backgroundColor: updatedPsId === ps.id ? 'var(--accent-highlight, rgba(100,180,255,0.15))' : 'transparent',
-                }}
-              >
-                <td style={{ padding: '12px', fontWeight: 700 }}>{ps.code}</td>
-                <td style={{ padding: '12px' }}>{ps.title}</td>
-                <td style={{ padding: '12px', textAlign: 'right' }}>{ps.selectedCount}</td>
-                <td style={{ padding: '12px', textAlign: 'right' }}>{ps.capacity}</td>
-                <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: (ps.remainingCapacity ?? (ps.capacity - ps.selectedCount)) === 0 ? 'var(--danger, #ef4444)' : 'var(--text-primary)' }}>
-                  {ps.remainingCapacity ?? (ps.capacity - ps.selectedCount)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div className="glass-card" style={{ padding: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+        <div>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Layers style={{ color: 'var(--primary)' }} size={26} />
+            Live Problem Statement Capacity
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', marginTop: '4px', fontSize: '0.9rem' }}>
+            Real-time live problem statement allocations across all participating teams.
+          </p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Selected</div>
+            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--primary)' }}>
+              {totalSelected} / {totalCapacity}
+            </div>
+          </div>
+          <button
+            onClick={fetchStatements}
+            className="btn btn-secondary"
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', fontSize: '0.85rem' }}
+          >
+            <RefreshCw size={14} /> Refresh
+          </button>
+        </div>
+      </div>
+
+      <div className="glass-card" style={{ padding: '20px' }}>
+        {loading ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+            Loading live statement counts...
+          </div>
+        ) : statements.length === 0 ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+            No problem statements found.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left', padding: '12px 16px' }}>Code</th>
+                  <th style={{ textAlign: 'left', padding: '12px 16px' }}>Title</th>
+                  <th style={{ textAlign: 'left', padding: '12px 16px' }}>Discipline</th>
+                  <th style={{ textAlign: 'center', padding: '12px 16px' }}>Capacity</th>
+                  <th style={{ textAlign: 'center', padding: '12px 16px' }}>Selected</th>
+                  <th style={{ textAlign: 'center', padding: '12px 16px' }}>Remaining</th>
+                  <th style={{ textAlign: 'left', padding: '12px 16px' }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {statements.map((s) => {
+                  const remaining = s.remainingCapacity !== undefined ? s.remainingCapacity : Math.max((s.capacity || 0) - (s.selectedCount || 0), 0);
+                  const isFull = remaining === 0;
+                  return (
+                    <tr key={s.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                      <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--primary)' }}>{s.code}</td>
+                      <td style={{ padding: '12px 16px', fontWeight: 600 }}>{s.title}</td>
+                      <td style={{ padding: '12px 16px', fontSize: '0.85rem' }}>{s.discipline || 'BOTH'}</td>
+                      <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 600 }}>{s.capacity}</td>
+                      <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 700, color: 'var(--accent-blue)' }}>{s.selectedCount || 0}</td>
+                      <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 700, color: isFull ? 'var(--danger)' : 'var(--success)' }}>
+                        {remaining}
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        {isFull ? (
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '4px 8px', borderRadius: '6px', background: 'rgba(239, 68, 68, 0.15)', color: 'var(--danger)' }}>
+                            FULL
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '4px 8px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.15)', color: 'var(--success)' }}>
+                            AVAILABLE
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

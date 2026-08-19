@@ -9,19 +9,11 @@ from app.database import get_db
 from app.logger import logger
 from app.models import Role, Team, TeamMember, CheckpointType, AttendanceRecord
 from app.auth import require_role, CurrentUser
-from app.websocket_manager import manager
 
 router = APIRouter(prefix="/volunteer", tags=["volunteer"])
 
-async def _broadcast_checkin_update(event_id: str, member_id: str, checkpoint_id: str):
-    try:
-        await manager.broadcast(event_id, {
-            "type": "checkin_update",
-            "teamMemberId": member_id,
-            "checkpointTypeId": checkpoint_id
-        })
-    except Exception as e:
-        logger.warning(f"Failed to broadcast checkin_update for member={member_id}: {e}")
+
+
 
 
 
@@ -216,12 +208,6 @@ def mark_attendance_checkin(
         
         db.commit()
 
-        background_tasks.add_task(
-            _broadcast_checkin_update,
-            current_user.eventId,
-            member_id,
-            checkpoint_id
-        )
     except IntegrityError:
         db.rollback()
         raise HTTPException(

@@ -17,8 +17,8 @@ from sqlalchemy import or_, and_, func
 
 import io
 import asyncio
-from app.websocket_manager import manager
 from app.database import get_db
+
 from app.logger import logger
 from app.models import (
     User, Role, Team, TeamMember, TeamStatus, Pod, Volunteer, 
@@ -3095,18 +3095,9 @@ def create_evaluation_round(
     db.commit()
     db.refresh(round_obj)
     logger.info(f"Created Evaluation Round '{round_obj.name}' (Number: {round_obj.roundNumber})")
-    
-    try:
-        asyncio.create_task(manager.broadcast(current_user.eventId, {
-            "type": "NEW_ROUND",
-            "roundId": round_obj.id,
-            "roundName": round_obj.name,
-            "roundNumber": round_obj.roundNumber
-        }))
-    except Exception as e:
-        logger.warning(f"Failed to broadcast NEW_ROUND event: {e}")
 
     return EvaluationRoundResponse(
+
         id=round_obj.id,
         eventId=round_obj.eventId,
         name=round_obj.name,
@@ -3149,27 +3140,8 @@ def update_evaluation_round(
     db.refresh(round_obj)
     logger.info(f"Updated Evaluation Round '{round_obj.name}' (isOpen={round_obj.isSubmissionOpen})")
 
-    try:
-        if not was_open and round_obj.isSubmissionOpen:
-            asyncio.create_task(manager.broadcast(current_user.eventId, {
-                "type": "ROUND_OPENED",
-                "roundId": round_obj.id,
-                "roundName": round_obj.name,
-                "roundNumber": round_obj.roundNumber
-            }))
-        else:
-            asyncio.create_task(manager.broadcast(current_user.eventId, {
-                "type": "ROUND_UPDATED",
-                "roundId": round_obj.id,
-                "roundName": round_obj.name,
-                "roundNumber": round_obj.roundNumber,
-                "isSubmissionOpen": round_obj.isSubmissionOpen
-            }))
-    except Exception as e:
-        logger.warning(f"Failed to broadcast round update event: {e}")
-
-
     count = db.query(Submission).filter(Submission.roundId == round_obj.id).count()
+
     return EvaluationRoundResponse(
         id=round_obj.id,
         eventId=round_obj.eventId,

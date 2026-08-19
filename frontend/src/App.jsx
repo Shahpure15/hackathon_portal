@@ -3,15 +3,31 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Pages
 import Login from './pages/Login';
 
-const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
-const AdminPSOverview = lazy(() => import('./pages/AdminPSOverview'));
-const VolunteerDashboard = lazy(() => import('./pages/VolunteerDashboard'));
-const LeaderDashboard = lazy(() => import('./pages/LeaderDashboard'));
+// Helper to auto-retry dynamic module imports if a deployment updated JS chunk hashes
+const lazyWithRetry = (componentImport) =>
+  lazy(async () => {
+    const isReloaded = sessionStorage.getItem('chunk_reloaded') === 'true';
+    try {
+      const component = await componentImport();
+      sessionStorage.removeItem('chunk_reloaded');
+      return component;
+    } catch (error) {
+      if (!isReloaded) {
+        sessionStorage.setItem('chunk_reloaded', 'true');
+        window.location.reload(true);
+      }
+      throw error;
+    }
+  });
 
+const AdminDashboard = lazyWithRetry(() => import('./pages/AdminDashboard'));
+const VolunteerDashboard = lazyWithRetry(() => import('./pages/VolunteerDashboard'));
+const LeaderDashboard = lazyWithRetry(() => import('./pages/LeaderDashboard'));
 
 const DashboardFallback = (
   <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg-main)' }}>
@@ -72,55 +88,57 @@ const Home = () => {
 
 const App = () => {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <AuthProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              
-              {/* Dynamic Root Redirection */}
-              <Route path="/" element={<Home />} />
-              
-              {/* Protected Role Routes */}
-              <Route
-                path="/admin/*"
-                element={
-                  <ProtectedRoute allowedRole="ADMIN">
-                    <Suspense fallback={DashboardFallback}>
-                      <AdminDashboard />
-                    </Suspense>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/volunteer/*"
-                element={
-                  <ProtectedRoute allowedRole="VOLUNTEER">
-                    <Suspense fallback={DashboardFallback}>
-                      <VolunteerDashboard />
-                    </Suspense>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/leader/*"
-                element={
-                  <ProtectedRoute allowedRole="LEADER">
-                    <Suspense fallback={DashboardFallback}>
-                      <LeaderDashboard />
-                    </Suspense>
-                  </ProtectedRoute>
-                }
-              />
+    <ErrorBoundary>
+      <ThemeProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <BrowserRouter>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                
+                {/* Dynamic Root Redirection */}
+                <Route path="/" element={<Home />} />
+                
+                {/* Protected Role Routes */}
+                <Route
+                  path="/admin/*"
+                  element={
+                    <ProtectedRoute allowedRole="ADMIN">
+                      <Suspense fallback={DashboardFallback}>
+                        <AdminDashboard />
+                      </Suspense>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/volunteer/*"
+                  element={
+                    <ProtectedRoute allowedRole="VOLUNTEER">
+                      <Suspense fallback={DashboardFallback}>
+                        <VolunteerDashboard />
+                      </Suspense>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/leader/*"
+                  element={
+                    <ProtectedRoute allowedRole="LEADER">
+                      <Suspense fallback={DashboardFallback}>
+                        <LeaderDashboard />
+                      </Suspense>
+                    </ProtectedRoute>
+                  }
+                />
 
-              {/* Catch-all redirection */}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </BrowserRouter>
-        </AuthProvider>
-      </ToastProvider>
-    </ThemeProvider>
+                {/* Catch-all redirection */}
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </BrowserRouter>
+          </AuthProvider>
+        </ToastProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 };
 

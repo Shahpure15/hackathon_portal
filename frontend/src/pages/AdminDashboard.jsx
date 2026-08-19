@@ -16,8 +16,8 @@ import useTableQuery from '../components/useTableQuery';
 import Navbar from '../components/Navbar';
 import Skeleton from '../components/Skeleton';
 import IconButton from '../components/IconButton';
-import usePsWebSocket from '../hooks/usePsWebSocket';
 import QRScanner from '../components/QRScanner';
+
 import AdminPSOverview from './AdminPSOverview';
 import AdminQRScannerView from '../components/AdminQRScannerView';
 import { useAuth } from '../contexts/AuthContext';

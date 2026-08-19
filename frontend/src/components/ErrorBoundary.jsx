@@ -11,11 +11,21 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    // eslint-disable-next-line no-console
-    console.error('Caught by ErrorBoundary:', error, errorInfo);
+    const errorMsg = String(error?.message || error || '');
+    const isChunkError = /failed to fetch dynamically imported module|importing a module script failed|expected a javascript-or-wasm module script/i.test(errorMsg);
+
+    if (isChunkError) {
+      const reloaded = sessionStorage.getItem('chunk_reload');
+      if (!reloaded) {
+        sessionStorage.setItem('chunk_reload', 'true');
+        window.location.reload(true);
+        return;
+      }
+    }
   }
 
   handleRetry = () => {
+    sessionStorage.removeItem('chunk_reload');
     this.setState({ hasError: false });
     window.location.reload();
   };

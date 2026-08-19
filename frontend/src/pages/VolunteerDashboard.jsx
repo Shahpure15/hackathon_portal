@@ -10,8 +10,8 @@ import useTableQuery from '../components/useTableQuery';
 import Navbar from '../components/Navbar';
 import Skeleton from '../components/Skeleton';
 import IconButton from '../components/IconButton';
-import useCheckinWebSocket from '../hooks/useCheckinWebSocket';
 import QRScanner from '../components/QRScanner';
+
 
 const VolunteerDashboard = () => {
   const { logout } = useAuth();
@@ -71,35 +71,9 @@ const VolunteerDashboard = () => {
     }
   };
 
-  // Silent refresh for WebSocket-triggered updates (no loading flash)
-  const silentRefreshTeams = useCallback(async () => {
-    try {
-      const res = await api.get('/volunteer/teams', {
-        params: { page, limit: 10, search: search || undefined }
-      });
-      setTeams(res.data.results || []);
-      setTotal(res.data.total);
-      setPages(res.data.pages);
-    } catch (_) {}
-  }, [page, search]);
 
-  // WebSocket: live check-in updates from other volunteers on the same event
-  const handleWsMessage = useCallback((data) => {
-    if (data.type === 'checkin_update') {
-      silentRefreshTeams();
-      // If the affected team is open in the modal, refresh it too
-      if (selectedTeam) {
-        fetchDetailedTeam(selectedTeam.id);
-      }
-    }
-  }, [silentRefreshTeams, selectedTeam]);
 
-  useCheckinWebSocket({
-    eventId,
-    token: getAccessToken(),
-    onMessage: handleWsMessage,
-    enabled: !!eventId
-  });
+
 
 
   const fetchTeams = async () => {
