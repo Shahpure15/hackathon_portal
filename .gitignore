@@ -1,33 +1,51 @@
-# Python
+# Python & Virtual Environments
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+**/__pycache__/
+*.py[cod]
+*$py.class
 .venv/
+**/.venv/
 env/
 venv/
 ENV/
 .pytest_cache/
+**/.pytest_cache/
 .coverage
 htmlcov/
 
-# Node
+# Node & Build Outputs
 node_modules/
+**/node_modules/
 dist/
+**/dist/
 dist-ssr/
 *.local
 .eslintcache
+.pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Databases & local files
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+!*.env.example
+
+# Databases, Backups & Dumps
 *.db
 *.db-journal
 *.sqlite
 *.sqlite3
-.env
-.env.local
-.env.*.local
+backend/backup/
+backup/
+dump/
 
-# IDEs
+# Testing & Logs
+load-tests/results/
+*.log
+
+# IDEs & OS Files
 .vscode/
 .idea/
 *.suo
@@ -35,9 +53,5 @@ dist-ssr/
 *.njsproj
 *.sln
 *.swp
-
-# OS
 .DS_Store
 Thumbs.db
-
-dump/

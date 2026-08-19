@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime, timezone
 from typing import Dict, Any, List
 from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
@@ -19,16 +18,24 @@ from app.websocket_manager import manager
 
 router = APIRouter(prefix="/leader", tags=["leader"])
 
-def _broadcast_ps_update(event_id: str, ps_id: str, selected_count: int, capacity: int):
+async def _broadcast_ps_update(event_id: str, ps_id: str, selected_count: int, capacity: int):
     try:
-        asyncio.run(manager.broadcast(event_id, {
+        await manager.broadcast(event_id, {
             "type": "ps_capacity_update",
             "psId": ps_id,
             "selectedCount": selected_count,
             "remainingCapacity": max(capacity - selected_count, 0)
-        }))
-    except Exception:
-        pass
+        })
+    except Exception as e:
+        logger.warning(f"Failed to broadcast ps_capacity_update for ps={ps_id}: {e}")
+def _is_ps_released(config: Any) -> bool:
+    if not config or not config.psReleaseAt:
+        return False
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    ps_release = config.psReleaseAt.replace(tzinfo=None)
+    return now_utc >= ps_release
+
+
 
 @router.get("/config")
 def get_leader_config(
@@ -156,7 +163,7 @@ def get_problem_statements_for_leaders(
     # Enforce Server-Side Release Time
     config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
     
-    if not config or not config.psReleaseAt or datetime.utcnow() < config.psReleaseAt:
+    if not _is_ps_released(config):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Problem statements are not yet released"
@@ -206,11 +213,12 @@ def select_problem_statement(
 
     # 1. Enforce Server-side release time
     config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
-    if not config or not config.psReleaseAt or datetime.utcnow() < config.psReleaseAt:
+    if not _is_ps_released(config):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Problem statements have not been released yet"
         )
+
 
     # 1b. Discipline guard
     ps_obj = db.query(ProblemStatement).filter(ProblemStatement.id == ps_id).first()

@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Users, Layers, UserCheck, FileText, Download, Upload,
-  Search, X, Edit2, AlertCircle, CheckCircle, Info, ChevronLeft, ChevronRight, Eye, EyeOff, LogOut, Menu, Lock, Plus, Trash2
+  Search, X, Edit2, AlertCircle, CheckCircle, Info, ChevronLeft, ChevronRight, Eye, EyeOff, LogOut, Menu, Lock, Plus, Trash2, QrCode
 } from 'lucide-react';
 import api from '../services/api';
+
 import { useToast } from '../contexts/ToastContext';
 import DataTable from '../components/DataTable';
 import Modal from '../components/Modal';
@@ -16,6 +17,14 @@ import Navbar from '../components/Navbar';
 import Skeleton from '../components/Skeleton';
 import IconButton from '../components/IconButton';
 import usePsWebSocket from '../hooks/usePsWebSocket';
+import QRScanner from '../components/QRScanner';
+import AdminPSOverview from './AdminPSOverview';
+import AdminQRScannerView from '../components/AdminQRScannerView';
+import { useAuth } from '../contexts/AuthContext';
+
+
+
+
 
 const formatContact = (contactStr) => {
   if (!contactStr) return { email: '', phone: '' };
@@ -30,8 +39,10 @@ const formatContact = (contactStr) => {
 };
 
 const AdminDashboard = () => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem('adminActiveTab') || 'teams');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1000);
   const { addToast } = useToast();
 
@@ -94,12 +105,14 @@ const AdminDashboard = () => {
         onTabChange={handleTabClick}
         navItems={[
           { id: 'teams', label: 'Teams', icon: <Users size={16} /> },
+          { id: 'qrScan', label: 'QR Team Lookup', icon: <QrCode size={16} /> },
           { id: 'pods', label: 'POD Groups', icon: <Layers size={16} /> },
           { id: 'panels', label: 'Panels', icon: <Layers size={16} /> },
           { id: 'evalRounds', label: 'Evaluation Rounds', icon: <FileText size={16} /> },
           { id: 'volunteers', label: 'People & Organizers', icon: <UserCheck size={16} /> },
           { id: 'checkpoints', label: 'Attendance Slots', icon: <FileText size={16} /> },
-          { id: 'ps', label: 'Problem Statements', icon: <Layers size={16} /> }
+          { id: 'ps', label: 'Problem Statements', icon: <Layers size={16} /> },
+          { id: 'psLive', label: 'Live PS View', icon: <Layers size={16} /> }
         ]}
       />
 
@@ -128,6 +141,18 @@ const AdminDashboard = () => {
             }}
           />
         </div>
+        <div style={{ display: activeTab === 'qrScan' ? 'block' : 'none' }} className="fade-in-up">
+          <AdminQRScannerView 
+            onOpenEditModal={(team) => {
+              // Open full edit modal inside TeamsView tab
+              setActiveTab('teams');
+              setTimeout(() => {
+                // setSelectedTeam will be handled
+              }, 50);
+            }}
+            onResetPassword={(tId, tName) => setResetPasswordState({ isOpen: true, targetId: tId, targetName: tName, type: 'team' })} 
+          />
+        </div>
         <div style={{ display: activeTab === 'pods' ? 'block' : 'none' }} className="fade-in-up">
           <PodsView pods={pods} fetchPodsPool={fetchPodsPool} />
         </div>
@@ -150,7 +175,12 @@ const AdminDashboard = () => {
         <div style={{ display: activeTab === 'ps' ? 'block' : 'none' }} className="fade-in-up">
           <PSView />
         </div>
+        <div style={{ display: activeTab === 'psLive' ? 'block' : 'none' }} className="fade-in-up">
+          <AdminPSOverview eventId={user?.eventId} />
+        </div>
       </div>
+
+
 
       {resetPasswordState && (
         <Modal
@@ -276,6 +306,18 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
   const [showBulkPodModal, setShowBulkPodModal] = useState(false);
   const [selectedBulkPodId, setSelectedBulkPodId] = useState('');
   const [isAssigningBulk, setIsAssigningBulk] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
+
+  const handleQrScan = async (scannedTeamId) => {
+    setScannerOpen(false);
+    try {
+      const res = await api.get(`/admin/teams/${scannedTeamId}`);
+      setSelectedTeam(res.data);
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Team not found or unauthorized', 'error');
+    }
+  };
+
 
   // Inline POD creation in bulk modal
   const [showInlineBulkPod, setShowInlineBulkPod] = useState(false);
@@ -330,6 +372,9 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
     };
     fetchPSList();
   }, []);
+
+
+
 
   const fetchTeams = async () => {
     setLoading(true);
@@ -521,17 +566,29 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
       {/* Filter and Search controls */}
       <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', width: '100%' }}>
-          <div style={{ position: 'relative', flex: 2, minWidth: '260px' }}>
-            <Search size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <input
-              type="text"
-              placeholder="Search teams by name, leader, email, college, code..."
-              className="form-input"
-              style={{ paddingLeft: '48px', width: '100%' }}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+          <div style={{ position: 'relative', flex: 2, minWidth: '260px', display: 'flex', gap: '8px' }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <Search size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input
+                type="text"
+                placeholder="Search teams by name, leader, email, college, code..."
+                className="form-input"
+                style={{ paddingLeft: '48px', width: '100%' }}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap', padding: '10px 16px' }}
+              onClick={() => setScannerOpen(true)}
+            >
+              <QrCode size={18} />
+              Scan QR
+            </button>
           </div>
+
 
           <div style={{ flex: 1, minWidth: '150px' }}>
             <select
@@ -989,9 +1046,16 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
           color: var(--danger);
         }
       `}</style>
+      {scannerOpen && (
+        <QRScanner
+          onScan={handleQrScan}
+          onClose={() => setScannerOpen(false)}
+        />
+      )}
     </div>
   );
 };
+
 
 // ==========================================
 // TEAM DETAILS MODAL COMPONENT (FULL ADMIN EDIT)

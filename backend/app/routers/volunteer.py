@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
@@ -7,21 +6,25 @@ from sqlalchemy import or_, and_, func
 from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
+from app.logger import logger
 from app.models import Role, Team, TeamMember, CheckpointType, AttendanceRecord
 from app.auth import require_role, CurrentUser
 from app.websocket_manager import manager
 
 router = APIRouter(prefix="/volunteer", tags=["volunteer"])
 
-def _broadcast_checkin_update(event_id: str, member_id: str, checkpoint_id: str):
+async def _broadcast_checkin_update(event_id: str, member_id: str, checkpoint_id: str):
     try:
-        asyncio.run(manager.broadcast(event_id, {
+        await manager.broadcast(event_id, {
             "type": "checkin_update",
             "teamMemberId": member_id,
             "checkpointTypeId": checkpoint_id
-        }))
-    except Exception:
-        pass
+        })
+    except Exception as e:
+        logger.warning(f"Failed to broadcast checkin_update for member={member_id}: {e}")
+
+
+
 
 # Helper: Escape SQL LIKE wildcards
 def escape_like_string(s: str) -> str:

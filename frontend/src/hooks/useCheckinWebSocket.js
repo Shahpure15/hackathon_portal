@@ -20,9 +20,16 @@ export function useCheckinWebSocket({ eventId, token, onMessage, enabled = true 
     if (!eventId || !token || !enabled) return;
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.host}`;
-      const wsBase = apiUrl.replace(/^http/, 'ws').replace(/\/api\/?$/, '');
+      let wsBase;
+      if (import.meta.env.VITE_API_URL) {
+        wsBase = import.meta.env.VITE_API_URL.replace(/^http/, 'ws').replace(/\/api\/?$/, '');
+      } else {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.hostname || 'localhost';
+        wsBase = `${protocol}//${host}:8000`;
+      }
       const wsUrl = `${wsBase}/ws/ps-updates/${eventId}?token=${encodeURIComponent(token)}`;
+
 
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;

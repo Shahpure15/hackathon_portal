@@ -4,6 +4,8 @@ import {
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+
+
 import { useToast } from '../contexts/ToastContext';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -12,6 +14,8 @@ import Skeleton from '../components/Skeleton';
 import IconButton from '../components/IconButton';
 import AmbientCursorGlow from '../components/AmbientCursorGlow';
 import usePsWebSocket from '../hooks/usePsWebSocket';
+import TeamQRCode from '../components/TeamQRCode';
+
 
 const formatContact = (contactStr) => {
   if (!contactStr) return { email: '', phone: '' };
@@ -209,6 +213,8 @@ const LeaderDashboard = () => {
     enabled: !!teamInfo
   });
 
+
+
   const fetchTeamData = async () => {
     try {
       const res = await api.get('/leader/me');
@@ -399,22 +405,34 @@ const LeaderDashboard = () => {
                 </h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {teamInfo.members.map((m) => (
-                    <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', borderRadius: '8px', background: 'rgba(0,0,0,0.01)', border: '1px solid var(--border-light)', fontSize: '0.9rem' }}>
-                      <div>
+                    <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', padding: '10px 14px', borderRadius: '8px', background: 'rgba(0,0,0,0.01)', border: '1px solid var(--border-light)', fontSize: '0.9rem' }}>
+                      <div style={{ flex: '1 1 160px', minWidth: 0 }}>
                         <div style={{ fontWeight: 600 }}>{m.name}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{m.email} | {m.phone}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', wordBreak: 'break-word' }}>{m.email} | {m.phone}</div>
                       </div>
-                      {m.idVerified ? (
-                        <span style={{ color: 'var(--success)', fontSize: '0.75rem', fontWeight: 600, background: 'rgba(16, 185, 129, 0.1)', padding: '4px 8px', borderRadius: '6px' }}>✓ Verified</span>
-                      ) : (
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', background: 'rgba(255, 255, 255, 0.03)', padding: '4px 8px', borderRadius: '6px' }}>Awaiting Venue Check-in</span>
-                      )}
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        {m.idVerified ? (
+                          <span style={{ color: 'var(--success)', fontSize: '0.75rem', fontWeight: 600, background: 'rgba(16, 185, 129, 0.1)', padding: '4px 8px', borderRadius: '6px', whiteSpace: 'nowrap' }}>✓ Verified</span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', background: 'rgba(255, 255, 255, 0.03)', padding: '4px 8px', borderRadius: '6px', whiteSpace: 'nowrap' }}>Awaiting Venue Check-in</span>
+                        )}
+                      </div>
                     </div>
                   ))}
+
                 </div>
               </div>
 
+              {/* Check-in QR Code Card */}
+              <div className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 600, width: '100%', marginBottom: '12px', textAlign: 'center' }}>
+                  Check-in QR Code
+                </h3>
+                <TeamQRCode teamId={teamInfo.id} eventId={teamInfo.eventId} teamName={teamInfo.name} />
+              </div>
+
               {/* POD & Desk Assignment Card */}
+
               <div className="glass-card" style={{ padding: '24px' }}>
                 <h3 style={{ fontSize: '1.1rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
                   <Layers size={18} style={{ color: 'var(--primary)' }} />

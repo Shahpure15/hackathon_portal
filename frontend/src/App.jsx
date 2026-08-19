@@ -8,8 +8,10 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import Login from './pages/Login';
 
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const AdminPSOverview = lazy(() => import('./pages/AdminPSOverview'));
 const VolunteerDashboard = lazy(() => import('./pages/VolunteerDashboard'));
 const LeaderDashboard = lazy(() => import('./pages/LeaderDashboard'));
+
 
 const DashboardFallback = (
   <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg-main)' }}>

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Users, UserCheck, Search, X, CheckCircle, ChevronLeft, ChevronRight, LogOut, Info, QrCode, Menu
 } from 'lucide-react';
-import api from '../services/api';
+import api, { getAccessToken } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import DataTable from '../components/DataTable';
@@ -11,6 +11,7 @@ import Navbar from '../components/Navbar';
 import Skeleton from '../components/Skeleton';
 import IconButton from '../components/IconButton';
 import useCheckinWebSocket from '../hooks/useCheckinWebSocket';
+import QRScanner from '../components/QRScanner';
 
 const VolunteerDashboard = () => {
   const { logout } = useAuth();
@@ -22,6 +23,8 @@ const VolunteerDashboard = () => {
   const [eventId, setEventId] = useState(null);
   const [activeCheckpointId, setActiveCheckpointId] = useState('');
   const [markingMemberId, setMarkingMemberId] = useState('');
+  const [scannerOpen, setScannerOpen] = useState(false);
+
 
   // Teams listing states
   const [teams, setTeams] = useState([]);
@@ -93,10 +96,11 @@ const VolunteerDashboard = () => {
 
   useCheckinWebSocket({
     eventId,
-    token: localStorage.getItem('access_token'),
+    token: getAccessToken(),
     onMessage: handleWsMessage,
     enabled: !!eventId
   });
+
 
   const fetchTeams = async () => {
     setLoading(true);
@@ -130,6 +134,11 @@ const VolunteerDashboard = () => {
     }
   };
 
+  const handleQrScan = (scannedTeamId) => {
+    setScannerOpen(false);
+    setSelectedTeam({ id: scannedTeamId });
+  };
+
   useEffect(() => {
     if (selectedTeam) {
       fetchDetailedTeam(selectedTeam.id);
@@ -137,6 +146,7 @@ const VolunteerDashboard = () => {
       setDetailedTeam(null);
     }
   }, [selectedTeam, activeCheckpointId]);
+
 
   const handleMarkPresent = async (memberId, memberName) => {
     if (!activeCheckpointId) {
@@ -238,18 +248,76 @@ const VolunteerDashboard = () => {
           </div>
         </div>
 
-        {/* Search filter panel */}
-        <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px', position: 'relative' }}>
-          <Search size={18} style={{ position: 'absolute', left: '36px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-          <input
-            type="text"
-            placeholder="Search teams by name, leader, college, team code..."
-            className="form-input"
-            style={{ paddingLeft: '48px' }}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+        {/* Quick Scan Banner */}
+        <div className="glass-panel" style={{ padding: '16px 20px', marginBottom: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', background: 'rgba(185, 111, 56, 0.08)', border: '1px solid rgba(185, 111, 56, 0.25)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ padding: '10px', borderRadius: '10px', background: 'var(--primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <QrCode size={24} />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>Fast Check-in with QR Code</h3>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>Scan a team leader's QR code to instantly load member details and mark attendance.</p>
+            </div>
+          </div>
+          <button 
+            className="btn btn-primary" 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px', 
+              padding: '10px 20px', 
+              fontSize: '0.9rem',
+              fontWeight: 700,
+              background: 'linear-gradient(135deg, var(--primary) 0%, #e07a38 100%)',
+              boxShadow: '0 4px 14px rgba(185, 111, 56, 0.35)',
+              borderRadius: '8px',
+              border: 'none',
+              cursor: 'pointer'
+            }}
+            onClick={() => setScannerOpen(true)}
+          >
+            <QrCode size={18} />
+            Open Scanner
+          </button>
         </div>
+
+        {/* Search filter panel */}
+        <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <div style={{ position: 'relative', flex: 1 }}>
+            <Search size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <input
+              type="text"
+              placeholder="Search teams by name, leader, college, team code..."
+              className="form-input"
+              style={{ paddingLeft: '48px', width: '100%' }}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <button 
+            className="btn btn-primary" 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '10px', 
+              whiteSpace: 'nowrap', 
+              padding: '12px 22px',
+              fontSize: '0.95rem',
+              fontWeight: 700,
+              background: 'linear-gradient(135deg, var(--primary) 0%, #e07a38 100%)',
+              boxShadow: '0 4px 14px rgba(185, 111, 56, 0.35)',
+              borderRadius: '10px',
+              border: 'none',
+              cursor: 'pointer'
+            }}
+            onClick={() => setScannerOpen(true)}
+          >
+            <QrCode size={20} />
+            <span>Scan Team QR</span>
+          </button>
+        </div>
+
+
 
         <DataTable
           columns={[
@@ -382,9 +450,16 @@ const VolunteerDashboard = () => {
             </div>
           </div>
         )}
+        {scannerOpen && (
+          <QRScanner
+            onScan={handleQrScan}
+            onClose={() => setScannerOpen(false)}
+          />
+        )}
       </div>
     </div>
   );
 };
+
 
 export default VolunteerDashboard;

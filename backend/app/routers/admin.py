@@ -507,6 +507,8 @@ def patch_team(
     return {"message": "Team updated successfully", "diff": diff}
 
 
+
+
 # ==========================================
 # CSV IMPORT ENGINE - PREVIEW
 # ==========================================
@@ -2228,13 +2230,14 @@ def get_problem_statements(
             code=s.code,
             title=s.title,
             description=s.description,
-            capacity=s.capacity,
-            selectedCount=s.selectedCount,
-            remainingCapacity=max(s.capacity - s.selectedCount, 0),
+            capacity=s.capacity or 0,
+            selectedCount=s.selectedCount or 0,
+            remainingCapacity=max((s.capacity or 0) - (s.selectedCount or 0), 0),
             requirements=s.requirements,
             discipline=s.discipline
         ) for s in statements
     ]
+
 
 @router.post("/problem-statements", response_model=ProblemStatementResponse)
 def create_problem_statement(
@@ -2609,6 +2612,13 @@ def get_ps_selected_teams(
 # EVENT CONFIGS & RELEASE CONFIGS
 # ==========================================
 
+def _format_dt_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    if not dt:
+        return None
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc)
+    return dt.replace(tzinfo=timezone.utc)
+
 @router.get("/config")
 def get_event_config(
     db: Session = Depends(get_db),
@@ -2623,7 +2633,7 @@ def get_event_config(
         db.refresh(config)
         
     return {
-        "psReleaseAt": config.psReleaseAt.replace(tzinfo=timezone.utc) if config.psReleaseAt else None,
+        "psReleaseAt": _format_dt_utc(config.psReleaseAt),
         "psGateCheckpointTypeId": config.psGateCheckpointTypeId
     }
 
@@ -2675,9 +2685,10 @@ def update_ps_release_time(
     
     return {
         "message": "Event config updated successfully!",
-        "psReleaseAt": config.psReleaseAt.replace(tzinfo=timezone.utc) if config.psReleaseAt else None,
+        "psReleaseAt": _format_dt_utc(config.psReleaseAt),
         "psGateCheckpointTypeId": config.psGateCheckpointTypeId
     }
+
 
 
 # ==========================================
@@ -3132,6 +3143,8 @@ def update_evaluation_round(
             }))
     except Exception as e:
         logger.warning(f"Failed to broadcast round update event: {e}")
+
+
     count = db.query(Submission).filter(Submission.roundId == round_obj.id).count()
     return EvaluationRoundResponse(
         id=round_obj.id,
