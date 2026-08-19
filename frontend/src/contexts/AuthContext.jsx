@@ -14,6 +14,7 @@ export const AuthProvider = ({ children }) => {
       
       setAccessToken(access_token);
       setUser({ username: responseUsername, role, eventId, teamId });
+      localStorage.setItem('has_session', 'true');
       return { success: true };
     } catch (error) {
       if (error.response?.status === 429) {
@@ -28,8 +29,9 @@ export const AuthProvider = ({ children }) => {
     try {
       await api.post('/auth/logout');
     } catch (error) {
-      console.error('Error during logout api call', error);
+      // silent
     } finally {
+      localStorage.removeItem('has_session');
       localStorage.removeItem('adminActiveTab');
       localStorage.removeItem('leaderActiveTab');
       setAccessToken(null);
@@ -37,15 +39,22 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Attempt silent refresh on startup to restore session
+  // Attempt silent refresh on startup ONLY if user previously logged in
   const checkAuth = async () => {
+    if (localStorage.getItem('has_session') !== 'true') {
+      setLoading(false);
+      return;
+    }
+
     try {
       const response = await api.post('/auth/refresh');
       const { access_token, role, eventId, teamId, username } = response.data;
       setAccessToken(access_token);
       setUser({ username, role, eventId, teamId });
+      localStorage.setItem('has_session', 'true');
     } catch (error) {
-      // Refresh token invalid or missing, user is not logged in
+      // Refresh token invalid or expired, clear session
+      localStorage.removeItem('has_session');
       localStorage.removeItem('adminActiveTab');
       localStorage.removeItem('leaderActiveTab');
       setAccessToken(null);
@@ -60,6 +69,7 @@ export const AuthProvider = ({ children }) => {
 
     // Listen to global logout event triggered by Axios interceptor
     const handleGlobalLogout = () => {
+      localStorage.removeItem('has_session');
       setUser(null);
     };
 
