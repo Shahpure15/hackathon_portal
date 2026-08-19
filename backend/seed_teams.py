@@ -7,6 +7,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from app.database import SessionLocal
 from app.models import Event, Team, TeamMember, TeamStatus, User, Role
 from app.auth import get_password_hash
+from app.routers.admin import generate_team_leader_password
 
 def seed_teams():
     db = SessionLocal()
@@ -43,11 +44,12 @@ def seed_teams():
         db.add(m1)
         db.add(m2)
 
-        # Create Leader User for Team 1
+        # Create Leader User for Team 1 (Password: First 5 digits of Leader Mobile + Team Code)
+        t1_password = generate_team_leader_password(t1.leaderPhone, t1.registrationId)
         u1 = User(
             eventId=event.id,
             username="team101",
-            passwordHash=get_password_hash("TeamPassword123!"),
+            passwordHash=get_password_hash(t1_password),
             role=Role.LEADER,
             teamId=t1.id
         )
@@ -70,11 +72,12 @@ def seed_teams():
         m3 = TeamMember(teamId=t2.id, name="Riya Joshi", email="riya@gmail.com", phone="+919876543221", idVerified=True)
         db.add(m3)
 
-        # Create Leader User for Team 2
+        # Create Leader User for Team 2 (Password: First 5 digits of Leader Mobile + Team Code)
+        t2_password = generate_team_leader_password(t2.leaderPhone, t2.registrationId)
         u2 = User(
             eventId=event.id,
             username="team102",
-            passwordHash=get_password_hash("TeamPassword123!"),
+            passwordHash=get_password_hash(t2_password),
             role=Role.LEADER,
             teamId=t2.id
         )

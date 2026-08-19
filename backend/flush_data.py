@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 import secrets
 import string
 import argparse
@@ -20,6 +21,20 @@ from backup_utils import perform_full_backup
 def generate_random_password(length=16):
     alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
     return "".join(secrets.choice(alphabet) for _ in range(length))
+
+def generate_team_leader_password(leader_phone: str, registration_id: str) -> str:
+    digits = re.sub(r'\D', '', str(leader_phone or ''))
+    if len(digits) == 12 and digits.startswith('91'):
+        digits = digits[2:]
+    elif len(digits) == 11 and digits.startswith('0'):
+        digits = digits[1:]
+    first_five = digits[:5]
+    team_id_clean = "".join(str(registration_id or "").split())
+    if first_five and team_id_clean:
+        return f"{first_five}{team_id_clean}"
+    elif team_id_clean:
+        return f"{team_id_clean}123!"
+    return generate_random_password()
 
 def get_db():
     return SessionLocal()
@@ -211,7 +226,10 @@ def reset_user_passwords(db, target_role=None, mode="uniform", uniform_password=
     
     credentials = []
     for u in users:
-        pwd = uniform_password if mode == "uniform" else generate_random_password()
+        if u.role == Role.LEADER and u.team:
+            pwd = generate_team_leader_password(u.team.leaderPhone, u.team.registrationId)
+        else:
+            pwd = uniform_password if mode == "uniform" else generate_random_password()
         u.passwordHash = get_password_hash(pwd)
         credentials.append({
             "username": u.username,

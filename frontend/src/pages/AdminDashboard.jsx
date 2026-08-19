@@ -238,7 +238,9 @@ const AdminDashboard = () => {
                 </button>
               </div>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px', lineHeight: '1.4' }}>
-                If you leave this blank, the system will automatically generate a strong random 16-character password.
+                {resetPasswordState?.type === 'team'
+                  ? 'If you leave this blank, password will default to First 5 digits of Leader Mobile + Team Code.'
+                  : 'If you leave this blank, the system will automatically generate a strong random password.'}
               </p>
             </div>
             

@@ -80,6 +80,21 @@ def generate_random_password(length: int = 12) -> str:
     chars = string.ascii_letters + string.digits
     return "".join(secrets.choice(chars) for _ in range(length))
 
+# Helper: Generate team leader password (First 5 digits of Leader Mobile + Team ID / Code)
+def generate_team_leader_password(leader_phone: str, registration_id: str) -> str:
+    digits = re.sub(r'\D', '', str(leader_phone or ''))
+    if len(digits) == 12 and digits.startswith('91'):
+        digits = digits[2:]
+    elif len(digits) == 11 and digits.startswith('0'):
+        digits = digits[1:]
+    first_five = digits[:5]
+    team_id_clean = "".join(str(registration_id or "").split())
+    if first_five and team_id_clean:
+        return f"{first_five}{team_id_clean}"
+    elif team_id_clean:
+        return f"{team_id_clean}123!"
+    return generate_random_password()
+
 # Helper: Revoke all active refresh tokens for a user (force logout of all sessions)
 def revoke_all_sessions(db: Session, user_id: str):
     db.query(RefreshToken).filter(
@@ -765,7 +780,7 @@ def import_teams_confirm(
                 db.add(member)
                 
             # Create Leader User Login Account
-            raw_password = generate_random_password()
+            raw_password = generate_team_leader_password(team.leaderPhone, team.registrationId)
             leader_user = User(
                 eventId=current_user.eventId,
                 username=reg_id.lower(), # short registrationId is clean username
@@ -1976,9 +1991,12 @@ def reset_team_password(
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
         
+    password = (payload or {}).get("password")
+    if not password:
+        password = generate_team_leader_password(team.leaderPhone, team.registrationId)
+        
     if not team.user:
         username = team.registrationId.lower()
-        password = generate_random_password()
         leader_user = User(
             eventId=current_user.eventId,
             username=username,
@@ -1993,10 +2011,6 @@ def reset_team_password(
             "username": username,
             "password": password
         }
-        
-    password = (payload or {}).get("password")
-    if not password:
-        password = generate_random_password()
         
     team.user.passwordHash = get_password_hash(password)
     revoke_all_sessions(db, team.user.id)
