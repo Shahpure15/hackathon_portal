@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import api from '../services/api';
 
 export function usePsWebSocket({ eventId, token, onMessage, enabled = true }) {
   const [isConnected, setIsConnected] = useState(false);
@@ -6,11 +7,31 @@ export function usePsWebSocket({ eventId, token, onMessage, enabled = true }) {
   const wsRef = useRef(null);
   const retryCountRef = useRef(0);
   const timeoutRef = useRef(null);
+  const pollIntervalRef = useRef(null);
 
   const onMessageRef = useRef(onMessage);
   useEffect(() => {
     onMessageRef.current = onMessage;
   }, [onMessage]);
+
+  const pollProblemStatements = useCallback(async () => {
+    if (!eventId || !enabled) return;
+    try {
+      const res = await api.get('/admin/problem-statements');
+      if (res.data && Array.isArray(res.data) && onMessageRef.current) {
+        res.data.forEach((ps) => {
+          onMessageRef.current({
+            type: 'ps_capacity_update',
+            psId: ps.id,
+            selectedCount: ps.selectedCount || 0,
+            remainingCapacity: ps.remainingCapacity || 0
+          });
+        });
+      }
+    } catch (e) {
+      // Silent catch
+    }
+  }, [eventId, enabled]);
 
   const connect = useCallback(() => {
     if (!eventId || !token || !enabled) return;
@@ -25,7 +46,6 @@ export function usePsWebSocket({ eventId, token, onMessage, enabled = true }) {
         wsBase = `${protocol}//${host}:8000`;
       }
       const wsUrl = `${wsBase}/ws/ps-updates/${eventId}?token=${encodeURIComponent(token)}`;
-
 
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
@@ -43,29 +63,26 @@ export function usePsWebSocket({ eventId, token, onMessage, enabled = true }) {
             onMessageRef.current(data);
           }
         } catch (e) {
-          console.error('Failed to parse WebSocket message', e);
+          // Silent
         }
       };
 
       ws.onerror = () => {
-        ws.close();
+        try { ws.close(); } catch (e) {}
       };
 
       ws.onclose = () => {
         setIsConnected(false);
         wsRef.current = null;
 
-        if (retryCountRef.current < 3) {
+        if (retryCountRef.current < 1) {
           retryCountRef.current += 1;
-          const delay = Math.min(1000 * Math.pow(2, retryCountRef.current - 1), 15000);
-          timeoutRef.current = setTimeout(connect, delay);
+          timeoutRef.current = setTimeout(connect, 3000);
         } else {
-          // Switch to polling fallback after 3 failed connection attempts
           setIsPollingFallback(true);
         }
       };
     } catch (e) {
-      console.error('WebSocket connection error:', e);
       setIsPollingFallback(true);
     }
   }, [eventId, token, enabled]);
@@ -76,16 +93,26 @@ export function usePsWebSocket({ eventId, token, onMessage, enabled = true }) {
     }
 
     return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
       if (wsRef.current) {
-        wsRef.current.close();
+        try { wsRef.current.close(); } catch (e) {}
       }
     };
   }, [eventId, token, enabled, connect]);
+
+  useEffect(() => {
+    if (isPollingFallback && enabled) {
+      pollProblemStatements();
+      pollIntervalRef.current = setInterval(pollProblemStatements, 12000);
+      return () => {
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      };
+    }
+  }, [isPollingFallback, enabled, pollProblemStatements]);
 
   return { isConnected, isPollingFallback };
 }
 
 export default usePsWebSocket;
+

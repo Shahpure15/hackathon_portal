@@ -44,24 +44,24 @@ export function useCheckinWebSocket({ eventId, token, onMessage, enabled = true 
           const data = JSON.parse(event.data);
           if (onMessageRef.current) onMessageRef.current(data);
         } catch (e) {
-          console.error("[useCheckinWebSocket] Failed to parse message", e);
+          // Silent
         }
       };
 
-      ws.onerror = () => { ws.close(); };
+      ws.onerror = () => { try { ws.close(); } catch(e){} };
 
       ws.onclose = () => {
         setIsConnected(false);
         wsRef.current = null;
-        if (retryCountRef.current < 5) {
+        if (retryCountRef.current < 1) {
           retryCountRef.current += 1;
-          const delay = Math.min(1000 * Math.pow(2, retryCountRef.current - 1), 20000);
-          timeoutRef.current = setTimeout(connect, delay);
+          timeoutRef.current = setTimeout(connect, 3000);
         }
       };
     } catch (e) {
-      console.error("[useCheckinWebSocket] Connection error:", e);
+      setIsConnected(false);
     }
+
   }, [eventId, token, enabled]);
 
   useEffect(() => {

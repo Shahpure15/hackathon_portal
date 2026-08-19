@@ -264,7 +264,7 @@ def export_teams(
     writer = csv.writer(output)
     
     headers = [
-        "Team Code", "Team Name", "Leader Name", "Leader Email", "Leader Phone", 
+        "Team Code", "Team Name", "Category", "Desk Number", "Leader Name", "Leader Email", "Leader Phone", 
         "College Name", "Status", "POD Grouping", "Selected PS Code", "Selected PS Title"
     ]
     for i in range(1, 6):
@@ -278,10 +278,13 @@ def export_teams(
         ps_code = team.psSelection.ps.code if team.psSelection else "None"
         ps_title = team.psSelection.ps.title if team.psSelection else "None"
         status_val = team.status.value if hasattr(team.status, 'value') else str(team.status or "")
+        cat_val = team.category.value if hasattr(team.category, 'value') else str(team.category or "ENGINEERING")
         
         row = [
             team.registrationId,
             team.name,
+            cat_val,
+            team.deskNumber or "",
             team.leaderName,
             team.leaderEmail,
             team.leaderPhone,
@@ -291,6 +294,7 @@ def export_teams(
             ps_code,
             ps_title
         ]
+
         
         members = team.members
         for i in range(5):
@@ -2357,7 +2361,7 @@ def export_problem_statements(
     writer = csv.writer(output)
     
     safe_writerow(writer, [
-        "Code", "Title", "Description", "Capacity", "Slots Remaining", "Assigned Teams", "Selection Times"
+        "Code", "Title", "Discipline", "Requirements", "Description", "Capacity", "Slots Remaining", "Assigned Teams", "Selection Times"
     ])
     
     for s in statements:
@@ -2371,9 +2375,11 @@ def export_problem_statements(
         safe_writerow(writer, [
             s.code,
             s.title,
+            s.discipline or "BOTH",
+            s.requirements or "",
             s.description,
-            s.capacity,
-            s.capacity - len(s.selections),
+            s.capacity or 0,
+            max((s.capacity or 0) - len(s.selections), 0),
             "; ".join(team_names),
             "; ".join(selection_times)
         ])
@@ -2433,6 +2439,14 @@ async def import_problem_statements_preview(
         requirements = str(row.get("requirements", "")).strip() if row.get("requirements") is not None and pd.notna(row.get("requirements")) else None
         if requirements == "nan" or not requirements:
             requirements = None
+            
+        discipline_raw = str(row.get("discipline") or row.get("category") or row.get("track") or "").strip().upper()
+        if "DESIGN" in discipline_raw:
+            discipline = "DESIGN"
+        elif "ENGINEERING" in discipline_raw or "ENG" in discipline_raw:
+            discipline = "ENGINEERING"
+        else:
+            discipline = None
         
         if not code or code.lower() == "nan":
             preview_data["invalid"].append({"row": row_num, "reason": "Missing Code (e.g. PS01)"})
@@ -2474,6 +2488,8 @@ async def import_problem_statements_preview(
                 changes["capacity"] = {"from": existing_ps.capacity, "to": capacity}
             if (existing_ps.requirements or "") != (requirements or ""):
                 changes["requirements"] = {"from": existing_ps.requirements or "None", "to": requirements or "None"}
+            if (existing_ps.discipline or "") != (discipline or ""):
+                changes["discipline"] = {"from": existing_ps.discipline or "BOTH", "to": discipline or "BOTH"}
                 
             if changes:
                 preview_data["changed"].append({
@@ -2485,7 +2501,8 @@ async def import_problem_statements_preview(
                         "title": title,
                         "description": description,
                         "capacity": capacity,
-                        "requirements": requirements
+                        "requirements": requirements,
+                        "discipline": discipline
                     },
                     "row": row_num
                 })
@@ -2498,6 +2515,7 @@ async def import_problem_statements_preview(
                 "description": description,
                 "capacity": capacity,
                 "requirements": requirements,
+                "discipline": discipline,
                 "row": row_num
             })
         
@@ -2552,7 +2570,8 @@ def import_problem_statements_confirm(
                 title=row["title"],
                 description=row["description"],
                 capacity=row["capacity"],
-                requirements=row.get("requirements")
+                requirements=row.get("requirements"),
+                discipline=row.get("discipline")
             )
             db.add(ps)
             
@@ -2570,10 +2589,15 @@ def import_problem_statements_confirm(
                     ps.description = new_data["description"]
                     ps.capacity = new_data["capacity"]
                     ps.requirements = new_data.get("requirements")
+                    ps.discipline = new_data.get("discipline")
             
         db.delete(pending)
         db.commit()
         return {"message": "Successfully processed Problem Statements import"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database write error: {str(e)}")
+
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database write error: {str(e)}")
