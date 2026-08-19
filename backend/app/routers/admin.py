@@ -2658,7 +2658,8 @@ def get_event_config(
         
     return {
         "psReleaseAt": _format_dt_utc(config.psReleaseAt),
-        "psGateCheckpointTypeId": config.psGateCheckpointTypeId
+        "psGateCheckpointTypeId": config.psGateCheckpointTypeId,
+        "allowVolunteerPsSelection": bool(config.allowVolunteerPsSelection)
     }
 
 @router.put("/config/ps-release-at")
@@ -2675,6 +2676,11 @@ def update_ps_release_time(
         db.flush()
         
     diff = {}
+    if "allowVolunteerPsSelection" in payload:
+        new_val = bool(payload.get("allowVolunteerPsSelection"))
+        diff["allowVolunteerPsSelection"] = {"from": config.allowVolunteerPsSelection, "to": new_val}
+        config.allowVolunteerPsSelection = new_val
+
     if "psGateCheckpointTypeId" in payload:
         new_gate_id = payload.get("psGateCheckpointTypeId")
         diff["psGateCheckpointTypeId"] = {"from": config.psGateCheckpointTypeId, "to": new_gate_id}
@@ -2710,8 +2716,10 @@ def update_ps_release_time(
     return {
         "message": "Event config updated successfully!",
         "psReleaseAt": _format_dt_utc(config.psReleaseAt),
-        "psGateCheckpointTypeId": config.psGateCheckpointTypeId
+        "psGateCheckpointTypeId": config.psGateCheckpointTypeId,
+        "allowVolunteerPsSelection": bool(config.allowVolunteerPsSelection)
     }
+
 
 
 

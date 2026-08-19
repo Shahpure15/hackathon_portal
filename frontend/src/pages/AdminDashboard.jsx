@@ -4052,12 +4052,47 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
     }
   };
 
+  const [allowVolunteerPs, setAllowVolunteerPs] = useState(false);
+  const [isTogglingPs, setIsTogglingPs] = useState(false);
+
+  const fetchEventConfig = async () => {
+    try {
+      const res = await api.get('/admin/config');
+      setAllowVolunteerPs(!!res.data?.allowVolunteerPsSelection);
+    } catch (err) {
+      // fallback
+    }
+  };
+
+  const handleToggleVolunteerPs = async () => {
+    setIsTogglingPs(true);
+    try {
+      const nextVal = !allowVolunteerPs;
+      const res = await api.patch('/admin/config/ps-release-at', {
+        allowVolunteerPsSelection: nextVal
+      });
+      setAllowVolunteerPs(!!res.data?.allowVolunteerPsSelection);
+      addToast(
+        nextVal
+          ? '🚀 Volunteer Problem Statement Allotment ENABLED!'
+          : '🔒 Volunteer Problem Statement Allotment DISABLED!',
+        nextVal ? 'success' : 'info'
+      );
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to update volunteer permissions', 'error');
+    } finally {
+      setIsTogglingPs(false);
+    }
+  };
+
   useEffect(() => {
     fetchPeopleRoles();
     fetchPSList();
     fetchPanelsList();
     fetchAllTeams();
+    fetchEventConfig();
   }, []);
+
 
   const handleAddRole = async () => {
     const trimmed = newRoleInput.trim();
@@ -4364,7 +4399,64 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
         </p>
       </div>
 
+      {/* Volunteer PS Selection Emergency Mode Toggle */}
+      <div 
+        className="glass-panel" 
+        style={{ 
+          padding: '16px 20px', 
+          borderRadius: '16px', 
+          marginBottom: '20px', 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          flexWrap: 'wrap', 
+          gap: '14px', 
+          background: allowVolunteerPs ? 'rgba(16, 185, 129, 0.08)' : 'rgba(255, 255, 255, 0.02)', 
+          border: allowVolunteerPs ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid var(--border-light)' 
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{ 
+            padding: '10px', 
+            borderRadius: '12px', 
+            background: allowVolunteerPs ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.05)', 
+            color: allowVolunteerPs ? '#10b981' : 'var(--text-muted)' 
+          }}>
+            <Layers size={22} />
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              Volunteer Problem Statement Allotment
+              <span 
+                style={{ 
+                  fontSize: '0.7rem', 
+                  fontWeight: 800, 
+                  padding: '2px 8px', 
+                  borderRadius: '6px', 
+                  background: allowVolunteerPs ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.15)', 
+                  color: allowVolunteerPs ? '#10b981' : 'var(--danger)' 
+                }}
+              >
+                {allowVolunteerPs ? 'ACTIVE / ALLOWED' : 'DISABLED'}
+              </span>
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+              When enabled, volunteers can assign and lock in problem statements directly for teams during physical check-in.
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={handleToggleVolunteerPs}
+          disabled={isTogglingPs}
+          className={`btn ${allowVolunteerPs ? 'btn-danger' : 'btn-primary'}`}
+          style={{ padding: '8px 18px', fontSize: '0.85rem', fontWeight: 600, minHeight: '38px', height: '38px' }}
+        >
+          {isTogglingPs ? 'Saving...' : allowVolunteerPs ? 'Disable Volunteer PS Selection' : 'Enable Volunteer PS Selection'}
+        </button>
+      </div>
+
       {/* Action Grid Toolbar */}
+
       <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
         <button onClick={() => setShowManageRolesModal(true)} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Manage Custom Roles">
           <Layers size={16} />

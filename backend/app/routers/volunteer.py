@@ -7,10 +7,102 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
 from app.logger import logger
-from app.models import Role, Team, TeamMember, CheckpointType, AttendanceRecord
+from app.models import Role, Team, TeamMember, CheckpointType, AttendanceRecord, EventConfig, ProblemStatement, PSSelection
 from app.auth import require_role, CurrentUser
 
 router = APIRouter(prefix="/volunteer", tags=["volunteer"])
+
+@router.get("/config")
+def get_volunteer_config(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.VOLUNTEER))
+):
+    config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
+    return {
+        "allowVolunteerPsSelection": bool(config.allowVolunteerPsSelection) if config else False
+    }
+
+@router.get("/problem-statements")
+def get_volunteer_problem_statements(
+    team_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.VOLUNTEER))
+):
+    config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
+    if not config or not config.allowVolunteerPsSelection:
+        raise HTTPException(status_code=403, detail="Volunteer problem statement selection is currently disabled by Admin")
+    
+    team = None
+    if team_id:
+        team = db.query(Team).filter(Team.id == team_id, Team.eventId == current_user.eventId).first()
+        
+    query = db.query(ProblemStatement).filter(ProblemStatement.eventId == current_user.eventId)
+    if team and team.category:
+        query = query.filter(or_(ProblemStatement.discipline == team.category, ProblemStatement.discipline.is_(None)))
+        
+    statements = query.order_by(ProblemStatement.code).all()
+    return [
+        {
+            "id": s.id,
+            "code": s.code,
+            "title": s.title,
+            "description": s.description,
+            "capacity": s.capacity or 0,
+            "selectedCount": s.selectedCount or 0,
+            "remainingCapacity": max((s.capacity or 0) - (s.selectedCount or 0), 0),
+            "requirements": s.requirements,
+            "discipline": s.discipline
+        } for s in statements
+    ]
+
+@router.post("/teams/{team_id}/select-ps")
+def volunteer_select_team_ps(
+    team_id: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.VOLUNTEER))
+):
+    config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
+    if not config or not config.allowVolunteerPsSelection:
+        raise HTTPException(status_code=403, detail="Volunteer problem statement selection is currently disabled by Admin")
+        
+    ps_id = payload.get("psId")
+    if not ps_id:
+        raise HTTPException(status_code=400, detail="Problem statement ID is required")
+        
+    team = db.query(Team).filter(Team.id == team_id, Team.eventId == current_user.eventId).first()
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+        
+    ps_obj = db.query(ProblemStatement).filter(ProblemStatement.id == ps_id, ProblemStatement.eventId == current_user.eventId).first()
+    if not ps_obj:
+        raise HTTPException(status_code=404, detail="Problem statement not found")
+        
+    # Category discipline check
+    if ps_obj.discipline and team.category and ps_obj.discipline != team.category:
+        raise HTTPException(status_code=400, detail=f"This problem statement is for {ps_obj.discipline}, but team is {team.category}")
+        
+    # Capacity check
+    if (ps_obj.selectedCount or 0) >= (ps_obj.capacity or 0):
+        raise HTTPException(status_code=409, detail="PS_FULL: This problem statement has reached maximum capacity")
+        
+    # Check existing selection
+    existing_sel = db.query(PSSelection).filter(PSSelection.teamId == team.id).first()
+    if existing_sel:
+        existing_sel.psId = ps_obj.id
+    else:
+        new_sel = PSSelection(teamId=team.id, psId=ps_obj.id)
+        db.add(new_sel)
+        
+    db.commit()
+    return {
+        "message": f"Successfully locked in [{ps_obj.code}] {ps_obj.title} for team {team.name}",
+        "teamId": team.id,
+        "psId": ps_obj.id,
+        "psCode": ps_obj.code,
+        "psTitle": ps_obj.title
+    }
+
 
 
 
@@ -135,23 +227,26 @@ def get_volunteer_team_detail(
                 "timestamp": record["timestamp"] if record else None
             })
             
-        members_data.append({
-            "id": m.id,
-            "name": m.name,
-            "email": m.email,
-            "phone": m.phone,
-            "idVerified": m.idVerified,
-            "isTeamLeader": m.isTeamLeader,
-            "checkpoints": checkpoints_status
-        })
-        
+    ps_selection = db.query(PSSelection).join(ProblemStatement, PSSelection.psId == ProblemStatement.id).filter(PSSelection.teamId == team.id).first()
+    selected_ps_data = None
+    if ps_selection and ps_selection.problemStatement:
+        selected_ps_data = {
+            "id": ps_selection.problemStatement.id,
+            "code": ps_selection.problemStatement.code,
+            "title": ps_selection.problemStatement.title,
+            "selectedAt": ps_selection.selectedAt
+        }
+
     return {
         "id": team.id,
         "registrationId": team.registrationId,
         "name": team.name,
         "collegeName": team.collegeName,
+        "category": team.category,
+        "selectedProblemStatement": selected_ps_data,
         "members": members_data
     }
+
 
 @router.post("/checkin")
 def mark_attendance_checkin(

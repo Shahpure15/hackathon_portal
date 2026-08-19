@@ -65,10 +65,12 @@ class EventConfig(Base):
     psReleaseAt = Column(DateTime, nullable=True)
     psGateCheckpointTypeId = Column(String(36), ForeignKey("checkpoint_types.id", ondelete="SET NULL"), nullable=True)
     peopleRoles = Column(JSON, default=list, nullable=True)
+    allowVolunteerPsSelection = Column(Boolean, default=False, nullable=False)
 
     # Relationships
     event = relationship("Event", back_populates="config")
     psGateCheckpointType = relationship("CheckpointType")
+
 
 class User(Base):
     __tablename__ = "users"
