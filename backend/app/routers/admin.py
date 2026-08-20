@@ -2622,6 +2622,36 @@ def clear_all_ps_selections(
     }
 
 
+@router.post("/problem-statements/purge-test-data")
+def purge_problem_statements_and_selections(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    """Deletes all PS selections AND deletes all test problem statements for this event."""
+    event_teams = db.query(Team.id).filter(Team.eventId == current_user.eventId).subquery()
+    selections_deleted = db.query(PSSelection).filter(PSSelection.teamId.in_(event_teams)).delete(synchronize_session=False)
+
+    # Delete all problem statements for this event
+    ps_deleted = db.query(ProblemStatement).filter(ProblemStatement.eventId == current_user.eventId).delete(synchronize_session=False)
+
+    log_audit(
+        db=db,
+        actor_id=current_user.id,
+        action="ps.purge_test_data",
+        entity_type="Event",
+        entity_id=current_user.eventId,
+        diff={"clearedSelections": selections_deleted, "deletedProblemStatements": ps_deleted}
+    )
+
+    db.commit()
+    logger.info(f"Admin '{current_user.username}' purged {selections_deleted} selections and {ps_deleted} problem statements.")
+    return {
+        "message": f"Successfully cleared {selections_deleted} team selections and deleted {ps_deleted} problem statements.",
+        "selectionsDeleted": selections_deleted,
+        "problemStatementsDeleted": ps_deleted
+    }
+
+
 @router.put("/problem-statements/{ps_id}", response_model=ProblemStatementResponse)
 @router.patch("/problem-statements/{ps_id}", response_model=ProblemStatementResponse)
 def update_problem_statement(
