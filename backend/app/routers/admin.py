@@ -708,6 +708,15 @@ async def import_teams_preview(
 
         team_cat = Discipline.DESIGN.value if "design" in raw_cat.lower() else Discipline.ENGINEERING.value
         
+        # Parse desk number if present in CSV
+        raw_desk = ""
+        for key, val in row.items():
+            k_lower = str(key).strip().lower()
+            if k_lower in ["desk number", "desk no", "desk no.", "desk", "desk #", "desk id", "desknumber", "deskno", "desk_number", "desk/bench number"]:
+                if val and str(val).strip() and str(val).strip().lower() != "nan":
+                    raw_desk = str(val).strip()
+                    break
+
         # Prepare row payload
         row_payload = {
             "registrationId": reg_id,
@@ -717,6 +726,7 @@ async def import_teams_preview(
             "leaderPhone": leader["phone"],
             "collegeName": leader["college"] or "Unknown College",
             "category": team_cat,
+            "deskNumber": raw_desk,
             "members": parsed_members,
             "row": row_num
         }
@@ -759,6 +769,10 @@ async def import_teams_preview(
             if db_college != csv_college:
                 changes["collegeName"] = {"from": db_college, "to": csv_college}
                 
+            db_desk = db_team.deskNumber or ""
+            if db_desk != raw_desk:
+                changes["deskNumber"] = {"from": db_desk, "to": raw_desk}
+
             # Compare members
             db_members_key = sorted([f"{m.name}:{m.email}" for m in db_team.members])
             csv_members_key = sorted([f'{m["name"]}:{m["email"]}' for m in parsed_members])
@@ -887,7 +901,8 @@ def import_teams_confirm(
                     leaderEmail=str(row["leaderEmail"]).strip()[:255],
                     leaderPhone=str(row["leaderPhone"]).strip()[:50],
                     collegeName=str(row["collegeName"]).strip()[:255],
-                    category=cat_enum
+                    category=cat_enum,
+                    deskNumber=str(row.get("deskNumber", "")).strip()[:20] if row.get("deskNumber") else None
                 )
                 db.add(team)
                 db.flush() # Populate team.id
@@ -899,6 +914,7 @@ def import_teams_confirm(
                 team.leaderPhone = str(row["leaderPhone"]).strip()[:50]
                 team.collegeName = str(row["collegeName"]).strip()[:255]
                 team.category = cat_enum
+                team.deskNumber = str(row.get("deskNumber", "")).strip()[:20] if row.get("deskNumber") else None
                 # Delete existing members to re-insert
                 db.query(TeamMember).filter(TeamMember.teamId == team.id).delete()
             
@@ -966,18 +982,20 @@ def import_teams_confirm(
                 db_team.registrationId = reg_id
             
             # Log changes
-            for key in ["name", "leaderName", "leaderEmail", "leaderPhone", "collegeName", "category"]:
+            for key in ["name", "leaderName", "leaderEmail", "leaderPhone", "collegeName", "category", "deskNumber"]:
                 old_val = getattr(db_team, key)
                 if hasattr(old_val, "value"):
                     old_val = old_val.value
-                new_val = row[key]
-                if old_val != new_val:
+                new_val = row.get(key, "")
+                if (old_val or "") != (new_val or ""):
                     diff[key] = {"from": old_val, "to": new_val}
                     if key == "category":
                         cat_str = str(new_val).strip().upper()
                         setattr(db_team, key, Discipline.DESIGN if cat_str == "DESIGN" else Discipline.ENGINEERING)
                     elif key == "leaderPhone":
                         setattr(db_team, key, str(new_val).strip()[:50])
+                    elif key == "deskNumber":
+                        setattr(db_team, key, str(new_val).strip()[:20] if new_val else None)
                     else:
                         setattr(db_team, key, str(new_val).strip()[:255])
                     

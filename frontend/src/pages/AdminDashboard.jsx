@@ -446,6 +446,7 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
     const headers = [
       "Team Code",
       "Team Name",
+      "Desk Number",
       "Member 1 Name",
       "Member 1 Lead",
       "Member 1 College",
@@ -463,7 +464,7 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
       "Member 3 Mobile"
     ];
     const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" +
-      "T1001,Alpha Force,Alice Cooper,Yes,MIT,alice@mit.edu,+91 9999988888,Bob Harris,No,MIT,bob@mit.edu,+91 9999977777,Charlie Vance,No,MIT,charlie@mit.edu,+91 9999966666\n";
+      "T1001,Alpha Force,D-12,Alice Cooper,Yes,MIT,alice@mit.edu,+91 9999988888,Bob Harris,No,MIT,bob@mit.edu,+91 9999977777,Charlie Vance,No,MIT,charlie@mit.edu,+91 9999966666\n";
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
