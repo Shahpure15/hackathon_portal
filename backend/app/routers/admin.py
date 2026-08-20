@@ -2836,7 +2836,8 @@ async def import_problem_statements_preview(
             continue
             
         cap_str = str(capacity_raw).strip().lower() if capacity_raw is not None and pd.notna(capacity_raw) else ""
-        if cap_str in ["unlimited", "no limit", "none", "-1", "0", "inf", "infinity", "n/a", ""] or discipline == "DESIGN":
+        is_unlimited_text = any(kw in cap_str for kw in ["cap", "limit", "unlimit", "open", "free", "inf", "none", "n/a"]) or cap_str in ["-1", "0", ""]
+        if is_unlimited_text or discipline == "DESIGN":
             capacity = 999999
         else:
             try:

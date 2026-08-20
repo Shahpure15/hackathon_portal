@@ -841,7 +841,8 @@ const LeaderDashboard = () => {
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                         {statements.map((s) => {
-                          const isSoldOut = s.remainingCapacity === 0;
+                          const isDesign = (s.discipline || '').toUpperCase() === 'DESIGN' || s.capacity >= 999000;
+                          const isSoldOut = !isDesign && s.remainingCapacity === 0;
                           const isUpdated = s.id === updatedPsId;
                           
                           return (
@@ -855,9 +856,15 @@ const LeaderDashboard = () => {
                                   <span style={{ fontSize: '0.75rem', background: 'var(--primary-glow)', color: 'var(--primary)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
                                     {s.code}
                                   </span>
-                                  <span className={isUpdated ? 'ps-count-scale' : ''} style={{ fontSize: '0.75rem', background: isSoldOut ? 'var(--danger-glow)' : 'var(--success-glow)', color: isSoldOut ? 'var(--danger)' : 'var(--success)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600, transition: 'all 0.4s ease' }}>
-                                    {isSoldOut ? 'Fully Committed' : `${s.remainingCapacity} slots remaining`}
-                                  </span>
+                                  {isDesign ? (
+                                    <span style={{ fontSize: '0.75rem', background: 'rgba(236,72,153,0.15)', color: '#ec4899', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                                      Unlimited Selection
+                                    </span>
+                                  ) : (
+                                    <span className={isUpdated ? 'ps-count-scale' : ''} style={{ fontSize: '0.75rem', background: isSoldOut ? 'var(--danger-glow)' : 'var(--success-glow)', color: isSoldOut ? 'var(--danger)' : 'var(--success)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600, transition: 'all 0.4s ease' }}>
+                                      {isSoldOut ? 'Fully Committed' : `${s.remainingCapacity} slots remaining`}
+                                    </span>
+                                  )}
                                 </div>
                                 <h3 style={{ fontSize: '1.15rem', fontWeight: 700, marginBottom: '6px' }}>{s.title}</h3>
                                 <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>

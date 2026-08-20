@@ -6515,8 +6515,9 @@ const PSView = () => {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
           {filteredStatements.map((s) => {
-            const fillPercent = Math.min((s.selectedCount / s.capacity) * 100, 100);
-            const isFull = s.remainingCapacity === 0;
+            const isDesign = (s.discipline || '').toUpperCase() === 'DESIGN' || s.capacity >= 999000;
+            const fillPercent = isDesign ? 0 : Math.min((s.selectedCount / s.capacity) * 100, 100);
+            const isFull = !isDesign && s.remainingCapacity === 0;
 
             return (
               <div
@@ -6537,9 +6538,15 @@ const PSView = () => {
                         </span>
                       )}
                     </div>
-                    <span style={{ fontSize: '0.75rem', background: isFull ? 'var(--danger-glow)' : 'var(--success-glow)', color: isFull ? 'var(--danger)' : 'var(--success)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                      {isFull ? 'Fully Committed' : `${s.remainingCapacity} Left`}
-                    </span>
+                    {isDesign ? (
+                      <span style={{ fontSize: '0.75rem', background: 'rgba(236,72,153,0.15)', color: '#ec4899', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                        Unlimited Selection
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '0.75rem', background: isFull ? 'var(--danger-glow)' : 'var(--success-glow)', color: isFull ? 'var(--danger)' : 'var(--success)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                        {isFull ? 'Fully Committed' : `${s.remainingCapacity} Left`}
+                      </span>
+                    )}
                   </div>
 
                   <h3 style={{ fontSize: '1.15rem', fontWeight: 700, marginBottom: '8px' }}>{s.title}</h3>
@@ -6549,13 +6556,21 @@ const PSView = () => {
                 </div>
 
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                    <span>Capacity Fill</span>
-                    <span>{s.selectedCount} / {s.capacity} Slots</span>
-                  </div>
-                  <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden', marginBottom: '16px' }}>
-                    <div style={{ width: `${fillPercent}%`, height: '100%', background: isFull ? 'var(--danger)' : 'var(--accent-blue)', borderRadius: '2px' }}></div>
-                  </div>
+                  {isDesign ? (
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '16px', fontWeight: 600 }}>
+                      Open Selection (No Capacity Limit)
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                        <span>Capacity Fill</span>
+                        <span>{s.selectedCount} / {s.capacity} Slots</span>
+                      </div>
+                      <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden', marginBottom: '16px' }}>
+                        <div style={{ width: `${fillPercent}%`, height: '100%', background: isFull ? 'var(--danger)' : 'var(--accent-blue)', borderRadius: '2px' }}></div>
+                      </div>
+                    </>
+                  )}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 600 }}>Click card to view selections ➔</span>
                     <button

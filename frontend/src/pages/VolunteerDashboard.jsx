@@ -712,10 +712,12 @@ const VolunteerDashboard = () => {
                         >
                           <option value="">-- Select Problem Statement to Assign --</option>
                           {availablePsList.map((ps) => {
-                            const isFull = ps.remainingCapacity === 0;
+                            const isDesign = (ps.discipline || '').toUpperCase() === 'DESIGN' || ps.capacity >= 999000;
+                            const isFull = !isDesign && ps.remainingCapacity === 0;
+                            const capText = isDesign ? '(Unlimited)' : `(${ps.remainingCapacity} slots left)`;
                             return (
                               <option key={ps.id} value={ps.id} disabled={isFull}>
-                                [{ps.code}] {ps.title} ({ps.remainingCapacity} slots left) {isFull ? '- [FULL]' : ''}
+                                [{ps.code}] {ps.title} {capText} {isFull ? '- [FULL]' : ''}
                               </option>
                             );
                           })}
