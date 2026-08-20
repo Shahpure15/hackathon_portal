@@ -6850,7 +6850,7 @@ const PSImportModal = ({ onClose }) => {
                 <ul style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {invalidRows.map((err, i) => (
                     <li key={i} style={{ fontSize: '0.85rem', color: 'var(--danger)' }}>
-                      Row {err.row}: {err.errors.join(', ')}
+                      Row {err.row || i + 1}: <strong>{Array.isArray(err.errors) ? err.errors.join(', ') : String(err.reason || err.errors || err.error || err.message || 'Invalid row data')}</strong>
                     </li>
                   ))}
                 </ul>
