@@ -27,7 +27,7 @@ def _revoke_all_sessions(db: Session, user_id: str):
     ).update({"revoked": True})
 
 @router.post("/login", response_model=TokenResponse)
-@limiter.limit("30/minute", key_func=login_key_func)
+@limiter.limit("300/minute", key_func=login_key_func)
 def login(
     request: Request,
     login_data: UserLogin, 
