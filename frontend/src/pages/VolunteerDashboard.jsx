@@ -509,8 +509,6 @@ const VolunteerDashboard = () => {
                 <option value="ALL">All Roles / Types</option>
                 <option value="FACULTY">Faculty</option>
                 <option value="JUDGE">Judges</option>
-                <option value="STUDENT_VOLUNTEER">Student Volunteers</option>
-                <option value="ORGANIZER">Organizers</option>
                 <option value="VOLUNTEER">Volunteers</option>
               </select>
             </div>

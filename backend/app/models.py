@@ -26,10 +26,7 @@ class TeamStatus(str, enum.Enum):
 class VolunteerType(str, enum.Enum):
     FACULTY = "FACULTY"
     JUDGE = "JUDGE"
-    STUDENT_COORDINATOR = "STUDENT_COORDINATOR"
     VOLUNTEER = "VOLUNTEER"
-    ORGANIZER = "ORGANIZER"
-    STUDENT = "STUDENT"
 
 class Discipline(str, enum.Enum):
     ENGINEERING = "ENGINEERING"

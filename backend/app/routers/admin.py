@@ -44,6 +44,11 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 def escape_like_string(s: str) -> str:
     return s.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
 
+# Helper: Normalize CSV column header strings (strips BOM, NBSP, and extra whitespace)
+def normalize_header(h: Any) -> str:
+    s = str(h).replace('\ufeff', '').replace('\xa0', ' ').strip().lower()
+    return re.sub(r'[\s_]+', ' ', s)
+
 # Helper: CSV formula injection prevention
 def csv_safe(value: Any) -> str:
     s = str(value) if value is not None else ""
@@ -697,10 +702,13 @@ async def import_teams_preview(
         
         raw_cat = ""
         for key, val in row.items():
-            k_lower = str(key).strip().lower()
-            if any(term in k_lower for term in ["category", "discipline", "track", "domain", "stream", "department"]):
-                if val and str(val).strip() and str(val).strip().lower() != "nan":
-                    raw_cat = str(val).strip()
+            if val is None or pd.isna(val):
+                continue
+            k_norm = normalize_header(key)
+            if any(term in k_norm for term in ["category", "discipline", "track", "domain", "stream", "department"]):
+                s_val = str(val).strip()
+                if s_val and s_val.lower() not in ["nan", "null", "none"]:
+                    raw_cat = s_val
                     break
 
         if not raw_cat:
@@ -711,10 +719,18 @@ async def import_teams_preview(
         # Parse desk number if present in CSV
         raw_desk = ""
         for key, val in row.items():
-            k_lower = str(key).strip().lower()
-            if k_lower in ["desk number", "desk no", "desk no.", "desk", "desk #", "desk id", "desknumber", "deskno", "desk_number", "desk/bench number"]:
-                if val and str(val).strip() and str(val).strip().lower() != "nan":
-                    raw_desk = str(val).strip()
+            if val is None or pd.isna(val):
+                continue
+            k_norm = normalize_header(key)
+            if not k_norm.startswith("member") and any(term in k_norm for term in ["desk", "bench", "table", "seat", "workstation", "lab"]):
+                s_val = str(val).strip()
+                if s_val and s_val.lower() not in ["nan", "null", "none"]:
+                    if s_val.endswith(".0"):
+                        try:
+                            s_val = str(int(float(s_val)))
+                        except ValueError:
+                            pass
+                    raw_desk = s_val
                     break
 
         # Prepare row payload
@@ -1058,6 +1074,8 @@ def import_teams_confirm(
             leader_username = reg_id.lower()
             db_team = existing_teams_map.get(reg_id)
             if db_team:
+                if row.get("deskNumber"):
+                    db_team.deskNumber = str(row.get("deskNumber")).strip()[:20]
                 raw_password = raw_passwords_map.get(leader_username) or generate_team_leader_password(db_team.leaderPhone, db_team.registrationId)
                 password_hash = password_hashes_map.get(leader_username) or get_password_hash(raw_password)
                 db_user = existing_users_map.get(leader_username)
@@ -1750,12 +1768,9 @@ def get_volunteers(
     return results
 
 DEFAULT_PEOPLE_ROLES = [
-    {"name": "Faculty Lead", "target": "pod"},
+    {"name": "Faculty Lead", "target": "both"},
     {"name": "Judge / Evaluator", "target": "ps"},
-    {"name": "Student Coordinator", "target": "pod"},
-    {"name": "Volunteer / Monitor", "target": "pod"},
-    {"name": "Event Organizer", "target": "pod"},
-    {"name": "Student Assistant", "target": "pod"}
+    {"name": "Volunteer / Monitor", "target": "pod"}
 ]
 
 def normalize_people_roles(roles_list):
@@ -2291,17 +2306,23 @@ async def import_volunteers_preview(
         row_num = index + 1
         
         name = str(row.get("name", "")).strip()
-        type_str = str(row.get("type", "VOLUNTEER")).strip().upper()
         contact = str(row.get("contact", "")).strip()
         remarks = str(row.get("remarks", "")).strip() if row.get("remarks") is not None and pd.notna(row.get("remarks")) else None
         if remarks == "nan" or not remarks:
             remarks = None
-        
+
         if not name or name.lower() == "nan":
             preview_data["invalid"].append({"row": row_num, "reason": "Missing Name"})
             continue
-            
-        if type_str not in valid_types:
+
+        raw_type = str(row.get("type", "VOLUNTEER")).strip().upper()
+        if "JUDGE" in raw_type or "EVALUAT" in raw_type:
+            type_str = "JUDGE"
+        elif "FACULTY" in raw_type or "PROF" in raw_type or "TEACHER" in raw_type:
+            type_str = "FACULTY"
+        elif raw_type in ["FACULTY", "JUDGE", "VOLUNTEER"]:
+            type_str = raw_type
+        else:
             type_str = "VOLUNTEER"
             
         if not contact or contact.lower() == "nan":

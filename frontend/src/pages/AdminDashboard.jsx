@@ -1600,6 +1600,40 @@ const CsvImportModal = ({ onClose }) => {
     }));
   };
 
+  const handleBulkSetDecisions = (action) => {
+    const nextDecisions = {};
+    changedRows.forEach(row => {
+      if (row.registrationId) {
+        nextDecisions[row.registrationId] = action;
+      }
+    });
+    setDecisions(nextDecisions);
+  };
+
+  const handleBulkConfirmAll = async () => {
+    const nextDecisions = {};
+    changedRows.forEach(row => {
+      if (row.registrationId) {
+        nextDecisions[row.registrationId] = 'update';
+      }
+    });
+    setDecisions(nextDecisions);
+    setIsConfirming(true);
+    try {
+      const res = await api.post('/admin/teams/import/confirm', nextDecisions, {
+        params: { importId }
+      });
+
+      setCredentials(res.data.credentials || []);
+      addToast('CSV data successfully imported!', 'success');
+      setStep(3);
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to commit import transaction', 'error');
+    } finally {
+      setIsConfirming(false);
+    }
+  };
+
   const handleConfirm = async () => {
     setIsConfirming(true);
     try {
@@ -1750,9 +1784,31 @@ const CsvImportModal = ({ onClose }) => {
               {/* Changed Rows Details */}
               {changedRows.length > 0 && (
                 <div>
-                  <h4 style={{ color: 'var(--warning)', fontSize: '0.9rem', display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '12px' }}>
-                    <Info size={14} /> Review Changed Fields
-                  </h4>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <h4 style={{ color: 'var(--warning)', fontSize: '0.9rem', display: 'flex', gap: '6px', alignItems: 'center', margin: 0 }}>
+                      <Info size={14} /> Review Changed Fields ({changedRows.length})
+                    </h4>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleBulkSetDecisions('update')}
+                        className="btn btn-secondary"
+                        style={{ padding: '4px 12px', fontSize: '0.75rem', borderRadius: '6px', cursor: 'pointer' }}
+                        title="Set all changed rows to Will Update"
+                      >
+                        Update All
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleBulkSetDecisions('skip')}
+                        className="btn btn-secondary"
+                        style={{ padding: '4px 12px', fontSize: '0.75rem', borderRadius: '6px', cursor: 'pointer' }}
+                        title="Set all changed rows to Will Skip"
+                      >
+                        Skip All
+                      </button>
+                    </div>
+                  </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {changedRows.map((row) => (
                       <div key={row.registrationId} style={{ border: '1px solid var(--border-light)', borderRadius: '8px', padding: '12px', background: 'rgba(255,255,255,0.01)' }}>
@@ -1795,15 +1851,28 @@ const CsvImportModal = ({ onClose }) => {
               )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <button onClick={() => setStep(1)} className="btn btn-secondary">Back</button>
-              <button
-                onClick={handleConfirm}
-                className="btn btn-primary"
-                disabled={summary.invalid > 0 || isConfirming}
-              >
-                {isConfirming ? <span className="spinner"></span> : 'Confirm Import'}
-              </button>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                {changedRows.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleBulkConfirmAll}
+                    className="btn btn-primary"
+                    style={{ background: 'var(--success)', borderColor: 'var(--success)', color: '#fff' }}
+                    disabled={summary.invalid > 0 || isConfirming}
+                  >
+                    {isConfirming ? <span className="spinner"></span> : 'Bulk Confirm All Updates'}
+                  </button>
+                )}
+                <button
+                  onClick={handleConfirm}
+                  className="btn btn-primary"
+                  disabled={summary.invalid > 0 || isConfirming}
+                >
+                  {isConfirming ? <span className="spinner"></span> : 'Confirm Selected'}
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1936,6 +2005,43 @@ const GenericCsvImportModal = ({ title, endpoint, previewEndpoint, confirmEndpoi
       ...prev,
       [pkKey]: prev[pkKey] === 'update' ? 'skip' : 'update'
     }));
+  };
+
+  const handleBulkSetDecisions = (action) => {
+    const nextDecisions = {};
+    changedRows.forEach(row => {
+      const pkKey = row.code || row.contact || row.registrationId || row.name;
+      if (pkKey) nextDecisions[pkKey] = action;
+    });
+    setDecisions(nextDecisions);
+  };
+
+  const handleBulkConfirmAll = async () => {
+    const nextDecisions = {};
+    changedRows.forEach(row => {
+      const pkKey = row.code || row.contact || row.registrationId || row.name;
+      if (pkKey) nextDecisions[pkKey] = 'update';
+    });
+    setDecisions(nextDecisions);
+    setIsConfirming(true);
+    try {
+      const res = await api.post(targetConfirm, nextDecisions, {
+        params: { importId }
+      });
+      if (res.data.credentials && res.data.credentials.length > 0) {
+        setCredentials(res.data.credentials);
+        addToast('CSV data successfully imported!', 'success');
+        setStep(3);
+      } else {
+        addToast(res.data.message || 'CSV data successfully imported!', 'success');
+        onSuccess?.();
+        onClose();
+      }
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to confirm CSV import', 'error');
+    } finally {
+      setIsConfirming(false);
+    }
   };
 
   const handleConfirm = async () => {
@@ -2074,9 +2180,31 @@ const GenericCsvImportModal = ({ title, endpoint, previewEndpoint, confirmEndpoi
 
               {changedRows.length > 0 && (
                 <div>
-                  <h4 style={{ color: 'var(--warning)', fontSize: '0.85rem', display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '10px' }}>
-                    <Info size={14} /> Review & Resolve Field Changes ({changedRows.length})
-                  </h4>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <h4 style={{ color: 'var(--warning)', fontSize: '0.85rem', display: 'flex', gap: '6px', alignItems: 'center', margin: 0 }}>
+                      <Info size={14} /> Review & Resolve Field Changes ({changedRows.length})
+                    </h4>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleBulkSetDecisions('update')}
+                        className="btn btn-secondary"
+                        style={{ padding: '3px 10px', fontSize: '0.75rem', borderRadius: '6px', cursor: 'pointer' }}
+                        title="Set all changed rows to Will Update"
+                      >
+                        Update All
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleBulkSetDecisions('skip')}
+                        className="btn btn-secondary"
+                        style={{ padding: '3px 10px', fontSize: '0.75rem', borderRadius: '6px', cursor: 'pointer' }}
+                        title="Set all changed rows to Will Skip"
+                      >
+                        Skip All
+                      </button>
+                    </div>
+                  </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {changedRows.map((row, idx) => {
                       const pkKey = row.code || row.contact || row.registrationId || row.name;
@@ -2121,15 +2249,28 @@ const GenericCsvImportModal = ({ title, endpoint, previewEndpoint, confirmEndpoi
               )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <button onClick={() => setStep(1)} className="btn btn-secondary touch-target">Back</button>
-              <button
-                onClick={handleConfirm}
-                className="btn btn-primary touch-target"
-                disabled={summary.invalid > 0 || isConfirming}
-              >
-                {isConfirming ? <span className="spinner"></span> : 'Confirm Import'}
-              </button>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                {changedRows.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleBulkConfirmAll}
+                    className="btn btn-primary touch-target"
+                    style={{ background: 'var(--success)', borderColor: 'var(--success)', color: '#fff' }}
+                    disabled={summary.invalid > 0 || isConfirming}
+                  >
+                    {isConfirming ? <span className="spinner"></span> : 'Bulk Confirm All Updates'}
+                  </button>
+                )}
+                <button
+                  onClick={handleConfirm}
+                  className="btn btn-primary touch-target"
+                  disabled={summary.invalid > 0 || isConfirming}
+                >
+                  {isConfirming ? <span className="spinner"></span> : 'Confirm Selected'}
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -3398,12 +3539,9 @@ const PodRosterModal = ({ pod, onClose }) => {
   const [newVolEmail, setNewVolEmail] = useState('');
   const [newVolPhone, setNewVolPhone] = useState('');
   const [peopleRoles, setPeopleRoles] = useState([
-    { name: "Faculty Lead", target: "pod" },
+    { name: "Faculty Lead", target: "both" },
     { name: "Judge / Evaluator", target: "ps" },
-    { name: "Student Coordinator", target: "pod" },
-    { name: "Volunteer / Monitor", target: "pod" },
-    { name: "Event Organizer", target: "pod" },
-    { name: "Student Assistant", target: "pod" }
+    { name: "Volunteer / Monitor", target: "pod" }
   ]);
 
   const normalizeRoles = (rolesData) => {
@@ -3984,12 +4122,9 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
   const [deleteConfirmState, setDeleteConfirmState] = useState(null);
 
   const [peopleRoles, setPeopleRoles] = useState([
-    { name: "Faculty Lead", target: "pod" },
+    { name: "Faculty Lead", target: "both" },
     { name: "Judge / Evaluator", target: "ps" },
-    { name: "Student Coordinator", target: "pod" },
-    { name: "Volunteer / Monitor", target: "pod" },
-    { name: "Event Organizer", target: "pod" },
-    { name: "Student Assistant", target: "pod" }
+    { name: "Volunteer / Monitor", target: "pod" }
   ]);
   const [showManageRolesModal, setShowManageRolesModal] = useState(false);
   const [newRoleInput, setNewRoleInput] = useState('');
@@ -4008,21 +4143,18 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
         return { name: r.name || '', target: r.target || 'pod' };
       }
       const str = String(r);
-      const target = (str.toLowerCase().includes('judge') || str.toLowerCase().includes('evaluator')) ? 'ps' : 'pod';
-      return { name: str, target };
+      const lower = str.toLowerCase();
+      if (lower.includes('faculty')) return { name: str, target: 'both' };
+      if (lower.includes('judge') || lower.includes('evaluator')) return { name: str, target: 'ps' };
+      return { name: str, target: 'pod' };
     });
   };
 
   const getRoleTarget = (roleName) => {
     if (!roleName) return 'pod';
-    const found = peopleRoles.find(r => {
-      const name = typeof r === 'object' && r !== null ? r.name : String(r);
-      return name.toLowerCase() === String(roleName).toLowerCase();
-    });
-    if (found && typeof found === 'object' && found.target) return found.target;
     const lower = String(roleName).toLowerCase();
-    if (lower.includes('judge') || lower.includes('evaluator')) return 'ps';
-    if (lower.includes('team')) return 'team';
+    if (lower.includes('faculty') || lower === 'faculty') return 'both';
+    if (lower.includes('judge') || lower.includes('evaluator') || lower === 'judge') return 'ps';
     return 'pod';
   };
 
@@ -4395,8 +4527,9 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
   const handleDownloadVolunteersTemplate = () => {
     const headers = ["name", "type", "contact"];
     const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" +
-      "John Doe,STUDENT,john@mit.edu | +91 9999988888\n" +
-      "Dr. Smith,FACULTY,smith@mit.edu | +91 8888877777\n";
+      "Dr. Smith,FACULTY,smith@mit.edu | +91 8888877777\n" +
+      "Sarah Connor,JUDGE,sarah@mit.edu | +91 9999988888\n" +
+      "Alex Johnson,VOLUNTEER,alex@mit.edu | +91 7777766666\n";
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -4410,10 +4543,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
     const rolesMap = {
       FACULTY: 'Faculty Lead',
       JUDGE: 'Judge / Evaluator',
-      STUDENT_COORDINATOR: 'Student Coordinator',
-      VOLUNTEER: 'Volunteer / Monitor',
-      ORGANIZER: 'Event Organizer',
-      STUDENT: 'Student Assistant'
+      VOLUNTEER: 'Volunteer / Monitor'
     };
     const displayLabel = rolesMap[t] || t || 'Member';
     return (
@@ -4427,9 +4557,9 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
     <div style={{ marginBottom: '28px' }}>
       {/* Title Section */}
       <div style={{ marginBottom: '16px' }}>
-        <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>People & Organizers <span className="font-accent">Directory</span></h1>
+        <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>People & Staff <span className="font-accent">Directory</span></h1>
         <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
-          Faculty leads, judges, student coordinators, volunteers, and event organizers.
+          Faculty leads, judges, and event volunteers.
         </p>
       </div>
 
@@ -4839,9 +4969,9 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
                 />
               </div>
 
-              {getRoleTarget(type) === 'ps' && (
+              {(getRoleTarget(type) === 'ps' || getRoleTarget(type) === 'both' || type === 'JUDGE' || type === 'FACULTY') && (
                 <div className="form-group" style={{ marginBottom: '20px' }}>
-                  <label className="form-label">Assign Panel / Problem Statement (For Judges / Evaluators)</label>
+                  <label className="form-label">Assign Panel / Problem Statement (For Judges & Faculty Leads)</label>
                   <select
                     value={panelId || (problemStatementId ? `create_ps_${problemStatementId}` : '')}
                     onChange={(e) => {
@@ -4876,21 +5006,9 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
                 </div>
               )}
 
-              {getRoleTarget(type) === 'team' && (
+              {(getRoleTarget(type) === 'pod' || getRoleTarget(type) === 'both' || type === 'VOLUNTEER' || type === 'FACULTY') && (
                 <div className="form-group" style={{ marginBottom: '20px' }}>
-                  <label className="form-label">Assign to Team Roster</label>
-                  <select value={teamId} onChange={(e) => setTeamId(e.target.value)} className="form-input" disabled={isSaving}>
-                    <option value="">-- No Team Assigned --</option>
-                    {allTeams.map(t => (
-                      <option key={t.id} value={t.id}>[{t.registrationId}] {t.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {getRoleTarget(type) === 'pod' && (
-                <div className="form-group" style={{ marginBottom: '20px' }}>
-                  <label className="form-label">Assign to POD Group (Optional)</label>
+                  <label className="form-label">Assign to POD Group (For Volunteers & Faculty Leads)</label>
                   <select value={podId} onChange={(e) => setPodId(e.target.value)} className="form-input" disabled={isSaving}>
                     <option value="">Unassigned</option>
                     {pods.map(p => (
@@ -4984,9 +5102,9 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
                 />
               </div>
 
-              {getRoleTarget(type) === 'ps' && (
+              {(getRoleTarget(type) === 'ps' || getRoleTarget(type) === 'both' || type === 'JUDGE' || type === 'FACULTY') && (
                 <div className="form-group" style={{ marginBottom: '16px' }}>
-                  <label className="form-label">Assign Panel / Problem Statement (For Judges / Evaluators)</label>
+                  <label className="form-label">Assign Panel / Problem Statement (For Judges & Faculty Leads)</label>
                   <select
                     value={panelId || (problemStatementId ? `create_ps_${problemStatementId}` : '')}
                     onChange={(e) => {
@@ -5021,21 +5139,9 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
                 </div>
               )}
 
-              {getRoleTarget(type) === 'team' && (
+              {(getRoleTarget(type) === 'pod' || getRoleTarget(type) === 'both' || type === 'VOLUNTEER' || type === 'FACULTY') && (
                 <div className="form-group" style={{ marginBottom: '16px' }}>
-                  <label className="form-label">Assign to Team Roster</label>
-                  <select value={teamId} onChange={(e) => setTeamId(e.target.value)} className="form-input" disabled={isSaving}>
-                    <option value="">-- No Team Assigned --</option>
-                    {allTeams.map(t => (
-                      <option key={t.id} value={t.id}>[{t.registrationId}] {t.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {getRoleTarget(type) === 'pod' && (
-                <div className="form-group" style={{ marginBottom: '16px' }}>
-                  <label className="form-label">Assign to POD Group (Optional)</label>
+                  <label className="form-label">Assign to POD Group (For Volunteers & Faculty Leads)</label>
                   <select value={podId} onChange={(e) => setPodId(e.target.value)} className="form-input" disabled={isSaving}>
                     <option value="">Unassigned</option>
                     {pods.map(p => (
