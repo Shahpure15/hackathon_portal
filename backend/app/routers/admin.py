@@ -574,6 +574,12 @@ async def import_teams_preview(
     
     unique_codes_in_file = set()
     
+    # Batch load all existing teams and their members in a single query
+    existing_teams_map = {
+        t.registrationId: t
+        for t in db.query(Team).options(joinedload(Team.members)).filter(Team.eventId == current_user.eventId).all()
+    }
+
     # Process rows
     for index, row_series in df.iterrows():
         row = row_series.to_dict()
@@ -653,11 +659,8 @@ async def import_teams_preview(
             })
             continue
             
-        # Compare with Database
-        db_team = db.query(Team).filter(
-            Team.registrationId == reg_id,
-            Team.eventId == current_user.eventId
-        ).first()
+        # Compare with in-memory map (0 network latency)
+        db_team = existing_teams_map.get(reg_id)
         
         if not db_team:
             preview_data["new"].append(row_payload)
@@ -728,7 +731,7 @@ async def import_teams_preview(
 @router.post("/teams/import/confirm")
 def import_teams_confirm(
     importId: str,
-    decisions: Dict[str, str], # key: registrationId, value: "update" | "skip"
+    decisions: Optional[Dict[str, str]] = None, # key: registrationId, value: "update" | "skip"
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
@@ -743,11 +746,22 @@ def import_teams_confirm(
     payload = pending.payload
     new_teams = payload.get("new", [])
     changed_teams = payload.get("changed", [])
+    decisions = decisions or {}
     
     generated_credentials = []
     
     # Use transactional block
     try:
+        # Batch load existing teams and users in single queries
+        existing_teams_map = {
+            t.registrationId: t
+            for t in db.query(Team).filter(Team.eventId == current_user.eventId).all()
+        }
+        existing_users_map = {
+            u.username.lower(): u
+            for u in db.query(User).filter(User.eventId == current_user.eventId).all()
+        }
+
         # 1. Process New Teams
         for row in new_teams:
             reg_id = str(row["registrationId"]).strip()
@@ -755,10 +769,7 @@ def import_teams_confirm(
             cat_enum = Discipline.DESIGN if cat_val == "DESIGN" else Discipline.ENGINEERING
 
             # Check if team already exists (idempotency safety)
-            team = db.query(Team).filter(
-                Team.registrationId == reg_id,
-                Team.eventId == current_user.eventId
-            ).first()
+            team = existing_teams_map.get(reg_id)
 
             if not team:
                 team = Team(
@@ -773,6 +784,7 @@ def import_teams_confirm(
                 )
                 db.add(team)
                 db.flush() # Populate team.id
+                existing_teams_map[reg_id] = team
             else:
                 team.name = str(row["name"]).strip()[:255]
                 team.leaderName = str(row["leaderName"]).strip()[:255]
@@ -799,10 +811,7 @@ def import_teams_confirm(
             raw_password = generate_team_leader_password(team.leaderPhone, team.registrationId)
             leader_username = reg_id.lower()
             
-            existing_user = db.query(User).filter(
-                func.lower(User.username) == leader_username,
-                User.eventId == current_user.eventId
-            ).first()
+            existing_user = existing_users_map.get(leader_username)
             
             if existing_user:
                 existing_user.passwordHash = get_password_hash(raw_password)
@@ -817,6 +826,7 @@ def import_teams_confirm(
                     teamId=team.id
                 )
                 db.add(leader_user)
+                existing_users_map[leader_username] = leader_user
             
             generated_credentials.append({
                 "teamName": team.name,
@@ -834,10 +844,7 @@ def import_teams_confirm(
                 continue
                 
             # Fetch existing team
-            db_team = db.query(Team).filter(
-                Team.registrationId == reg_id,
-                Team.eventId == current_user.eventId
-            ).first()
+            db_team = existing_teams_map.get(reg_id)
             
             if not db_team:
                 continue # Safety skip
@@ -877,12 +884,7 @@ def import_teams_confirm(
             
             # Update user account and sync password
             raw_password = generate_team_leader_password(db_team.leaderPhone, db_team.registrationId)
-            db_user = db.query(User).filter(User.teamId == db_team.id).first()
-            if not db_user:
-                db_user = db.query(User).filter(
-                    func.lower(User.username) == reg_id.lower(),
-                    User.eventId == current_user.eventId
-                ).first()
+            db_user = existing_users_map.get(reg_id.lower())
 
             if db_user:
                 db_user.username = reg_id.lower()
@@ -898,6 +900,7 @@ def import_teams_confirm(
                     teamId=db_team.id
                 )
                 db.add(db_user)
+                existing_users_map[reg_id.lower()] = db_user
 
             generated_credentials.append({
                 "teamName": db_team.name,
@@ -919,16 +922,10 @@ def import_teams_confirm(
         unchanged_teams = payload.get("unchanged", [])
         for row in unchanged_teams:
             reg_id = str(row["registrationId"]).strip()
-            db_team = db.query(Team).filter(
-                Team.registrationId == reg_id,
-                Team.eventId == current_user.eventId
-            ).first()
+            db_team = existing_teams_map.get(reg_id)
             if db_team:
                 raw_password = generate_team_leader_password(db_team.leaderPhone, db_team.registrationId)
-                db_user = db.query(User).filter(
-                    func.lower(User.username) == reg_id.lower(),
-                    User.eventId == current_user.eventId
-                ).first()
+                db_user = existing_users_map.get(reg_id.lower())
                 if not db_user:
                     db_user = User(
                         eventId=current_user.eventId,
@@ -938,6 +935,7 @@ def import_teams_confirm(
                         teamId=db_team.id
                     )
                     db.add(db_user)
+                    existing_users_map[reg_id.lower()] = db_user
                 generated_credentials.append({
                     "teamName": db_team.name,
                     "registrationId": reg_id,
