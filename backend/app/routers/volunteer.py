@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
 from app.logger import logger
-from app.models import Role, Team, TeamMember, CheckpointType, AttendanceRecord, EventConfig, ProblemStatement, PSSelection
+from app.models import Role, Team, TeamMember, CheckpointType, AttendanceRecord, EventConfig, ProblemStatement, PSSelection, Volunteer, VolunteerAttendanceRecord
 from app.auth import require_role, CurrentUser
 
 router = APIRouter(prefix="/volunteer", tags=["volunteer"])
@@ -330,4 +330,149 @@ def mark_attendance_checkin(
         "message": f"Successfully verified check-in for {member.name}",
         "teamMemberId": member_id,
         "checkpointTypeId": checkpoint_id
+    }
+
+
+@router.get("/people")
+def get_volunteer_people(
+    search: Optional[str] = None,
+    type: Optional[str] = None,
+    page: int = 1,
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.VOLUNTEER))
+):
+    """Search and paginate hackathon people/faculty/judges for check-in verification."""
+    query = db.query(Volunteer).filter(Volunteer.eventId == current_user.eventId)
+    
+    if type and type.upper() != "ALL":
+        query = query.filter(func.lower(Volunteer.type) == type.lower())
+        
+    if search:
+        escaped = escape_like_string(search)
+        query = query.filter(
+            or_(
+                Volunteer.name.ilike(f"%{escaped}%"),
+                Volunteer.contact.ilike(f"%{escaped}%"),
+                Volunteer.type.ilike(f"%{escaped}%"),
+                Volunteer.remarks.ilike(f"%{escaped}%")
+            )
+        )
+        
+    total_count = query.count()
+    people = query.options(joinedload(Volunteer.pod)).order_by(Volunteer.name).offset((page - 1) * limit).limit(limit).all()
+    
+    # Get all checkpoints for this event
+    checkpoints = db.query(CheckpointType).filter(CheckpointType.eventId == current_user.eventId).all()
+    
+    # Batch load attendance records for these people
+    v_ids = [v.id for v in people]
+    attendance_records = db.query(VolunteerAttendanceRecord).filter(VolunteerAttendanceRecord.volunteerId.in_(v_ids)).all() if v_ids else []
+    
+    attendance_map = {}
+    for rec in attendance_records:
+        if rec.volunteerId not in attendance_map:
+            attendance_map[rec.volunteerId] = {}
+        attendance_map[rec.volunteerId][rec.checkpointTypeId] = {
+            "markedBy": rec.markedBy,
+            "timestamp": rec.timestamp
+        }
+        
+    results = []
+    for p in people:
+        cp_map = attendance_map.get(p.id, {})
+        checkpoints_status = []
+        for cp in checkpoints:
+            rec = cp_map.get(cp.id)
+            checkpoints_status.append({
+                "checkpointTypeId": cp.id,
+                "checkpointName": cp.name,
+                "checkedIn": rec is not None,
+                "markedBy": rec["markedBy"] if rec else None,
+                "timestamp": rec["timestamp"] if rec else None
+            })
+            
+        results.append({
+            "id": p.id,
+            "name": p.name,
+            "type": p.type,
+            "contact": p.contact,
+            "remarks": p.remarks,
+            "podName": p.pod.name if p.pod else None,
+            "checkpoints": checkpoints_status
+        })
+        
+    return {
+        "total": total_count,
+        "page": page,
+        "limit": limit,
+        "pages": (total_count + limit - 1) // limit,
+        "results": results
+    }
+
+
+@router.post("/people/checkin")
+def mark_volunteer_people_checkin(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.VOLUNTEER))
+):
+    volunteer_id = payload.get("volunteerId")
+    checkpoint_id = payload.get("checkpointTypeId")
+    
+    if not volunteer_id or not checkpoint_id:
+        raise HTTPException(status_code=400, detail="volunteerId and checkpointTypeId are required")
+        
+    person = db.query(Volunteer).filter(
+        Volunteer.id == volunteer_id,
+        Volunteer.eventId == current_user.eventId
+    ).first()
+    if not person:
+        raise HTTPException(status_code=404, detail="Person/Volunteer record not found")
+        
+    checkpoint = db.query(CheckpointType).filter(
+        CheckpointType.id == checkpoint_id,
+        CheckpointType.eventId == current_user.eventId
+    ).first()
+    if not checkpoint:
+        raise HTTPException(status_code=404, detail="Checkpoint type not found")
+
+    existing = db.query(VolunteerAttendanceRecord).filter(
+        VolunteerAttendanceRecord.volunteerId == volunteer_id,
+        VolunteerAttendanceRecord.checkpointTypeId == checkpoint_id
+    ).first()
+    
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="ALREADY_CHECKED_IN"
+        )
+        
+    try:
+        record = VolunteerAttendanceRecord(
+            volunteerId=volunteer_id,
+            checkpointTypeId=checkpoint_id,
+            markedBy=current_user.username
+        )
+        db.add(record)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="ALREADY_CHECKED_IN"
+        )
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Checkin error: {str(e)}"
+        )
+        
+    return {
+        "message": f"Successfully verified check-in for {person.name}",
+        "volunteerId": volunteer_id,
+        "checkpointTypeId": checkpoint_id,
+        "markedBy": current_user.username,
+        "timestamp": datetime.utcnow()
     }

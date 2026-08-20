@@ -16,6 +16,8 @@ const VolunteerDashboard = () => {
   const { logout } = useAuth();
   const { addToast } = useToast();
 
+  const [activeTab, setActiveTab] = useState('checkin');
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1000);
 
@@ -32,6 +34,16 @@ const VolunteerDashboard = () => {
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(false);
+
+  // People (Faculty, Judges, Volunteers) data state
+  const [peopleList, setPeopleList] = useState([]);
+  const [peopleTotal, setPeopleTotal] = useState(0);
+  const [peoplePages, setPeoplePages] = useState(1);
+  const [peoplePage, setPeoplePage] = useState(1);
+  const [peopleSearch, setPeopleSearch] = useState('');
+  const [peopleTypeFilter, setPeopleTypeFilter] = useState('ALL');
+  const [peopleLoading, setPeopleLoading] = useState(false);
+  const [markingPersonId, setMarkingPersonId] = useState('');
 
   const {
     page,
@@ -58,11 +70,67 @@ const VolunteerDashboard = () => {
   }, []);
 
   useEffect(() => {
-    const delayDebounce = setTimeout(() => {
-      fetchTeams();
-    }, 300);
-    return () => clearTimeout(delayDebounce);
-  }, [search, page]);
+    if (activeTab === 'checkin') {
+      const delayDebounce = setTimeout(() => {
+        fetchTeams();
+      }, 300);
+      return () => clearTimeout(delayDebounce);
+    }
+  }, [search, page, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'people') {
+      const delayDebounce = setTimeout(() => {
+        fetchPeople();
+      }, 300);
+      return () => clearTimeout(delayDebounce);
+    }
+  }, [peopleSearch, peopleTypeFilter, peoplePage, activeTab, activeCheckpointId]);
+
+  const fetchPeople = async () => {
+    setPeopleLoading(true);
+    try {
+      const res = await api.get('/volunteer/people', {
+        params: {
+          search: peopleSearch || undefined,
+          type: peopleTypeFilter !== 'ALL' ? peopleTypeFilter : undefined,
+          page: peoplePage,
+          limit: 10
+        }
+      });
+      setPeopleList(res.data.results || []);
+      setPeopleTotal(res.data.total || 0);
+      setPeoplePages(res.data.pages || 1);
+    } catch (err) {
+      addToast('Failed to fetch people list', 'error');
+    } finally {
+      setPeopleLoading(false);
+    }
+  };
+
+  const handleMarkPersonPresent = async (personId, personName) => {
+    if (!activeCheckpointId) {
+      addToast('Please select a checkpoint first', 'warning');
+      return;
+    }
+    setMarkingPersonId(personId);
+    try {
+      const res = await api.post('/volunteer/people/checkin', {
+        volunteerId: personId,
+        checkpointTypeId: activeCheckpointId
+      });
+      addToast(`${personName} marked present!`, 'success');
+      fetchPeople();
+    } catch (err) {
+      if (err.response?.status === 409) {
+        addToast('Already checked in', 'info');
+      } else {
+        addToast('Failed to mark check-in for person', 'error');
+      }
+    } finally {
+      setMarkingPersonId('');
+    }
+  };
 
   const fetchVolunteerConfig = async () => {
     try {
@@ -233,9 +301,11 @@ const VolunteerDashboard = () => {
         user={{ username: 'Volunteer', role: 'Check-in Desk' }}
         onLogout={logout}
         navItems={[
-          { id: 'checkin', label: 'Check-in Desk', icon: <UserCheck size={16} /> }
+          { id: 'checkin', label: 'Teams Check-in', icon: <UserCheck size={16} /> },
+          { id: 'people', label: 'People / Faculty / Judges', icon: <Users size={16} /> }
         ]}
-        activeTab="checkin"
+        activeTab={activeTab}
+        onTabChange={(tabId) => setActiveTab(tabId)}
       />
 
       {/* Main Content Area */}
@@ -252,9 +322,13 @@ const VolunteerDashboard = () => {
         {/* Header and Checkpoint Selection row */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '20px' }}>
           <div>
-            <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>Check-in <span className="font-accent">Desk</span></h1>
+            <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>
+              {activeTab === 'checkin' ? 'Teams Check-in' : 'Faculty, Judges & People'} <span className="font-accent">Desk</span>
+            </h1>
             <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Verify identity credentials, mark attendance checkpoints, and allot problem statements when enabled.
+              {activeTab === 'checkin'
+                ? 'Verify identity credentials, mark attendance checkpoints, and allot problem statements when enabled.'
+                : 'Verify attendance for Faculty, Judges, Student Volunteers, Organizers, and event staff.'}
             </p>
           </div>
 
@@ -276,127 +350,271 @@ const VolunteerDashboard = () => {
           </div>
         </div>
 
-        {/* Volunteer PS Selection Mode Status Banner (if active) */}
-        {allowVolunteerPsSelection && (
-          <div 
-            className="glass-panel" 
-            style={{ 
-              padding: '14px 20px', 
-              borderRadius: '12px', 
-              marginBottom: '24px', 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '12px', 
-              background: 'rgba(16, 185, 129, 0.08)', 
-              border: '1px solid rgba(16, 185, 129, 0.3)' 
-            }}
-          >
-            <div style={{ padding: '6px 10px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', fontWeight: 800, fontSize: '0.75rem' }}>
-              ACTIVE
+        {/* TEAMS CHECK-IN TAB CONTENT */}
+        {activeTab === 'checkin' && (
+          <div>
+            {/* Volunteer PS Selection Mode Status Banner (if active) */}
+            {allowVolunteerPsSelection && (
+              <div 
+                className="glass-panel" 
+                style={{ 
+                  padding: '14px 20px', 
+                  borderRadius: '12px', 
+                  marginBottom: '24px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '12px', 
+                  background: 'rgba(16, 185, 129, 0.08)', 
+                  border: '1px solid rgba(16, 185, 129, 0.3)' 
+                }}
+              >
+                <div style={{ padding: '6px 10px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', fontWeight: 800, fontSize: '0.75rem' }}>
+                  ACTIVE
+                </div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
+                  <strong>Admin Notice:</strong> Problem Statement Allotment is <strong>ENABLED</strong> for volunteers. You can assign and lock in problem statements directly inside each team's roster modal.
+                </div>
+              </div>
+            )}
+
+            {/* Action and Search Bar */}
+            <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: '280px', position: 'relative' }}>
+                <Search size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input
+                  type="text"
+                  placeholder="Search by Team Name or Team Code..."
+                  className="form-input"
+                  style={{ paddingLeft: '48px', width: '100%' }}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+
+              <button 
+                onClick={() => setScannerOpen(true)}
+                className="btn btn-primary"
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '160px', justifyContent: 'center' }}
+              >
+                <QrCode size={18} />
+                Scan Team QR
+              </button>
             </div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
-              <strong>Admin Notice:</strong> Problem Statement Allotment is <strong>ENABLED</strong> for volunteers. You can assign and lock in problem statements directly inside each team's roster modal.
-            </div>
+
+            {/* Teams Table */}
+            <DataTable
+              columns={[
+                {
+                  header: 'Team Info',
+                  accessor: 'name',
+                  render: (t) => (
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{t.name}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Code: {t.registrationId}</div>
+                    </div>
+                  )
+                },
+                {
+                  header: 'Discipline / Category',
+                  accessor: 'category',
+                  render: (t) => (
+                    <span className="status-badge" style={{ fontSize: '0.75rem', fontWeight: 700, background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8' }}>
+                      {t.category || 'ENGINEERING'}
+                    </span>
+                  )
+                },
+                {
+                  header: 'College',
+                  accessor: 'collegeName',
+                  render: (t) => <span style={{ fontSize: '0.85rem' }}>{t.collegeName}</span>
+                },
+                {
+                  header: 'Check-In Status',
+                  accessor: 'id',
+                  render: (t) => {
+                    const totalMembers = t.totalMembers || 0;
+                    const checkedIn = t.checkedInMembers || 0;
+                    const isFullyCheckedIn = totalMembers > 0 && checkedIn === totalMembers;
+                    return (
+                      <span className={`status-badge ${isFullyCheckedIn ? 'status-active' : checkedIn > 0 ? 'status-draft' : 'status-danger'}`} style={{ fontSize: '0.75rem' }}>
+                        {checkedIn} / {totalMembers} Checked In
+                      </span>
+                    );
+                  }
+                },
+                {
+                  header: 'Action',
+                  accessor: 'id',
+                  align: 'right',
+                  render: (t) => (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedTeam(t);
+                      }}
+                      className="btn btn-secondary"
+                      style={{ minHeight: '36px', padding: '6px 14px', fontSize: '0.8rem' }}
+                    >
+                      Verify & Checkin
+                    </button>
+                  )
+                }
+              ]}
+              data={teams}
+              page={page}
+              pages={pages}
+              totalCount={total}
+              onPageChange={setPage}
+              onRowClick={(t) => setSelectedTeam(t)}
+              loading={loading}
+              emptyState={
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <Users size={32} style={{ marginBottom: '12px' }} />
+                  <p>No teams match your search.</p>
+                </div>
+              }
+            />
           </div>
         )}
 
-        {/* Action and Search Bar */}
-        <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: '280px', position: 'relative' }}>
-            <Search size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <input
-              type="text"
-              placeholder="Search by Team Name or Team Code..."
-              className="form-input"
-              style={{ paddingLeft: '48px', width: '100%' }}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+        {/* PEOPLE / FACULTY / JUDGES CHECK-IN TAB CONTENT */}
+        {activeTab === 'people' && (
+          <div>
+            {/* Search and Type Filter Bar */}
+            <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: '280px', position: 'relative' }}>
+                <Search size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input
+                  type="text"
+                  placeholder="Search by Name, Contact, or Role (Faculty/Judge)..."
+                  className="form-input"
+                  style={{ paddingLeft: '48px', width: '100%' }}
+                  value={peopleSearch}
+                  onChange={(e) => {
+                    setPeopleSearch(e.target.value);
+                    setPeoplePage(1);
+                  }}
+                />
+              </div>
+
+              <select
+                value={peopleTypeFilter}
+                onChange={(e) => {
+                  setPeopleTypeFilter(e.target.value);
+                  setPeoplePage(1);
+                }}
+                className="form-input"
+                style={{ width: '220px', minHeight: '42px', padding: '6px 12px' }}
+              >
+                <option value="ALL">All Roles / Types</option>
+                <option value="FACULTY">Faculty</option>
+                <option value="JUDGE">Judges</option>
+                <option value="STUDENT_VOLUNTEER">Student Volunteers</option>
+                <option value="ORGANIZER">Organizers</option>
+                <option value="VOLUNTEER">Volunteers</option>
+              </select>
+            </div>
+
+            {/* People Table */}
+            <DataTable
+              columns={[
+                {
+                  header: 'Person Info',
+                  accessor: 'name',
+                  render: (p) => (
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{p.name}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{p.contact}</div>
+                    </div>
+                  )
+                },
+                {
+                  header: 'Role / Type',
+                  accessor: 'type',
+                  render: (p) => (
+                    <span className="status-badge" style={{ fontSize: '0.75rem', fontWeight: 700, background: 'rgba(16, 185, 129, 0.15)', color: '#10b981' }}>
+                      {p.type || 'VOLUNTEER'}
+                    </span>
+                  )
+                },
+                {
+                  header: 'Assigned Pod / Remarks',
+                  accessor: 'remarks',
+                  render: (p) => (
+                    <div style={{ fontSize: '0.85rem' }}>
+                      {p.podName ? <span style={{ fontWeight: 600, color: 'var(--primary)', marginRight: '6px' }}>[{p.podName}]</span> : null}
+                      {p.remarks || '-'}
+                    </div>
+                  )
+                },
+                {
+                  header: 'Check-In Status',
+                  accessor: 'id',
+                  render: (p) => {
+                    const cpStatus = p.checkpoints?.find(cp => cp.checkpointTypeId === activeCheckpointId);
+                    const isCheckedIn = cpStatus?.checkedIn;
+
+                    if (isCheckedIn) {
+                      return (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          <span style={{ color: 'var(--success)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem' }}>
+                            <CheckCircle size={14} /> Checked In
+                          </span>
+                          <div>by {cpStatus.markedBy}</div>
+                        </div>
+                      );
+                    }
+                    return (
+                      <span className="status-badge status-draft" style={{ fontSize: '0.75rem' }}>
+                        Not Checked In
+                      </span>
+                    );
+                  }
+                },
+                {
+                  header: 'Action',
+                  accessor: 'id',
+                  align: 'right',
+                  render: (p) => {
+                    const cpStatus = p.checkpoints?.find(cp => cp.checkpointTypeId === activeCheckpointId);
+                    const isCheckedIn = cpStatus?.checkedIn;
+
+                    if (isCheckedIn) {
+                      return (
+                        <span style={{ fontSize: '0.8rem', color: 'var(--success)', fontWeight: 600 }}>
+                          Verified
+                        </span>
+                      );
+                    }
+
+                    return (
+                      <button
+                        onClick={() => handleMarkPersonPresent(p.id, p.name)}
+                        className="btn btn-primary"
+                        style={{ minHeight: '36px', padding: '6px 14px', fontSize: '0.8rem' }}
+                        disabled={markingPersonId === p.id}
+                      >
+                        {markingPersonId === p.id ? <span className="spinner spinner-white" style={{ width: '14px', height: '14px' }}></span> : 'Mark Present'}
+                      </button>
+                    );
+                  }
+                }
+              ]}
+              data={peopleList}
+              page={peoplePage}
+              pages={peoplePages}
+              totalCount={peopleTotal}
+              onPageChange={setPeoplePage}
+              loading={peopleLoading}
+              emptyState={
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <Users size={32} style={{ marginBottom: '12px' }} />
+                  <p>No people records found matching your search.</p>
+                </div>
+              }
             />
           </div>
-
-          <button 
-            onClick={() => setScannerOpen(true)}
-            className="btn btn-primary"
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '160px', justifyContent: 'center' }}
-          >
-            <QrCode size={18} />
-            Scan Team QR
-          </button>
-        </div>
-
-        {/* Teams Table */}
-        <DataTable
-          columns={[
-            {
-              header: 'Team Info',
-              accessor: 'name',
-              render: (t) => (
-                <div>
-                  <div style={{ fontWeight: 600 }}>{t.name}</div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Code: {t.registrationId}</div>
-                </div>
-              )
-            },
-            {
-              header: 'Discipline / Category',
-              accessor: 'category',
-              render: (t) => (
-                <span className="status-badge" style={{ fontSize: '0.75rem', fontWeight: 700, background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8' }}>
-                  {t.category || 'ENGINEERING'}
-                </span>
-              )
-            },
-            {
-              header: 'College',
-              accessor: 'collegeName',
-              render: (t) => <span style={{ fontSize: '0.85rem' }}>{t.collegeName}</span>
-            },
-            {
-              header: 'Check-In Status',
-              accessor: 'id',
-              render: (t) => {
-                const totalMembers = t.totalMembers || 0;
-                const checkedIn = t.checkedInMembers || 0;
-                const isFullyCheckedIn = totalMembers > 0 && checkedIn === totalMembers;
-                return (
-                  <span className={`status-badge ${isFullyCheckedIn ? 'status-active' : checkedIn > 0 ? 'status-draft' : 'status-danger'}`} style={{ fontSize: '0.75rem' }}>
-                    {checkedIn} / {totalMembers} Checked In
-                  </span>
-                );
-              }
-            },
-            {
-              header: 'Action',
-              accessor: 'id',
-              align: 'right',
-              render: (t) => (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedTeam(t);
-                  }}
-                  className="btn btn-secondary"
-                  style={{ minHeight: '36px', padding: '6px 14px', fontSize: '0.8rem' }}
-                >
-                  Verify & Checkin
-                </button>
-              )
-            }
-          ]}
-          data={teams}
-          page={page}
-          pages={pages}
-          totalCount={total}
-          onPageChange={setPage}
-          onRowClick={(t) => setSelectedTeam(t)}
-          loading={loading}
-          emptyState={
-            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-              <Users size={32} style={{ marginBottom: '12px' }} />
-              <p>No teams match your search.</p>
-            </div>
-          }
-        />
+        )}
 
         {/* Team Details & PS Allotment Modal */}
         {selectedTeam && (

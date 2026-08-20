@@ -177,6 +177,7 @@ class Volunteer(Base):
     problemStatement = relationship("ProblemStatement")
     team = relationship("Team")
     user = relationship("User", back_populates="volunteer", uselist=False, cascade="all, delete-orphan")
+    attendanceRecords = relationship("VolunteerAttendanceRecord", back_populates="volunteer", cascade="all, delete-orphan")
 
 class CheckpointType(Base):
     __tablename__ = "checkpoint_types"
@@ -205,6 +206,23 @@ class AttendanceRecord(Base):
 
     __table_args__ = (
         UniqueConstraint("teamMemberId", "checkpointTypeId", name="uq_member_checkpoint"),
+    )
+
+class VolunteerAttendanceRecord(Base):
+    __tablename__ = "volunteer_attendance_records"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    volunteerId = Column(String(36), ForeignKey("volunteers.id", ondelete="CASCADE"), nullable=False)
+    checkpointTypeId = Column(String(36), ForeignKey("checkpoint_types.id", ondelete="CASCADE"), nullable=False)
+    markedBy = Column(String(100), nullable=False)
+    timestamp = Column(DateTime, default=func.now(), nullable=False)
+
+    # Relationships
+    volunteer = relationship("Volunteer", back_populates="attendanceRecords")
+    checkpointType = relationship("CheckpointType")
+
+    __table_args__ = (
+        UniqueConstraint("volunteerId", "checkpointTypeId", name="uq_volunteer_checkpoint"),
     )
 
 class ProblemStatement(Base):
