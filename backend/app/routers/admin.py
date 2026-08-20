@@ -1625,7 +1625,7 @@ def export_volunteers(
     writer = csv.writer(output)
     
     safe_writerow(writer, [
-        "Name", "Type", "Email", "Phone", "Assigned POD Group", "Login Access Created", "Username"
+        "Name", "Type", "Email", "Phone", "Assigned POD Group", "Login Access Created", "Username", "Password"
     ])
     
     for v in volunteers:
@@ -1646,6 +1646,15 @@ def export_volunteers(
         has_login = "Yes" if v.user else "No"
         username = v.user.username if v.user else ""
         
+        # Derive standard password format for export
+        password_str = ""
+        if v.user:
+            digits = re.sub(r'\D', '', phone)
+            if len(digits) >= 5:
+                password_str = f"MitVol@{digits[-5:]}"
+            else:
+                password_str = "MitVolunteer@123"
+
         vol_type_str = v.type.value if hasattr(v.type, 'value') else str(v.type or "")
         safe_writerow(writer, [
             v.name,
@@ -1654,7 +1663,8 @@ def export_volunteers(
             phone,
             pod_name,
             has_login,
-            username
+            username,
+            password_str
         ])
         
     output.seek(0)

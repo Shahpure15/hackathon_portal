@@ -121,6 +121,9 @@ def get_leader_team_info(
             "code": team.psSelection.ps.code,
             "title": team.psSelection.ps.title,
             "description": team.psSelection.ps.description,
+            "requirements": team.psSelection.ps.requirements,
+            "discipline": team.psSelection.ps.discipline.value if hasattr(team.psSelection.ps.discipline, 'value') else str(team.psSelection.ps.discipline or ""),
+            "capacity": team.psSelection.ps.capacity,
             "selectedAt": team.psSelection.selectedAt.replace(tzinfo=timezone.utc) if team.psSelection.selectedAt else None
         }
         

@@ -627,23 +627,46 @@ const LeaderDashboard = () => {
                   <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>Problem Statement Locked In</h2>
                 </div>
                 
-                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '20px', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
-                  <span style={{ fontSize: '0.75rem', background: 'rgba(62,125,71,0.1)', color: 'var(--success)', padding: '3px 8px', borderRadius: '6px', fontWeight: 700 }}>
-                    {teamInfo.psSelection.code || teamInfo.psSelection.problemStatement?.code}
-                  </span>
-                  <h3 style={{ fontSize: '1.3rem', fontWeight: 700, margin: '8px 0' }}>{teamInfo.psSelection.title || teamInfo.psSelection.problemStatement?.title}</h3>
-                  <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <div style={{ background: 'var(--bg-surface)', padding: '24px', borderRadius: '12px', border: '1px solid var(--border-light)' }}>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '0.75rem', background: 'var(--success-glow)', color: 'var(--success)', padding: '3px 10px', borderRadius: '6px', fontWeight: 700 }}>
+                      {teamInfo.psSelection.code || teamInfo.psSelection.problemStatement?.code}
+                    </span>
+                    {(teamInfo.psSelection.discipline || teamInfo.psSelection.problemStatement?.discipline) && (
+                      <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, textTransform: 'capitalize', background: (teamInfo.psSelection.discipline || '').toLowerCase() === 'design' ? 'rgba(236,72,153,0.12)' : 'rgba(59,130,246,0.12)', color: (teamInfo.psSelection.discipline || '').toLowerCase() === 'design' ? '#ec4899' : '#3b82f6' }}>
+                        {teamInfo.psSelection.discipline || teamInfo.psSelection.problemStatement?.discipline}
+                      </span>
+                    )}
+                  </div>
+                  <h3 style={{ fontSize: '1.35rem', fontWeight: 800, margin: '8px 0', color: 'var(--text-primary)' }}>
+                    {teamInfo.psSelection.title || teamInfo.psSelection.problemStatement?.title}
+                  </h3>
+                  <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '16px' }}>
                     {teamInfo.psSelection.description || teamInfo.psSelection.problemStatement?.description}
                   </p>
-                  <button 
-                    onClick={() => setViewingPS(teamInfo.psSelection)} 
-                    className="btn btn-secondary" 
-                    style={{ marginTop: '12px', padding: '8px 16px', fontSize: '0.8rem', minHeight: 'auto' }}
-                  >
-                    View Details & Requirements
-                  </button>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '16px', borderTop: '1px solid var(--border-light)', paddingTop: '12px' }}>
-                    Topic Locked At: {new Date(teamInfo.psSelection.selectedAt).toLocaleString()}
+
+                  {(teamInfo.psSelection.requirements || teamInfo.psSelection.problemStatement?.requirements) && (
+                    <div style={{ background: 'var(--cream)', border: '1px solid var(--border-strong)', padding: '16px 20px', borderRadius: '10px', marginBottom: '16px' }}>
+                      <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <FileText size={16} /> Datasets, Guidelines & Technical Requirements:
+                      </h4>
+                      <p style={{ fontSize: '0.88rem', color: 'var(--text-primary)', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>
+                        {teamInfo.psSelection.requirements || teamInfo.psSelection.problemStatement?.requirements}
+                      </p>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginTop: '16px', borderTop: '1px solid var(--border-light)', paddingTop: '14px' }}>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+                      Topic Locked At: {new Date(teamInfo.psSelection.selectedAt).toLocaleString()}
+                    </div>
+                    <button 
+                      onClick={() => setViewingPS(teamInfo.psSelection)} 
+                      className="btn btn-secondary" 
+                      style={{ padding: '8px 16px', fontSize: '0.82rem', minHeight: 'auto', fontWeight: 600 }}
+                    >
+                      View Full Details Modal
+                    </button>
                   </div>
                 </div>
               </div>
@@ -722,6 +745,32 @@ const LeaderDashboard = () => {
                             Scheduled Release: {new Date(psReleaseAt).toLocaleString()}
                           </p>
                         )}
+
+                        <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px dashed var(--border-light)' }}>
+                          <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: '12px', fontWeight: 500 }}>
+                            Want to get familiar with how fast problem statement selection works before release time?
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDemoLockedState(null);
+                              setDemoConfirmState(null);
+                              setShowTutorialModal(true);
+                            }}
+                            className="btn btn-primary"
+                            style={{
+                              padding: '12px 24px',
+                              fontSize: '0.9rem',
+                              fontWeight: 700,
+                              borderRadius: '12px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '8px'
+                            }}
+                          >
+                            🎮 Practice Selection Mode (Interactive Tutorial)
+                          </button>
+                        </div>
                       </>
                     )}
                   </div>
