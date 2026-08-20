@@ -2548,6 +2548,35 @@ def create_problem_statement(
         discipline=ps.discipline
     )
 
+@router.post("/problem-statements/clear-selections")
+def clear_all_ps_selections(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    """One-click admin reset of all team leader problem statement selections."""
+    event_teams = db.query(Team.id).filter(Team.eventId == current_user.eventId).subquery()
+    deleted_count = db.query(PSSelection).filter(PSSelection.teamId.in_(event_teams)).delete(synchronize_session=False)
+
+    # Reset selectedCount = 0 on all ProblemStatement rows
+    db.query(ProblemStatement).filter(ProblemStatement.eventId == current_user.eventId).update({"selectedCount": 0}, synchronize_session=False)
+
+    log_audit(
+        db=db,
+        actor_id=current_user.id,
+        action="ps.clear_all_selections",
+        entity_type="Event",
+        entity_id=current_user.eventId,
+        diff={"clearedSelectionsCount": deleted_count}
+    )
+
+    db.commit()
+    logger.info(f"Admin '{current_user.username}' cleared all {deleted_count} problem statement selections.")
+    return {
+        "message": f"Successfully cleared all {deleted_count} team problem statement selections.",
+        "clearedCount": deleted_count
+    }
+
+
 @router.put("/problem-statements/{ps_id}", response_model=ProblemStatementResponse)
 @router.patch("/problem-statements/{ps_id}", response_model=ProblemStatementResponse)
 def update_problem_statement(

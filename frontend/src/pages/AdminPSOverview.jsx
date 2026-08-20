@@ -1,10 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
-import { Layers, RefreshCw } from 'lucide-react';
+import { Layers, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
+import { useToast } from '../contexts/ToastContext';
+import Modal from '../components/Modal';
 
 export default function AdminPSOverview() {
+  const { addToast } = useToast();
   const [statements, setStatements] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   const fetchStatements = useCallback(async () => {
     try {
@@ -23,6 +28,20 @@ export default function AdminPSOverview() {
     return () => clearInterval(interval);
   }, [fetchStatements]);
 
+  const handleClearAllSelections = async () => {
+    setIsClearing(true);
+    try {
+      const res = await api.post('/admin/problem-statements/clear-selections');
+      addToast(res.data.message || 'Successfully cleared all team problem statement selections!', 'success');
+      setShowClearConfirm(false);
+      fetchStatements();
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to clear problem statement selections', 'error');
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
   const totalCapacity = statements.reduce((sum, s) => sum + (s.capacity || 0), 0);
   const totalSelected = statements.reduce((sum, s) => sum + (s.selectedCount || 0), 0);
 
@@ -38,13 +57,33 @@ export default function AdminPSOverview() {
             Real-time live problem statement allocations across all participating teams.
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ textAlign: 'right' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ textAlign: 'right', marginRight: '8px' }}>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Selected</div>
             <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--primary)' }}>
               {totalSelected} / {totalCapacity}
             </div>
           </div>
+
+          <button
+            onClick={() => setShowClearConfirm(true)}
+            className="btn"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 14px',
+              fontSize: '0.85rem',
+              background: 'rgba(239, 68, 68, 0.12)',
+              color: 'var(--danger)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              fontWeight: 600
+            }}
+            title="Reset & clear all team leader problem statement selections"
+          >
+            <Trash2 size={15} /> Clear All Leader Selections
+          </button>
+
           <button
             onClick={fetchStatements}
             className="btn btn-secondary"
@@ -54,6 +93,46 @@ export default function AdminPSOverview() {
           </button>
         </div>
       </div>
+
+      {/* Confirmation Modal for Clearing All PS Selections */}
+      <Modal
+        isOpen={showClearConfirm}
+        onClose={() => setShowClearConfirm(false)}
+        title="Clear All Leader PS Selections?"
+        maxWidth="480px"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start', background: 'rgba(239, 68, 68, 0.08)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
+            <AlertTriangle size={24} style={{ color: 'var(--danger)', shrink: 0, marginTop: '2px' }} />
+            <div style={{ fontSize: '0.88rem', color: 'var(--text-primary)', lineHeight: 1.5 }}>
+              <strong>Warning:</strong> You are about to clear <strong>ALL team problem statement selections</strong> across the entire hackathon.
+              <ul style={{ marginTop: '8px', paddingLeft: '18px', color: 'var(--text-secondary)' }}>
+                <li>Resets all locked selections back to 0.</li>
+                <li>Frees up problem statement capacity slots for all teams.</li>
+                <li>All team leaders will be able to select a new problem statement.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
+            <button
+              onClick={() => setShowClearConfirm(false)}
+              className="btn btn-secondary"
+              disabled={isClearing}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleClearAllSelections}
+              className="btn"
+              style={{ background: 'var(--danger)', color: '#fff', fontWeight: 700 }}
+              disabled={isClearing}
+            >
+              {isClearing ? <span className="spinner spinner-white"></span> : 'Yes, Clear All Selections'}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <div className="glass-card" style={{ padding: '20px' }}>
         {loading ? (

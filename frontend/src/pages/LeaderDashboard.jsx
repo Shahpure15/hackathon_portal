@@ -51,6 +51,9 @@ const LeaderDashboard = () => {
   }, []);
   const [viewingPS, setViewingPS] = useState(null);
   const [selectConfirmState, setSelectConfirmState] = useState(null);
+  const [showTutorialModal, setShowTutorialModal] = useState(false);
+  const [demoConfirmState, setDemoConfirmState] = useState(null);
+  const [demoLockedState, setDemoLockedState] = useState(null);
 
   const handleTabClick = (tabName) => {
     setActiveTab(tabName);
@@ -324,7 +327,7 @@ const LeaderDashboard = () => {
         onTabChange={handleTabClick}
         navItems={[
           { id: 'team', label: 'Team Roster', icon: <Users size={16} /> },
-          { id: 'ps', label: 'Select Topic', icon: <Layers size={16} /> },
+          { id: 'ps', label: 'Problem Selection', icon: <Layers size={16} /> },
           { id: 'settings', label: 'Change Password', icon: <Lock size={16} /> }
         ]}
       />
@@ -749,29 +752,72 @@ const LeaderDashboard = () => {
                     )}
 
                     <div style={{ marginBottom: '24px' }}>
-                      <div style={{ marginBottom: '12px' }}>
-                        <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>Select Your Problem Statement</h2>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '2px' }}>
-                          Hard caps apply in real-time. Buttons disable automatically once topics fill up.
-                        </p>
+                      {/* Notice Banner & Tutorial Trigger */}
+                      <div style={{
+                        padding: '16px 20px',
+                        borderRadius: '12px',
+                        background: 'rgba(59, 130, 246, 0.08)',
+                        border: '1px solid rgba(59, 130, 246, 0.25)',
+                        marginBottom: '20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '12px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: '260px' }}>
+                          <Info size={22} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                          <div style={{ fontSize: '0.88rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>
+                            <strong>Note for Team Leaders:</strong> Clicking <strong>'Proceed to Select'</strong> on a problem statement opens a <strong>final confirmation step</strong>. Your selection is locked ONLY after you explicitly confirm in the confirmation popup modal.
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDemoLockedState(null);
+                            setDemoConfirmState(null);
+                            setShowTutorialModal(true);
+                          }}
+                          className="btn"
+                          style={{
+                            background: 'rgba(185, 111, 56, 0.15)',
+                            color: 'var(--primary)',
+                            border: '1px solid rgba(185, 111, 56, 0.3)',
+                            fontSize: '0.82rem',
+                            fontWeight: 700,
+                            padding: '8px 16px',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          🎮 Try Selection Practice Mode (Tutorial)
+                        </button>
                       </div>
-                      <button 
-                        onClick={fetchProblemStatements} 
-                        className="btn btn-secondary" 
-                        style={{ 
-                          padding: '8px 16px', 
-                          fontSize: '0.85rem', 
-                          fontWeight: 600,
-                          height: '38px', 
-                          minHeight: '38px', 
-                          display: 'inline-flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'center',
-                          gap: '6px'
-                        }}
-                      >
-                        Refresh Capacities
-                      </button>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                        <div>
+                          <h2 style={{ fontSize: '1.5rem', fontWeight: 800 }}>Problem Selection Workspace</h2>
+                          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '2px' }}>
+                            Hard caps apply in real-time. Buttons disable automatically once topics fill up.
+                          </p>
+                        </div>
+                        <button 
+                          onClick={fetchProblemStatements} 
+                          className="btn btn-secondary" 
+                          style={{ 
+                            padding: '8px 16px', 
+                            fontSize: '0.85rem', 
+                            fontWeight: 600,
+                            height: '38px', 
+                            minHeight: '38px', 
+                            display: 'inline-flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          Refresh Capacities
+                        </button>
+                      </div>
                     </div>
 
                     {statementsLoading ? (
@@ -833,7 +879,7 @@ const LeaderDashboard = () => {
                                   className="btn btn-primary"
                                   style={{ minHeight: 0, padding: '10px 24px', fontSize: '0.85rem' }}
                                 >
-                                  {isSelecting ? <span className="spinner"></span> : psGated ? 'Check-in Required' : 'Select Topic'}
+                                  {isSelecting ? <span className="spinner"></span> : psGated ? 'Check-in Required' : 'Proceed to Select'}
                                 </button>
                                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
                                   Total capacity: {s.capacity} teams
@@ -1026,6 +1072,144 @@ const LeaderDashboard = () => {
           onConfirm={executeSelectPS}
           onCancel={() => setSelectConfirmState(null)}
           loading={isSelecting}
+        />
+      )}
+
+      {/* Interactive Hands-on Selection Practice / Tutorial Modal */}
+      {showTutorialModal && (
+        <Modal
+          isOpen={true}
+          onClose={() => {
+            setShowTutorialModal(false);
+            setDemoConfirmState(null);
+            setDemoLockedState(null);
+          }}
+          title="🎮 Interactive Selection Tutorial & Practice Mode"
+          maxWidth="700px"
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ background: 'rgba(185, 111, 56, 0.08)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(185, 111, 56, 0.25)' }}>
+              <h4 style={{ color: 'var(--primary)', fontWeight: 700, margin: '0 0 6px 0', fontSize: '0.95rem' }}>
+                Practice How Problem Selection Works (Safe Sandbox)
+              </h4>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>
+                This is a hands-on simulator. Practice clicking <strong>'Proceed to Select'</strong> and confirming the popup so you know exactly what to expect when the real countdown ends! <em>Nothing here modifies your real team selection.</em>
+              </p>
+            </div>
+
+            {demoLockedState ? (
+              <div style={{ background: 'rgba(16, 185, 129, 0.08)', padding: '24px', borderRadius: '12px', border: '1px solid rgba(16, 185, 129, 0.3)', textAlign: 'center' }}>
+                <CheckCircle size={40} style={{ color: 'var(--success)', marginBottom: '12px', marginLeft: 'auto', marginRight: 'auto' }} />
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--success)' }}>
+                  Practice Lock Successful! [{demoLockedState.code}]
+                </h3>
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 600, marginTop: '4px' }}>
+                  {demoLockedState.title}
+                </p>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '8px', lineHeight: 1.5 }}>
+                  🎉 Great job! In the actual hackathon, this is how your selection will be locked into the database. You are now 100% prepared!
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDemoLockedState(null);
+                    setDemoConfirmState(null);
+                  }}
+                  className="btn btn-secondary"
+                  style={{ marginTop: '16px', padding: '8px 20px', fontSize: '0.85rem' }}
+                >
+                  🔄 Try Demo Again
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                  Demo Problem Statements (Try Clicking Below):
+                </div>
+
+                {/* Demo Card 1 */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', borderRadius: '10px', background: 'var(--bg-surface)', border: '1px solid var(--border-light)', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '0.75rem', background: 'var(--primary-glow)', color: 'var(--primary)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                        DEMO-01
+                      </span>
+                      <span style={{ fontSize: '0.75rem', background: 'var(--success-glow)', color: 'var(--success)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                        2 slots remaining
+                      </span>
+                    </div>
+                    <h4 style={{ fontWeight: 700, margin: '2px 0' }}>AI Health Diagnostic Assistant</h4>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>Smart triage assistant for rural health centers.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDemoConfirmState({ code: 'DEMO-01', title: 'AI Health Diagnostic Assistant' })}
+                    className="btn btn-primary"
+                    style={{ padding: '8px 18px', fontSize: '0.82rem' }}
+                  >
+                    Proceed to Select
+                  </button>
+                </div>
+
+                {/* Demo Card 2 */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', borderRadius: '10px', background: 'var(--bg-surface)', border: '1px solid var(--border-light)', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '0.75rem', background: 'var(--primary-glow)', color: 'var(--primary)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                        DEMO-02
+                      </span>
+                      <span style={{ fontSize: '0.75rem', background: 'var(--success-glow)', color: 'var(--success)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                        1 slot remaining
+                      </span>
+                    </div>
+                    <h4 style={{ fontWeight: 700, margin: '2px 0' }}>Smart Urban Traffic Flow System</h4>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>Adaptive signal management using camera feeds.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDemoConfirmState({ code: 'DEMO-02', title: 'Smart Urban Traffic Flow System' })}
+                    className="btn btn-primary"
+                    style={{ padding: '8px 18px', fontSize: '0.82rem' }}
+                  >
+                    Proceed to Select
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTutorialModal(false);
+                  setDemoConfirmState(null);
+                  setDemoLockedState(null);
+                }}
+                className="btn btn-secondary"
+                style={{ padding: '8px 20px', fontSize: '0.85rem' }}
+              >
+                Done Practicing
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Demo Confirmation Popup Modal */}
+      {demoConfirmState && (
+        <ConfirmDialog
+          isOpen={true}
+          title="Demo Practice: Confirmation Step"
+          message={`This is step 2 of selection! Are you sure you want to lock in [${demoConfirmState.code}] ${demoConfirmState.title}? In the real hackathon, clicking confirm here locks your choice.`}
+          confirmLabel="Confirm & Lock Problem Statement"
+          danger={false}
+          onConfirm={() => {
+            setDemoLockedState(demoConfirmState);
+            setDemoConfirmState(null);
+            addToast('Practice Demo Completed! Your selection demo passed successfully.', 'success');
+          }}
+          onCancel={() => setDemoConfirmState(null)}
         />
       )}
     </div>
