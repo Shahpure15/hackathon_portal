@@ -4,6 +4,7 @@ import uuid
 import random
 import secrets
 import string
+import traceback
 import pandas as pd
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -749,57 +750,84 @@ def import_teams_confirm(
     try:
         # 1. Process New Teams
         for row in new_teams:
-            reg_id = row["registrationId"]
-            cat_val = row.get("category", "ENGINEERING")
+            reg_id = str(row["registrationId"]).strip()
+            cat_val = str(row.get("category", "ENGINEERING")).strip().upper()
             cat_enum = Discipline.DESIGN if cat_val == "DESIGN" else Discipline.ENGINEERING
 
-            # Create Team
-            team = Team(
-                eventId=current_user.eventId,
-                registrationId=reg_id,
-                name=row["name"],
-                leaderName=row["leaderName"],
-                leaderEmail=row["leaderEmail"],
-                leaderPhone=row["leaderPhone"],
-                collegeName=row["collegeName"],
-                category=cat_enum
-            )
-            db.add(team)
-            db.flush() # Populate team.id
+            # Check if team already exists (idempotency safety)
+            team = db.query(Team).filter(
+                Team.registrationId == reg_id,
+                Team.eventId == current_user.eventId
+            ).first()
+
+            if not team:
+                team = Team(
+                    eventId=current_user.eventId,
+                    registrationId=reg_id,
+                    name=str(row["name"]).strip()[:255],
+                    leaderName=str(row["leaderName"]).strip()[:255],
+                    leaderEmail=str(row["leaderEmail"]).strip()[:255],
+                    leaderPhone=str(row["leaderPhone"]).strip()[:50],
+                    collegeName=str(row["collegeName"]).strip()[:255],
+                    category=cat_enum
+                )
+                db.add(team)
+                db.flush() # Populate team.id
+            else:
+                team.name = str(row["name"]).strip()[:255]
+                team.leaderName = str(row["leaderName"]).strip()[:255]
+                team.leaderEmail = str(row["leaderEmail"]).strip()[:255]
+                team.leaderPhone = str(row["leaderPhone"]).strip()[:50]
+                team.collegeName = str(row["collegeName"]).strip()[:255]
+                team.category = cat_enum
+                # Delete existing members to re-insert
+                db.query(TeamMember).filter(TeamMember.teamId == team.id).delete()
             
             # Create Team Members
             for member_data in row["members"]:
-                is_leader = (member_data.get("email", "").strip().lower() == team.leaderEmail.strip().lower())
+                is_leader = (str(member_data.get("email", "")).strip().lower() == team.leaderEmail.strip().lower())
                 member = TeamMember(
                     teamId=team.id,
-                    name=member_data["name"],
-                    email=member_data["email"],
-                    phone=member_data["phone"],
+                    name=str(member_data["name"]).strip()[:255],
+                    email=str(member_data["email"]).strip()[:255],
+                    phone=str(member_data.get("phone", "")).strip()[:50],
                     isTeamLeader=is_leader
                 )
                 db.add(member)
                 
-            # Create Leader User Login Account
+            # Create or Update Leader User Login Account
             raw_password = generate_team_leader_password(team.leaderPhone, team.registrationId)
-            leader_user = User(
-                eventId=current_user.eventId,
-                username=reg_id.lower(), # short registrationId is clean username
-                passwordHash=get_password_hash(raw_password),
-                role=Role.LEADER,
-                teamId=team.id
-            )
-            db.add(leader_user)
+            leader_username = reg_id.lower()
+            
+            existing_user = db.query(User).filter(
+                func.lower(User.username) == leader_username,
+                User.eventId == current_user.eventId
+            ).first()
+            
+            if existing_user:
+                existing_user.passwordHash = get_password_hash(raw_password)
+                existing_user.role = Role.LEADER
+                existing_user.teamId = team.id
+            else:
+                leader_user = User(
+                    eventId=current_user.eventId,
+                    username=leader_username,
+                    passwordHash=get_password_hash(raw_password),
+                    role=Role.LEADER,
+                    teamId=team.id
+                )
+                db.add(leader_user)
             
             generated_credentials.append({
                 "teamName": team.name,
                 "registrationId": reg_id,
-                "username": leader_user.username,
+                "username": leader_username,
                 "password": raw_password
             })
             
         # 2. Process Changed Teams
         for row in changed_teams:
-            reg_id = row["registrationId"]
+            reg_id = str(row["registrationId"]).strip()
             decision = decisions.get(reg_id, "update")
             
             if decision == "skip":
@@ -825,29 +853,58 @@ def import_teams_confirm(
                 if old_val != new_val:
                     diff[key] = {"from": old_val, "to": new_val}
                     if key == "category":
-                        setattr(db_team, key, Discipline.DESIGN if new_val == "DESIGN" else Discipline.ENGINEERING)
+                        cat_str = str(new_val).strip().upper()
+                        setattr(db_team, key, Discipline.DESIGN if cat_str == "DESIGN" else Discipline.ENGINEERING)
+                    elif key == "leaderPhone":
+                        setattr(db_team, key, str(new_val).strip()[:50])
                     else:
-                        setattr(db_team, key, new_val)
+                        setattr(db_team, key, str(new_val).strip()[:255])
                     
             # Delete old team members and insert new ones
             db.query(TeamMember).filter(TeamMember.teamId == db_team.id).delete()
             for member_data in row["members"]:
-                is_leader = (member_data.get("email", "").strip().lower() == db_team.leaderEmail.strip().lower())
+                is_leader = (str(member_data.get("email", "")).strip().lower() == db_team.leaderEmail.strip().lower())
                 member = TeamMember(
                     teamId=db_team.id,
-                    name=member_data["name"],
-                    email=member_data["email"],
-                    phone=member_data["phone"],
+                    name=str(member_data["name"]).strip()[:255],
+                    email=str(member_data["email"]).strip()[:255],
+                    phone=str(member_data.get("phone", "")).strip()[:50],
                     isTeamLeader=is_leader
                 )
                 db.add(member)
                 
             diff["members"] = row.get("changes", {}).get("members", {})
             
-            # Update user username (if registrationId changed, though it is the key and won't normally change)
+            # Update user account and sync password
+            raw_password = generate_team_leader_password(db_team.leaderPhone, db_team.registrationId)
             db_user = db.query(User).filter(User.teamId == db_team.id).first()
+            if not db_user:
+                db_user = db.query(User).filter(
+                    func.lower(User.username) == reg_id.lower(),
+                    User.eventId == current_user.eventId
+                ).first()
+
             if db_user:
                 db_user.username = reg_id.lower()
+                db_user.passwordHash = get_password_hash(raw_password)
+                db_user.teamId = db_team.id
+                db_user.role = Role.LEADER
+            else:
+                db_user = User(
+                    eventId=current_user.eventId,
+                    username=reg_id.lower(),
+                    passwordHash=get_password_hash(raw_password),
+                    role=Role.LEADER,
+                    teamId=db_team.id
+                )
+                db.add(db_user)
+
+            generated_credentials.append({
+                "teamName": db_team.name,
+                "registrationId": reg_id,
+                "username": reg_id.lower(),
+                "password": raw_password
+            })
                 
             log_audit(
                 db=db,
@@ -857,6 +914,36 @@ def import_teams_confirm(
                 entity_id=db_team.id,
                 diff=diff
             )
+
+        # 3. Include Unchanged Teams in Credentials List
+        unchanged_teams = payload.get("unchanged", [])
+        for row in unchanged_teams:
+            reg_id = str(row["registrationId"]).strip()
+            db_team = db.query(Team).filter(
+                Team.registrationId == reg_id,
+                Team.eventId == current_user.eventId
+            ).first()
+            if db_team:
+                raw_password = generate_team_leader_password(db_team.leaderPhone, db_team.registrationId)
+                db_user = db.query(User).filter(
+                    func.lower(User.username) == reg_id.lower(),
+                    User.eventId == current_user.eventId
+                ).first()
+                if not db_user:
+                    db_user = User(
+                        eventId=current_user.eventId,
+                        username=reg_id.lower(),
+                        passwordHash=get_password_hash(raw_password),
+                        role=Role.LEADER,
+                        teamId=db_team.id
+                    )
+                    db.add(db_user)
+                generated_credentials.append({
+                    "teamName": db_team.name,
+                    "registrationId": reg_id,
+                    "username": reg_id.lower(),
+                    "password": raw_password
+                })
             
         # Delete Pending Import row
         db.delete(pending)
@@ -866,6 +953,7 @@ def import_teams_confirm(
         
     except Exception as e:
         db.rollback()
+        logger.error(f"[TEAM IMPORT FAILED] Error: {e}\n{traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
             detail=f"Error executing database writes, full transaction rolled back: {str(e)}"
@@ -875,6 +963,27 @@ def import_teams_confirm(
         "message": "CSV data successfully imported!",
         "credentials": generated_credentials
     }
+
+
+@router.get("/teams/export-credentials")
+def export_team_credentials(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    teams = db.query(Team).filter(Team.eventId == current_user.eventId).order_by(Team.registrationId).all()
+    credentials = []
+    for t in teams:
+        pwd = generate_team_leader_password(t.leaderPhone, t.registrationId)
+        credentials.append({
+            "teamName": t.name,
+            "registrationId": t.registrationId,
+            "username": t.registrationId.lower(),
+            "password": pwd,
+            "leaderName": t.leaderName,
+            "leaderPhone": t.leaderPhone,
+            "leaderEmail": t.leaderEmail
+        })
+    return {"credentials": credentials, "total": len(credentials)}
 
 # ==========================================
 # PODS (GROUPING) MANAGEMENT
@@ -2171,27 +2280,52 @@ def import_volunteers_confirm(
     try:
         # 1. Add new volunteers
         for row in new_volunteers:
-            v = Volunteer(
-                eventId=current_user.eventId,
-                name=row["name"],
-                type=VolunteerType(row["type"]),
-                contact=row["contact"],
-                remarks=row.get("remarks")
-            )
-            db.add(v)
-            db.flush()
+            raw_type = str(row.get("type", "VOLUNTEER")).strip().upper()
+            try:
+                vol_type = VolunteerType(raw_type)
+            except (ValueError, KeyError):
+                vol_type = VolunteerType.VOLUNTEER
+
+            name = str(row["name"]).strip()[:255]
+            contact = str(row["contact"]).strip()[:100]
+
+            v = db.query(Volunteer).filter(
+                Volunteer.contact.ilike(contact),
+                Volunteer.eventId == current_user.eventId
+            ).first()
+
+            if not v:
+                v = Volunteer(
+                    eventId=current_user.eventId,
+                    name=name,
+                    type=vol_type,
+                    contact=contact,
+                    remarks=row.get("remarks")
+                )
+                db.add(v)
+                db.flush()
+            else:
+                v.name = name
+                v.type = vol_type
+                v.remarks = row.get("remarks")
+                db.flush()
             
-            gen_username = generate_unique_volunteer_username(db, v.name)
+            vol_user = db.query(User).filter(User.volunteerId == v.id).first()
             gen_password = generate_random_password()
-            
-            vol_user = User(
-                eventId=current_user.eventId,
-                username=gen_username,
-                passwordHash=get_password_hash(gen_password),
-                role=Role.VOLUNTEER,
-                volunteerId=v.id
-            )
-            db.add(vol_user)
+            if not vol_user:
+                gen_username = generate_unique_volunteer_username(db, v.name)
+                vol_user = User(
+                    eventId=current_user.eventId,
+                    username=gen_username,
+                    passwordHash=get_password_hash(gen_password),
+                    role=Role.VOLUNTEER,
+                    volunteerId=v.id
+                )
+                db.add(vol_user)
+            else:
+                gen_username = vol_user.username
+                vol_user.passwordHash = get_password_hash(gen_password)
+
             generated_credentials.append({
                 "name": v.name,
                 "username": gen_username,
@@ -2200,7 +2334,7 @@ def import_volunteers_confirm(
             
         # 2. Update changed volunteers
         for item in changed_volunteers:
-            contact = item["contact"]
+            contact = str(item["contact"]).strip()[:100]
             if decisions.get(contact, "update") == "update":
                 vol = db.query(Volunteer).filter(
                     Volunteer.contact.ilike(contact),
@@ -2208,24 +2342,46 @@ def import_volunteers_confirm(
                 ).first()
                 if vol:
                     new_data = item["new_data"]
-                    vol.name = new_data["name"]
-                    vol.type = VolunteerType(new_data["type"])
+                    raw_type = str(new_data.get("type", "VOLUNTEER")).strip().upper()
+                    try:
+                        vol_type = VolunteerType(raw_type)
+                    except (ValueError, KeyError):
+                        vol_type = VolunteerType.VOLUNTEER
+
+                    vol.name = str(new_data["name"]).strip()[:255]
+                    vol.type = vol_type
                     vol.remarks = new_data.get("remarks")
+                    
+                    # Ensure user account has updated password
+                    vol_user = db.query(User).filter(User.volunteerId == vol.id).first()
+                    gen_password = generate_random_password()
+                    if not vol_user:
+                        gen_username = generate_unique_volunteer_username(db, vol.name)
+                        vol_user = User(
+                            eventId=current_user.eventId,
+                            username=gen_username,
+                            passwordHash=get_password_hash(gen_password),
+                            role=Role.VOLUNTEER,
+                            volunteerId=vol.id
+                        )
+                        db.add(vol_user)
+                    else:
+                        gen_username = vol_user.username
+                        vol_user.passwordHash = get_password_hash(gen_password)
+
+                    generated_credentials.append({
+                        "name": vol.name,
+                        "username": gen_username,
+                        "password": gen_password
+                    })
             
         db.delete(pending)
         db.commit()
         return {"credentials": generated_credentials, "message": "Successfully processed People & Organizers import"}
     except Exception as e:
         db.rollback()
+        logger.error(f"[VOLUNTEER IMPORT FAILED] Error: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Database write error: {str(e)}")
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database write error: {str(e)}")
-        
-    return {
-        "message": f"Successfully imported {len(new_volunteers)} volunteers",
-        "credentials": generated_credentials
-    }
 
 
 # ==========================================

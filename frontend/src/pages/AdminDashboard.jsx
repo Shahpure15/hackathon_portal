@@ -530,6 +530,35 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
           <Download size={16} />
           Evaluation Sheet CSV
         </button>
+        <button onClick={async () => {
+          try {
+            const res = await api.get('/admin/teams/export-credentials');
+            const list = res.data.credentials || [];
+            if (!list.length) {
+              addToast('No team accounts found to export', 'info');
+              return;
+            }
+            let csv = "Team Name,Team Code,Leader Username,Generated Password,Leader Name,Leader Phone,Leader Email\n";
+            list.forEach(c => {
+              csv += `"${c.teamName}","${c.registrationId}","${c.username}","${c.password}","${c.leaderName || ''}","${c.leaderPhone || ''}","${c.leaderEmail || ''}"\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', 'generated_leader_logins.csv');
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+            addToast(`Exported ${list.length} leader credentials!`, 'success');
+          } catch (err) {
+            addToast('Failed to export leader credentials', 'error');
+          }
+        }} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download all team leader login credentials">
+          <Lock size={16} />
+          Leader Logins CSV
+        </button>
         <button onClick={() => setShowImportModal(true)} className="btn btn-primary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
           <Upload size={16} />
           Import CSV
