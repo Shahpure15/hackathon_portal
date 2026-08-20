@@ -2,18 +2,18 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
-  timeout: 60000,
+  timeout: 90000,
   expect: {
-    timeout: 10000
+    timeout: 15000
   },
   fullyParallel: false,
   workers: 1,
   reporter: [['html', { open: 'never' }], ['list']],
   use: {
-    baseURL: process.env.TEST_URL || 'http://localhost:5173',
+    baseURL: process.env.TEST_URL || 'https://hackathon.mitindia.com',
     headless: false,
     launchOptions: {
-      slowMo: 400,
+      slowMo: 500, // 500ms visual delay so you can watch live actions on hackathon.mitindia.com
     },
     trace: 'on-first-retry',
     screenshot: 'on',
