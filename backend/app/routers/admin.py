@@ -2811,9 +2811,9 @@ async def import_problem_statements_preview(
             requirements = None
             
         discipline_raw = str(row.get("discipline") or row.get("category") or row.get("track") or "").strip().upper()
-        if "DESIGN" in discipline_raw:
+        if "DESIGN" in discipline_raw or "[DESIGN]" in title.upper() or "DESIGN" in code:
             discipline = "DESIGN"
-        elif "ENGINEERING" in discipline_raw or "ENG" in discipline_raw:
+        elif "ENGINEERING" in discipline_raw or "ENG" in discipline_raw or "[ENGINEERING]" in title.upper() or "ENGINEERING" in code:
             discipline = "ENGINEERING"
         else:
             discipline = None

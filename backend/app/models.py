@@ -229,7 +229,7 @@ class ProblemStatement(Base):
     eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
     code = Column(String(100), nullable=False) # e.g. PS01
     title = Column(String(255), nullable=False)
-    description = Column(String(1000), nullable=False)
+    description = Column(Text, nullable=False)
     capacity = Column(Integer, nullable=False)
     selectedCount = Column(Integer, default=0, nullable=False)
     requirements = Column(Text, nullable=True)
