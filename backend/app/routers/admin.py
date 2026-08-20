@@ -2943,18 +2943,31 @@ def import_problem_statements_confirm(
     decisions = decisions or {}
     
     try:
-        # 1. Add new PS records
+        # 1. Add or update new PS records safely (upsert logic)
         for row in new_statements:
-            ps = ProblemStatement(
-                eventId=current_user.eventId,
-                code=row["code"],
-                title=row["title"],
-                description=row["description"],
-                capacity=row["capacity"],
-                requirements=row.get("requirements"),
-                discipline=row.get("discipline")
-            )
-            db.add(ps)
+            ps_code = str(row["code"]).strip().upper()
+            existing_ps = db.query(ProblemStatement).filter(
+                ProblemStatement.code == ps_code,
+                ProblemStatement.eventId == current_user.eventId
+            ).first()
+
+            if existing_ps:
+                existing_ps.title = row["title"]
+                existing_ps.description = row["description"]
+                existing_ps.capacity = row["capacity"]
+                existing_ps.requirements = row.get("requirements")
+                existing_ps.discipline = row.get("discipline")
+            else:
+                ps = ProblemStatement(
+                    eventId=current_user.eventId,
+                    code=ps_code,
+                    title=row["title"],
+                    description=row["description"],
+                    capacity=row["capacity"],
+                    requirements=row.get("requirements"),
+                    discipline=row.get("discipline")
+                )
+                db.add(ps)
             
         # 2. Update changed PS records
         for item in changed_statements:
@@ -2977,10 +2990,7 @@ def import_problem_statements_confirm(
         return {"message": "Successfully processed Problem Statements import"}
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database write error: {str(e)}")
-
-    except Exception as e:
-        db.rollback()
+        logger.error(f"[PS IMPORT CONFIRM FAILED] Error: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Database write error: {str(e)}")
 
 @router.get("/problem-statements/{ps_id}/teams")
