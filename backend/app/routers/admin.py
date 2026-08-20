@@ -56,6 +56,12 @@ def csv_safe(value: Any) -> str:
         return "'" + s
     return s
 
+# Helper: Natural numeric sorting for strings (e.g. Panel 1, Panel 2, Panel 10)
+def natural_sort_key(s: Any) -> list:
+    if not s:
+        return []
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', str(s))]
+
 def safe_writerow(writer: Any, row: List[Any]) -> None:
     writer.writerow([csv_safe(v) for v in row])
 
@@ -3230,6 +3236,7 @@ def get_panels(
             problemStatementId=p.problemStatementId,
             problemStatementCode=ps_code
         ))
+    res.sort(key=lambda p: natural_sort_key(p.name))
     return res
 
 @router.post("/panels", response_model=PanelResponse)

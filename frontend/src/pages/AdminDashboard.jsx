@@ -300,8 +300,11 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
     setSearch,
     filters,
     onFilterChange,
-    clearFilters
-  } = useTableQuery('', 'asc', 'teams');
+    clearFilters,
+    sortKey,
+    sortDir,
+    onSortChange
+  } = useTableQuery('registrationId', 'asc', 'teams');
 
   // Modals Control
   const [selectedTeam, setSelectedTeam] = useState(null);
@@ -738,6 +741,9 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
       </div>
 
       <DataTable
+        sortKey={sortKey}
+        sortDir={sortDir}
+        onSortChange={onSortChange}
         columns={[
           {
             header: (
@@ -773,7 +779,16 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
             )
           },
           {
-            header: 'Team Info',
+            header: 'Team ID',
+            accessor: 'registrationId',
+            render: (t) => (
+              <span style={{ fontWeight: 700, fontFamily: 'monospace', color: 'var(--primary)', fontSize: '0.9rem' }}>
+                {t.registrationId}
+              </span>
+            )
+          },
+          {
+            header: 'Team Name',
             accessor: 'name',
             render: (t) => (
               <div 
@@ -782,8 +797,8 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
                 title="Click to view Team Roster & Details"
               >
                 <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--primary)', textDecoration: 'none' }}>{t.name}</div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                  Code: <strong style={{ color: 'var(--text-secondary)' }}>{t.registrationId}</strong> | {t.collegeName}
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  {t.collegeName}
                 </div>
               </div>
             )
@@ -2518,14 +2533,16 @@ const PanelsView = () => {
 
   const [search, setSearch] = useState('');
 
-  const filteredPanels = panels.filter((p) => {
-    const q = search.toLowerCase();
-    const matchesName = p.name.toLowerCase().includes(q);
-    const matchesFaculty = p.facultyMemberName && p.facultyMemberName.toLowerCase().includes(q);
-    const matchesPs = p.problemStatementCode && p.problemStatementCode.toLowerCase().includes(q);
-    const matchesJudges = p.memberNames && p.memberNames.some(j => j.toLowerCase().includes(q));
-    return matchesName || matchesFaculty || matchesPs || matchesJudges;
-  });
+  const filteredPanels = panels
+    .filter((p) => {
+      const q = search.toLowerCase();
+      const matchesName = p.name.toLowerCase().includes(q);
+      const matchesFaculty = p.facultyMemberName && p.facultyMemberName.toLowerCase().includes(q);
+      const matchesPs = p.problemStatementCode && p.problemStatementCode.toLowerCase().includes(q);
+      const matchesJudges = p.memberNames && p.memberNames.some(j => j.toLowerCase().includes(q));
+      return matchesName || matchesFaculty || matchesPs || matchesJudges;
+    })
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }));
 
   return (
     <div style={{ marginBottom: '28px' }}>
@@ -5339,8 +5356,10 @@ const VolunteerImportModal = ({ onClose }) => {
 
   // Preview state
   const [importId, setImportId] = useState(null);
-  const [newCount, setNewCount] = useState(0);
+  const [summary, setSummary] = useState({ new: 0, changed: 0, unchanged: 0, invalid: 0 });
+  const [changedRows, setChangedRows] = useState([]);
   const [invalidRows, setInvalidRows] = useState([]);
+  const [decisions, setDecisions] = useState({});
 
   const handleFileChange = (e) => {
     const selected = e.target.files[0];
@@ -5366,8 +5385,19 @@ const VolunteerImportModal = ({ onClose }) => {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       setImportId(res.data.importId);
-      setNewCount(res.data.summary.new);
-      setInvalidRows(res.data.details.invalid || []);
+      const summ = res.data.summary || { new: 0, changed: 0, unchanged: 0, invalid: 0 };
+      setSummary(summ);
+      const changed = res.data.details?.changed || [];
+      setChangedRows(changed);
+      setInvalidRows(res.data.details?.invalid || []);
+
+      const initialDecisions = {};
+      changed.forEach(row => {
+        if (row.contact) {
+          initialDecisions[row.contact] = 'update';
+        }
+      });
+      setDecisions(initialDecisions);
       setStep(2);
     } catch (err) {
       addToast(err.response?.data?.detail || 'Failed to analyze CSV file', 'error');
@@ -5376,15 +5406,53 @@ const VolunteerImportModal = ({ onClose }) => {
     }
   };
 
+  const handleDecisionToggle = (contact) => {
+    setDecisions(prev => ({
+      ...prev,
+      [contact]: prev[contact] === 'update' ? 'skip' : 'update'
+    }));
+  };
+
+  const handleBulkSetDecisions = (action) => {
+    const nextDecisions = {};
+    changedRows.forEach(row => {
+      if (row.contact) {
+        nextDecisions[row.contact] = action;
+      }
+    });
+    setDecisions(nextDecisions);
+  };
+
   const handleConfirm = async () => {
     setIsConfirming(true);
     try {
-      const res = await api.post('/admin/volunteers/import/confirm', null, { params: { importId } });
+      const res = await api.post('/admin/volunteers/import/confirm', decisions, { params: { importId } });
       setCredentials(res.data.credentials || []);
-      addToast('Volunteers roster successfully imported!', 'success');
+      addToast('People roster successfully imported!', 'success');
       setStep(3);
     } catch (err) {
-      addToast('Failed to confirm volunteers import', 'error');
+      addToast(err.response?.data?.detail || 'Failed to confirm volunteers import', 'error');
+    } finally {
+      setIsConfirming(false);
+    }
+  };
+
+  const handleBulkConfirmAll = async () => {
+    const nextDecisions = {};
+    changedRows.forEach(row => {
+      if (row.contact) {
+        nextDecisions[row.contact] = 'update';
+      }
+    });
+    setDecisions(nextDecisions);
+    setIsConfirming(true);
+    try {
+      const res = await api.post('/admin/volunteers/import/confirm', nextDecisions, { params: { importId } });
+      setCredentials(res.data.credentials || []);
+      addToast('People roster successfully imported!', 'success');
+      setStep(3);
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to commit bulk import', 'error');
     } finally {
       setIsConfirming(false);
     }
@@ -5406,19 +5474,19 @@ const VolunteerImportModal = ({ onClose }) => {
   };
 
   return createPortal(
-    <div className="modal-overlay-fade" style={{ background: 'rgba(0,0,0,0)' }}>
-      <div className="glass-card modal-scale-up" style={{ width: '100%', maxWidth: '600px', padding: '32px', position: 'relative' }}>
+    <div className="modal-overlay-fade" style={{ background: 'rgba(0,0,0,0.5)' }}>
+      <div className="glass-card modal-scale-up" style={{ width: '100%', maxWidth: '640px', padding: '32px', position: 'relative' }}>
         {step < 3 && (
           <button onClick={onClose} style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
             <X size={20} />
           </button>
         )}
 
-        <h2 style={{ fontSize: '1.75rem', marginBottom: '8px' }} className="text-gradient">Import Volunteers</h2>
+        <h2 style={{ fontSize: '1.75rem', marginBottom: '8px' }} className="text-gradient">Import People & Staff</h2>
         <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', fontSize: '0.85rem' }}>
           <span style={{ fontWeight: step === 1 ? '700' : 'normal', color: step === 1 ? 'var(--primary)' : 'var(--text-muted)' }}>1. Upload CSV</span>
           <span style={{ color: 'var(--text-muted)' }}>➔</span>
-          <span style={{ fontWeight: step === 2 ? '700' : 'normal', color: step === 2 ? 'var(--primary)' : 'var(--text-muted)' }}>2. Review Diff</span>
+          <span style={{ fontWeight: step === 2 ? '700' : 'normal', color: step === 2 ? 'var(--primary)' : 'var(--text-muted)' }}>2. Review & Resolve Diff</span>
           <span style={{ color: 'var(--text-muted)' }}>➔</span>
           <span style={{ fontWeight: step === 3 ? '700' : 'normal', color: step === 3 ? 'var(--primary)' : 'var(--text-muted)' }}>3. Credentials</span>
         </div>
@@ -5427,8 +5495,8 @@ const VolunteerImportModal = ({ onClose }) => {
           <div>
             <div style={{ border: '2px dashed var(--border-light)', borderRadius: '12px', padding: '40px 20px', textAlign: 'center', marginBottom: '24px', cursor: 'pointer', background: 'rgba(255,255,255,0.01)' }} onClick={() => document.getElementById('volCsvFile').click()}>
               <Upload size={32} style={{ color: 'var(--text-muted)', marginBottom: '12px' }} />
-              <p style={{ fontWeight: 600 }}>Click to browse volunteer CSV file</p>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>Columns: name, type, contact</p>
+              <p style={{ fontWeight: 600 }}>Click to browse people CSV file</p>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>Columns: name, type (FACULTY / JUDGE / VOLUNTEER), contact, remarks</p>
 
               {file && (
                 <div style={{ marginTop: '16px', background: 'rgba(99, 102, 241, 0.1)', padding: '6px 12px', borderRadius: '8px', fontSize: '0.85rem', color: 'var(--primary)' }}>
@@ -5449,48 +5517,147 @@ const VolunteerImportModal = ({ onClose }) => {
 
         {step === 2 && (
           <div>
-            {invalidRows.length > 0 ? (
-              <div className="toast toast-error" style={{ position: 'static', width: '100%', maxWidth: 'none', margin: '0 0 20px 0', borderLeft: '4px solid var(--danger)' }}>
-                <AlertCircle size={20} style={{ color: 'var(--danger)' }} />
-                <div>
-                  <h4 style={{ fontWeight: 700 }}>Validation errors found</h4>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    CSV contains {invalidRows.length} invalid entries. Fix errors in source and upload again.
-                  </p>
-                </div>
+            {/* Dashboard summary counts */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '20px' }}>
+              <div style={{ background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-strong)', borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>New People</span>
+                <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--primary)', marginTop: '2px' }}>{summary.new}</div>
               </div>
-            ) : (
-              <div className="toast toast-success" style={{ position: 'static', width: '100%', maxWidth: 'none', margin: '0 0 20px 0', borderLeft: '4px solid var(--success)' }}>
-                <CheckCircle size={20} style={{ color: 'var(--success)' }} />
+              <div style={{ background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-strong)', borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Changed Records</span>
+                <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--warning)', marginTop: '2px' }}>{summary.changed}</div>
+              </div>
+              <div style={{ background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-strong)', borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Unchanged</span>
+                <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-secondary)', marginTop: '2px' }}>{summary.unchanged}</div>
+              </div>
+              <div style={{ background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-strong)', borderRadius: '8px', padding: '10px', textAlign: 'center', borderColor: summary.invalid > 0 ? 'var(--danger)' : undefined }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Invalid</span>
+                <div style={{ fontSize: '1.4rem', fontWeight: 700, color: summary.invalid > 0 ? 'var(--danger)' : 'var(--text-muted)', marginTop: '2px' }}>{summary.invalid}</div>
+              </div>
+            </div>
+
+            {/* Error banner blocking confirm */}
+            {summary.invalid > 0 && (
+              <div className="toast toast-error" style={{ position: 'static', width: '100%', maxWidth: 'none', margin: '0 0 16px 0', borderLeft: '4px solid var(--danger)' }}>
+                <AlertCircle size={18} style={{ color: 'var(--danger)', flexShrink: 0 }} />
                 <div>
-                  <h4 style={{ fontWeight: 700 }}>Roster is clean!</h4>
+                  <h4 style={{ fontWeight: 700, fontSize: '0.9rem' }}>Import Blocked</h4>
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    Ready to import {newCount} new volunteers.
+                    CSV contains {summary.invalid} invalid rows. Please fix these in your source file and re-upload.
                   </p>
                 </div>
               </div>
             )}
 
-            {invalidRows.length > 0 && (
-              <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--border-light)', padding: '12px', borderRadius: '8px', marginBottom: '24px', background: 'rgba(0,0,0,0.1)' }}>
-                {invalidRows.map((err, i) => (
-                  <div key={i} style={{ fontSize: '0.8rem', color: 'var(--danger)', marginBottom: '4px' }}>
-                    Row {err.row}: {err.reason}
+            {/* Scrollable list of Diffs and validation failures */}
+            <div style={{ maxHeight: '280px', overflowY: 'auto', border: '1px solid var(--border-light)', borderRadius: '10px', padding: '14px', marginBottom: '20px', background: 'rgba(0,0,0,0.03)' }}>
+              {invalidRows.length > 0 && (
+                <div style={{ marginBottom: '16px' }}>
+                  <h4 style={{ color: 'var(--danger)', fontSize: '0.85rem', display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '8px' }}>
+                    <AlertCircle size={14} /> Validation Errors ({invalidRows.length})
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {invalidRows.map((err, i) => (
+                      <div key={i} style={{ fontSize: '0.8rem', background: 'rgba(178, 58, 42, 0.05)', padding: '6px 10px', borderRadius: '6px', borderLeft: '3px solid var(--danger)' }}>
+                        Row {err.row}: <strong>{err.reason}</strong>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
+                </div>
+              )}
 
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              {changedRows.length > 0 && (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <h4 style={{ color: 'var(--warning)', fontSize: '0.85rem', display: 'flex', gap: '6px', alignItems: 'center', margin: 0 }}>
+                      <Info size={14} /> Review & Resolve Field Changes ({changedRows.length})
+                    </h4>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleBulkSetDecisions('update')}
+                        className="btn btn-secondary"
+                        style={{ padding: '3px 10px', fontSize: '0.75rem', borderRadius: '6px', cursor: 'pointer' }}
+                        title="Set all changed rows to Will Update"
+                      >
+                        Update All
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleBulkSetDecisions('skip')}
+                        className="btn btn-secondary"
+                        style={{ padding: '3px 10px', fontSize: '0.75rem', borderRadius: '6px', cursor: 'pointer' }}
+                        title="Set all changed rows to Will Skip"
+                      >
+                        Skip All
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {changedRows.map((row, idx) => (
+                      <div key={idx} style={{ border: '1px solid var(--border-light)', borderRadius: '8px', padding: '10px', background: 'rgba(255,255,255,0.02)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                          <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.name} ({row.contact})</span>
+                          <button
+                            type="button"
+                            onClick={() => handleDecisionToggle(row.contact)}
+                            className={`btn ${decisions[row.contact] === 'update' ? 'btn-primary' : 'btn-secondary'}`}
+                            style={{ padding: '0 12px', fontSize: '0.75rem', borderRadius: '999px', minHeight: '26px', height: '26px' }}
+                          >
+                            {decisions[row.contact] === 'update' ? 'Will Update' : 'Will Skip'}
+                          </button>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', paddingLeft: '8px', borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
+                          {Object.entries(row.changes).map(([field, delta]) => (
+                            <div key={field} style={{ fontSize: '0.8rem' }}>
+                              <span style={{ color: 'var(--text-muted)' }}>{field}:</span>{' '}
+                              <del style={{ color: 'var(--danger)', opacity: 0.8, textDecoration: 'line-through', marginRight: '6px' }}>
+                                {String(delta.from)}
+                              </del>{' '}
+                              <ins style={{ color: 'var(--success)', textDecoration: 'none', fontWeight: 600 }}>
+                                {String(delta.to)}
+                              </ins>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {changedRows.length === 0 && invalidRows.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)' }}>
+                  <CheckCircle size={32} style={{ color: 'var(--success)', marginBottom: '8px' }} />
+                  <p>All records are valid! {summary.new} new entries will be created.</p>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <button type="button" onClick={() => setStep(1)} className="btn btn-secondary">Back</button>
-              <button
-                type="button"
-                onClick={handleConfirm}
-                className="btn btn-primary"
-                disabled={invalidRows.length > 0 || isConfirming}
-              >
-                {isConfirming ? <span className="spinner"></span> : 'Confirm Import'}
-              </button>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                {changedRows.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleBulkConfirmAll}
+                    className="btn btn-primary"
+                    style={{ background: 'var(--success)', borderColor: 'var(--success)', color: '#fff' }}
+                    disabled={summary.invalid > 0 || isConfirming}
+                  >
+                    {isConfirming ? <span className="spinner"></span> : 'Bulk Confirm All Updates'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleConfirm}
+                  className="btn btn-primary"
+                  disabled={summary.invalid > 0 || isConfirming}
+                >
+                  {isConfirming ? <span className="spinner"></span> : 'Confirm Import'}
+                </button>
+              </div>
             </div>
           </div>
         )}

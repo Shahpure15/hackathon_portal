@@ -43,9 +43,7 @@ const DataTable = ({
     if (!item || !accessor) return '';
     const val = item[accessor];
     if (val === null || val === undefined) return '';
-    if (typeof val === 'number') return val;
-    if (typeof val === 'boolean') return val ? 1 : 0;
-    return String(val).toLowerCase();
+    return val;
   };
 
   const sortedData = React.useMemo(() => {
@@ -53,9 +51,18 @@ const DataTable = ({
     return [...data].sort((a, b) => {
       const valA = getSortValue(a, currentSortKey);
       const valB = getSortValue(b, currentSortKey);
-      if (valA < valB) return currentSortDir === 'asc' ? -1 : 1;
-      if (valA > valB) return currentSortDir === 'asc' ? 1 : -1;
-      return 0;
+
+      let cmp = 0;
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        cmp = valA - valB;
+      } else if (typeof valA === 'boolean' && typeof valB === 'boolean') {
+        cmp = (valA ? 1 : 0) - (valB ? 1 : 0);
+      } else {
+        const strA = String(valA ?? '');
+        const strB = String(valB ?? '');
+        cmp = strA.localeCompare(strB, undefined, { numeric: true, sensitivity: 'base' });
+      }
+      return currentSortDir === 'asc' ? cmp : -cmp;
     });
   }, [data, currentSortKey, currentSortDir]);
 
