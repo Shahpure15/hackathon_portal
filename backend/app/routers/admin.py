@@ -465,6 +465,21 @@ def patch_team(
                 raise HTTPException(status_code=400, detail=f"Invalid category: {value}")
         
         if old_val != value:
+            # Check for duplicate registrationId
+            if key == "registrationId" and value:
+                clean_code = str(value).strip()
+                conflict = db.query(Team).filter(
+                    Team.registrationId == clean_code,
+                    Team.eventId == current_user.eventId,
+                    Team.id != team.id
+                ).first()
+                if conflict:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Team Code '{clean_code}' is already assigned to another team ({conflict.name})."
+                    )
+                value = clean_code
+
             # Strict check for Pod Capacity Limit
             if key == "podId" and value:
                 pod = db.query(Pod).filter(Pod.id == value).first()
@@ -478,6 +493,18 @@ def patch_team(
             
             diff[key] = {"from": old_val if old_val is not None else None, "to": value if value is not None else None}
             setattr(team, key, value)
+
+    # Sync leader User account if registrationId or leaderPhone changed
+    if "registrationId" in diff or "leaderPhone" in diff or "leaderName" in diff:
+        leader_user = db.query(User).filter(
+            User.teamId == team.id,
+            User.eventId == current_user.eventId
+        ).first()
+        if leader_user:
+            new_username = team.registrationId.lower()
+            leader_user.username = new_username
+            raw_pwd = generate_team_leader_password(team.leaderPhone, team.registrationId)
+            leader_user.passwordHash = get_password_hash(raw_pwd)
 
     # Process Team Roster (members list) update if provided
     if "members" in payload and isinstance(payload["members"], list):
@@ -560,7 +587,15 @@ def patch_team(
         except Exception as audit_err:
             logger.warning(f"Failed to log audit for team update: {audit_err}")
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as ie:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail="Team Code or leader username is already in use by another team."
+        )
+        
     return {"message": "Team updated successfully", "diff": serialize_diff(diff)}
 
 
@@ -611,11 +646,11 @@ async def import_teams_preview(
     
     unique_codes_in_file = set()
     
-    # Batch load all existing teams and their members in a single query
-    existing_teams_map = {
-        t.registrationId: t
-        for t in db.query(Team).options(joinedload(Team.members)).filter(Team.eventId == current_user.eventId).all()
-    }
+    # Batch load all existing teams and their members in a single query with secondary lookups
+    existing_teams = db.query(Team).options(joinedload(Team.members)).filter(Team.eventId == current_user.eventId).all()
+    existing_teams_map = {t.registrationId: t for t in existing_teams}
+    existing_teams_by_name = {t.name.strip().lower(): t for t in existing_teams if t.name}
+    existing_teams_by_email = {t.leaderEmail.strip().lower(): t for t in existing_teams if t.leaderEmail}
 
     # Process rows
     for index, row_series in df.iterrows():
@@ -696,14 +731,20 @@ async def import_teams_preview(
             })
             continue
             
-        # Compare with in-memory map (0 network latency)
+        # Compare with in-memory maps (primary by Team Code, secondary by Name/Email if code changed)
         db_team = existing_teams_map.get(reg_id)
+        if not db_team:
+            db_team = existing_teams_by_name.get(team_name.lower()) or existing_teams_by_email.get(leader["email"].lower())
+            if db_team:
+                row_payload["oldRegistrationId"] = db_team.registrationId
         
         if not db_team:
             preview_data["new"].append(row_payload)
         else:
             # Check for changes
             changes = {}
+            if db_team.registrationId != reg_id:
+                changes["registrationId"] = {"from": db_team.registrationId, "to": reg_id}
             if db_team.name != team_name:
                 changes["name"] = {"from": db_team.name, "to": team_name}
             if db_team.leaderName != leader["name"]:
@@ -905,18 +946,24 @@ def import_teams_confirm(
         # 2. Process Changed Teams
         for row in changed_teams:
             reg_id = str(row["registrationId"]).strip()
-            decision = decisions.get(reg_id, "update")
+            old_reg_id = str(row.get("oldRegistrationId") or reg_id).strip()
+            decision = decisions.get(reg_id, decisions.get(old_reg_id, "update"))
             
             if decision == "skip":
                 continue
                 
             # Fetch existing team
-            db_team = existing_teams_map.get(reg_id)
+            db_team = existing_teams_map.get(reg_id) or existing_teams_map.get(old_reg_id)
             
             if not db_team:
                 continue # Safety skip
                 
             diff = {}
+            
+            # If Team Code changed
+            if db_team.registrationId != reg_id:
+                diff["registrationId"] = {"from": db_team.registrationId, "to": reg_id}
+                db_team.registrationId = reg_id
             
             # Log changes
             for key in ["name", "leaderName", "leaderEmail", "leaderPhone", "collegeName", "category"]:
@@ -953,7 +1000,7 @@ def import_teams_confirm(
             leader_username = reg_id.lower()
             raw_password = raw_passwords_map.get(leader_username) or generate_team_leader_password(db_team.leaderPhone, db_team.registrationId)
             password_hash = password_hashes_map.get(leader_username) or get_password_hash(raw_password)
-            db_user = existing_users_map.get(leader_username)
+            db_user = existing_users_map.get(leader_username) or existing_users_map.get(old_reg_id.lower())
 
             if db_user:
                 db_user.username = leader_username
