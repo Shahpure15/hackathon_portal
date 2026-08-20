@@ -10,7 +10,7 @@ const API_URL = import.meta.env.VITE_API_URL || '/api';
 const api = axios.create({
   baseURL: API_URL,
   withCredentials: true, // Crucial for passing HTTP-only cookies (refresh_token)
-  timeout: 8000, // fail visibly after 8s instead of spinning forever if the backend is slow/restarting
+  timeout: 60000, // 60s timeout to allow smooth bulk operations
   headers: {
     'Content-Type': 'application/json',
   },

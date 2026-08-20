@@ -5,6 +5,7 @@ import random
 import secrets
 import string
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -350,6 +351,27 @@ def get_unresolved_leaders_report(
         "totalUnresolved": len(unresolved),
         "teams": unresolved
     }
+
+@router.get("/teams/export-credentials")
+def export_team_credentials(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    teams = db.query(Team).filter(Team.eventId == current_user.eventId).order_by(Team.registrationId).all()
+    credentials = []
+    for t in teams:
+        pwd = generate_team_leader_password(t.leaderPhone, t.registrationId)
+        credentials.append({
+            "teamName": t.name,
+            "registrationId": t.registrationId,
+            "username": t.registrationId.lower(),
+            "password": pwd,
+            "leaderName": t.leaderName,
+            "leaderPhone": t.leaderPhone,
+            "leaderEmail": t.leaderEmail
+        })
+    return {"credentials": credentials, "total": len(credentials)}
+
 
 @router.get("/teams/{team_id}", response_model=TeamDetailResponse)
 def get_team_detail(
@@ -762,6 +784,35 @@ def import_teams_confirm(
             for u in db.query(User).filter(User.eventId == current_user.eventId).all()
         }
 
+        # Collect passwords to hash in parallel
+        raw_passwords_map = {}
+        for row in new_teams:
+            reg_id = str(row["registrationId"]).strip()
+            phone = str(row.get("leaderPhone", "")).strip()
+            raw_passwords_map[reg_id.lower()] = generate_team_leader_password(phone, reg_id)
+
+        for row in changed_teams:
+            reg_id = str(row["registrationId"]).strip()
+            if decisions.get(reg_id, "update") != "skip":
+                db_t = existing_teams_map.get(reg_id)
+                phone = db_t.leaderPhone if db_t else str(row.get("leaderPhone", "")).strip()
+                raw_passwords_map[reg_id.lower()] = generate_team_leader_password(phone, reg_id)
+
+        unchanged_teams = payload.get("unchanged", [])
+        for row in unchanged_teams:
+            reg_id = str(row["registrationId"]).strip()
+            db_t = existing_teams_map.get(reg_id)
+            if db_t:
+                raw_passwords_map[reg_id.lower()] = generate_team_leader_password(db_t.leaderPhone, db_t.registrationId)
+
+        # Execute bcrypt password hashing in parallel across thread pool (2s total for 123 passwords)
+        def _hash_worker(item):
+            uname, raw_pwd = item
+            return uname, get_password_hash(raw_pwd)
+
+        with ThreadPoolExecutor(max_workers=16) as executor:
+            password_hashes_map = dict(executor.map(_hash_worker, raw_passwords_map.items()))
+
         # 1. Process New Teams
         for row in new_teams:
             reg_id = str(row["registrationId"]).strip()
@@ -808,20 +859,21 @@ def import_teams_confirm(
                 db.add(member)
                 
             # Create or Update Leader User Login Account
-            raw_password = generate_team_leader_password(team.leaderPhone, team.registrationId)
             leader_username = reg_id.lower()
+            raw_password = raw_passwords_map.get(leader_username) or generate_team_leader_password(team.leaderPhone, team.registrationId)
+            password_hash = password_hashes_map.get(leader_username) or get_password_hash(raw_password)
             
             existing_user = existing_users_map.get(leader_username)
             
             if existing_user:
-                existing_user.passwordHash = get_password_hash(raw_password)
+                existing_user.passwordHash = password_hash
                 existing_user.role = Role.LEADER
                 existing_user.teamId = team.id
             else:
                 leader_user = User(
                     eventId=current_user.eventId,
                     username=leader_username,
-                    passwordHash=get_password_hash(raw_password),
+                    passwordHash=password_hash,
                     role=Role.LEADER,
                     teamId=team.id
                 )
@@ -883,29 +935,31 @@ def import_teams_confirm(
             diff["members"] = row.get("changes", {}).get("members", {})
             
             # Update user account and sync password
-            raw_password = generate_team_leader_password(db_team.leaderPhone, db_team.registrationId)
-            db_user = existing_users_map.get(reg_id.lower())
+            leader_username = reg_id.lower()
+            raw_password = raw_passwords_map.get(leader_username) or generate_team_leader_password(db_team.leaderPhone, db_team.registrationId)
+            password_hash = password_hashes_map.get(leader_username) or get_password_hash(raw_password)
+            db_user = existing_users_map.get(leader_username)
 
             if db_user:
-                db_user.username = reg_id.lower()
-                db_user.passwordHash = get_password_hash(raw_password)
+                db_user.username = leader_username
+                db_user.passwordHash = password_hash
                 db_user.teamId = db_team.id
                 db_user.role = Role.LEADER
             else:
                 db_user = User(
                     eventId=current_user.eventId,
-                    username=reg_id.lower(),
-                    passwordHash=get_password_hash(raw_password),
+                    username=leader_username,
+                    passwordHash=password_hash,
                     role=Role.LEADER,
                     teamId=db_team.id
                 )
                 db.add(db_user)
-                existing_users_map[reg_id.lower()] = db_user
+                existing_users_map[leader_username] = db_user
 
             generated_credentials.append({
                 "teamName": db_team.name,
                 "registrationId": reg_id,
-                "username": reg_id.lower(),
+                "username": leader_username,
                 "password": raw_password
             })
                 
@@ -919,27 +973,30 @@ def import_teams_confirm(
             )
 
         # 3. Include Unchanged Teams in Credentials List
-        unchanged_teams = payload.get("unchanged", [])
         for row in unchanged_teams:
             reg_id = str(row["registrationId"]).strip()
+            leader_username = reg_id.lower()
             db_team = existing_teams_map.get(reg_id)
             if db_team:
-                raw_password = generate_team_leader_password(db_team.leaderPhone, db_team.registrationId)
-                db_user = existing_users_map.get(reg_id.lower())
+                raw_password = raw_passwords_map.get(leader_username) or generate_team_leader_password(db_team.leaderPhone, db_team.registrationId)
+                password_hash = password_hashes_map.get(leader_username) or get_password_hash(raw_password)
+                db_user = existing_users_map.get(leader_username)
                 if not db_user:
                     db_user = User(
                         eventId=current_user.eventId,
-                        username=reg_id.lower(),
-                        passwordHash=get_password_hash(raw_password),
+                        username=leader_username,
+                        passwordHash=password_hash,
                         role=Role.LEADER,
                         teamId=db_team.id
                     )
                     db.add(db_user)
-                    existing_users_map[reg_id.lower()] = db_user
+                    existing_users_map[leader_username] = db_user
+                else:
+                    db_user.passwordHash = password_hash
                 generated_credentials.append({
                     "teamName": db_team.name,
                     "registrationId": reg_id,
-                    "username": reg_id.lower(),
+                    "username": leader_username,
                     "password": raw_password
                 })
             
@@ -961,27 +1018,6 @@ def import_teams_confirm(
         "message": "CSV data successfully imported!",
         "credentials": generated_credentials
     }
-
-
-@router.get("/teams/export-credentials")
-def export_team_credentials(
-    db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
-):
-    teams = db.query(Team).filter(Team.eventId == current_user.eventId).order_by(Team.registrationId).all()
-    credentials = []
-    for t in teams:
-        pwd = generate_team_leader_password(t.leaderPhone, t.registrationId)
-        credentials.append({
-            "teamName": t.name,
-            "registrationId": t.registrationId,
-            "username": t.registrationId.lower(),
-            "password": pwd,
-            "leaderName": t.leaderName,
-            "leaderPhone": t.leaderPhone,
-            "leaderEmail": t.leaderEmail
-        })
-    return {"credentials": credentials, "total": len(credentials)}
 
 # ==========================================
 # PODS (GROUPING) MANAGEMENT
