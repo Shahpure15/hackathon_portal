@@ -158,11 +158,17 @@ def get_volunteer_teams(
         )
         
     total_count = query.count()
-    teams = query.options(joinedload(Team.members)).order_by(Team.registrationId).offset((page - 1) * limit).limit(limit).all()
+    teams = query.options(
+        joinedload(Team.pod),
+        joinedload(Team.psSelection).joinedload(PSSelection.ps),
+        joinedload(Team.members)
+    ).order_by(Team.registrationId).offset((page - 1) * limit).limit(limit).all()
     
     results = []
     for team in teams:
         verified_count = sum(1 for m in team.members if m.idVerified)
+        pod_name = team.pod.name if team.pod else None
+        ps_code = team.psSelection.ps.code if (team.psSelection and team.psSelection.ps) else None
         
         results.append({
             "id": team.id,
@@ -170,6 +176,11 @@ def get_volunteer_teams(
             "name": team.name,
             "collegeName": team.collegeName,
             "leaderName": team.leaderName,
+            "category": team.category.value if hasattr(team.category, 'value') else team.category,
+            "deskNumber": team.deskNumber,
+            "podId": team.podId,
+            "podName": pod_name,
+            "selectedPsCode": ps_code,
             "memberCount": len(team.members),
             "verifiedCount": verified_count
         })
@@ -189,7 +200,11 @@ def get_volunteer_team_detail(
     current_user: CurrentUser = Depends(require_role(Role.VOLUNTEER))
 ):
     """Detailed team list for check-in including attendance status per member."""
-    team = db.query(Team).options(joinedload(Team.members)).filter(
+    team = db.query(Team).options(
+        joinedload(Team.pod),
+        joinedload(Team.psSelection).joinedload(PSSelection.ps),
+        joinedload(Team.members)
+    ).filter(
         Team.id == team_id,
         Team.eventId == current_user.eventId
     ).first()
@@ -237,14 +252,14 @@ def get_volunteer_team_detail(
             "checkpoints": checkpoints_status
         })
             
-    ps_selection = db.query(PSSelection).join(ProblemStatement, PSSelection.psId == ProblemStatement.id).filter(PSSelection.teamId == team.id).first()
+    pod_name = team.pod.name if team.pod else None
     selected_ps_data = None
-    if ps_selection and ps_selection.problemStatement:
+    if team.psSelection and team.psSelection.ps:
         selected_ps_data = {
-            "id": ps_selection.problemStatement.id,
-            "code": ps_selection.problemStatement.code,
-            "title": ps_selection.problemStatement.title,
-            "selectedAt": ps_selection.selectedAt
+            "id": team.psSelection.ps.id,
+            "code": team.psSelection.ps.code,
+            "title": team.psSelection.ps.title,
+            "selectedAt": team.psSelection.selectedAt
         }
 
     return {
@@ -252,7 +267,10 @@ def get_volunteer_team_detail(
         "registrationId": team.registrationId,
         "name": team.name,
         "collegeName": team.collegeName,
-        "category": team.category,
+        "category": team.category.value if hasattr(team.category, 'value') else team.category,
+        "deskNumber": team.deskNumber,
+        "podId": team.podId,
+        "podName": pod_name,
         "selectedProblemStatement": selected_ps_data,
         "members": members_data
     }

@@ -429,6 +429,28 @@ const VolunteerDashboard = () => {
                   render: (t) => <span style={{ fontSize: '0.85rem' }}>{t.collegeName}</span>
                 },
                 {
+                  header: 'Bench / Desk #',
+                  accessor: 'deskNumber',
+                  render: (t) => (
+                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: t.deskNumber ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                      {t.deskNumber || '—'}
+                    </span>
+                  )
+                },
+                {
+                  header: 'POD Group',
+                  accessor: 'podName',
+                  render: (t) => (
+                    t.podName ? (
+                      <span style={{ fontSize: '0.85rem', background: 'rgba(185, 111, 56, 0.12)', color: 'var(--primary)', padding: '4px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                        {t.podName}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Unassigned</span>
+                    )
+                  )
+                },
+                {
                   header: 'Check-In Status',
                   accessor: 'id',
                   render: (t) => {
@@ -628,9 +650,17 @@ const VolunteerDashboard = () => {
                   {detailedTeam?.category || selectedTeam.category || 'ENGINEERING'}
                 </span>
               </div>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '20px' }}>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '8px' }}>
                 Code: <strong>{detailedTeam?.registrationId || selectedTeam.registrationId}</strong> | Active Checkpoint: <strong style={{ color: 'var(--primary)' }}>{activeCheckpointName}</strong>
               </p>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
+                <span style={{ fontSize: '0.8rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-light)', padding: '4px 10px', borderRadius: '6px' }}>
+                  Bench / Desk #: <strong style={{ color: 'var(--text-primary)' }}>{detailedTeam?.deskNumber || selectedTeam?.deskNumber || '—'}</strong>
+                </span>
+                <span style={{ fontSize: '0.8rem', background: 'rgba(185, 111, 56, 0.12)', border: '1px solid rgba(185, 111, 56, 0.3)', padding: '4px 10px', borderRadius: '6px', color: 'var(--primary)' }}>
+                  POD Group: <strong>{detailedTeam?.podName || selectedTeam?.podName || 'Unassigned'}</strong>
+                </span>
+              </div>
 
               {modalLoading ? (
                 <div style={{ padding: '40px', textAlign: 'center' }}>

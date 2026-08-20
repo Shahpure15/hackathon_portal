@@ -5,7 +5,7 @@ from sqlalchemy import func
 from pydantic import BaseModel
 
 from app.database import get_db
-from app.models import User, RefreshToken
+from app.models import User, RefreshToken, Role
 from app.schemas import UserLogin, TokenResponse
 from app.config import settings
 from app.auth import (
@@ -75,8 +75,9 @@ def login(
     if user.teamId:
         token_payload["teamId"] = user.teamId
 
-    # Revoke any existing sessions for this user before issuing a new one (single active session)
-    _revoke_all_sessions(db, user.id)
+    # Allow multiple concurrent active logins for ADMIN role across devices & tabs
+    if user.role != Role.ADMIN:
+        _revoke_all_sessions(db, user.id)
 
     # Create Access & Refresh Tokens
     access_token = create_access_token(data=token_payload)
