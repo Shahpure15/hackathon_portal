@@ -226,6 +226,16 @@ def get_volunteer_team_detail(
                 "markedBy": record["markedBy"] if record else None,
                 "timestamp": record["timestamp"] if record else None
             })
+        members_data.append({
+            "id": m.id,
+            "teamId": m.teamId,
+            "name": m.name,
+            "email": m.email,
+            "phone": m.phone,
+            "isTeamLeader": m.isTeamLeader,
+            "idVerified": m.idVerified,
+            "checkpoints": checkpoints_status
+        })
             
     ps_selection = db.query(PSSelection).join(ProblemStatement, PSSelection.psId == ProblemStatement.id).filter(PSSelection.teamId == team.id).first()
     selected_ps_data = None
