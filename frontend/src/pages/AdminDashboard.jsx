@@ -208,7 +208,9 @@ const AdminDashboard = () => {
               setResetPasswordState(null);
               setCustomPasswordValue('');
               if (resetPasswordState.type === 'volunteer') {
-                fetchVolunteers();
+                if (typeof fetchVolunteers !== 'undefined' && typeof fetchVolunteers === 'function') {
+                  fetchVolunteers();
+                }
               }
             } catch (err) {
               console.error("Password reset failure:", err);
