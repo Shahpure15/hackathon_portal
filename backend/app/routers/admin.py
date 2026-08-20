@@ -2805,12 +2805,22 @@ async def import_problem_statements_preview(
             preview_data["invalid"].append({"row": row_num, "reason": "Missing Description"})
             continue
             
-        try:
-            capacity = int(capacity_raw)
-            if capacity <= 0:
-                raise ValueError()
-        except (ValueError, TypeError):
-            preview_data["invalid"].append({"row": row_num, "reason": f"Capacity must be a positive integer. Got '{capacity_raw}'"})
+        cap_str = str(capacity_raw).strip().lower() if capacity_raw is not None and pd.notna(capacity_raw) else ""
+        if cap_str in ["unlimited", "no limit", "none", "-1", "0", "inf", "infinity", "n/a", ""] or discipline == "DESIGN":
+            capacity = 999999
+        else:
+            try:
+                capacity = int(float(cap_str))
+                if capacity <= 0:
+                    capacity = 999999
+            except (ValueError, TypeError):
+                if discipline == "DESIGN":
+                    capacity = 999999
+                else:
+                    capacity = None
+
+        if capacity is None:
+            preview_data["invalid"].append({"row": row_num, "reason": f"Capacity must be a positive integer or 'Unlimited'. Got '{capacity_raw}'"})
             continue
             
         existing_ps = db.query(ProblemStatement).filter(

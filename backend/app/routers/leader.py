@@ -161,11 +161,11 @@ def get_problem_statements_for_leaders(
         )
 
     team = db.query(Team).filter(Team.id == current_user.teamId).first()
-    team_cat = team.category if team else None
+    team_cat_str = team.category.value if hasattr(team.category, 'value') else str(team.category) if (team and team.category) else None
 
     query = db.query(ProblemStatement).filter(ProblemStatement.eventId == current_user.eventId)
-    if team_cat:
-        query = query.filter(or_(ProblemStatement.discipline == team_cat, ProblemStatement.discipline.is_(None)))
+    if team_cat_str:
+        query = query.filter(or_(ProblemStatement.discipline == team_cat_str, ProblemStatement.discipline.is_(None)))
 
     statements = query.order_by(ProblemStatement.code).all()
     
@@ -216,11 +216,12 @@ def select_problem_statement(
     if not ps_obj:
         raise HTTPException(status_code=404, detail="Problem statement not found")
 
-    if ps_obj.discipline and team and ps_obj.discipline != team.category:
-        logger.warn(f"leader.select_ps Cross-discipline attempt: team={team.id} ({team.category}) ps={ps_obj.code} ({ps_obj.discipline})")
+    team_cat_str = team.category.value if hasattr(team.category, 'value') else str(team.category) if (team and team.category) else None
+    if ps_obj.discipline and team_cat_str and ps_obj.discipline != team_cat_str:
+        logger.warn(f"leader.select_ps Cross-discipline attempt: team={team.id} ({team_cat_str}) ps={ps_obj.code} ({ps_obj.discipline})")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="This problem statement is not available for your team's discipline category"
+            detail=f"This problem statement is for {ps_obj.discipline}, but your team is registered as {team_cat_str}"
         )
 
     # 1c. Enforce Server-side check-in gate
