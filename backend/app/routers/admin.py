@@ -54,7 +54,7 @@ def csv_safe(value: Any) -> str:
 def safe_writerow(writer: Any, row: List[Any]) -> None:
     writer.writerow([csv_safe(v) for v in row])
 
-# Helper: Serialize diff data for JSON serialization (convert datetime to string)
+# Helper: Serialize diff data for JSON serialization (convert datetime & enums to string)
 def serialize_diff(diff: Any) -> Any:
     if isinstance(diff, dict):
         return {k: serialize_diff(v) for k, v in diff.items()}
@@ -62,6 +62,8 @@ def serialize_diff(diff: Any) -> Any:
         return [serialize_diff(v) for v in diff]
     elif isinstance(diff, datetime):
         return diff.isoformat()
+    elif hasattr(diff, "value"):
+        return str(diff.value)
     return diff
 
 # Helper: Log audit trail
@@ -545,8 +547,21 @@ def patch_team(
                     
             diff["psId"] = {"from": old_ps_id, "to": new_ps_id}
             
+    if diff:
+        try:
+            log_audit(
+                db=db,
+                actor_id=current_user.id,
+                action="team.update",
+                entity_type="Team",
+                entity_id=team.id,
+                diff=diff
+            )
+        except Exception as audit_err:
+            logger.warning(f"Failed to log audit for team update: {audit_err}")
+
     db.commit()
-    return {"message": "Team updated successfully", "diff": diff}
+    return {"message": "Team updated successfully", "diff": serialize_diff(diff)}
 
 
 

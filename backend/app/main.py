@@ -70,6 +70,7 @@ async def cors_rate_limit_exceeded_handler(request: Request, exc: RateLimitExcee
 app.add_exception_handler(RateLimitExceeded, cors_rate_limit_exceeded_handler)
 
 import time
+import traceback
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -83,8 +84,18 @@ async def log_requests(request: Request, call_next):
     except Exception as exc:
         duration_ms = (time.time() - start_time) * 1000
         client_ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else "unknown").split(",")[0].strip()
-        logger.error(f"{client_ip} - \"{request.method} {request.url.path}\" ERROR ({duration_ms:.1f}ms) - {exc}")
-        raise exc
+        logger.error(f"{client_ip} - \"{request.method} {request.url.path}\" ERROR ({duration_ms:.1f}ms) - {exc}\n{traceback.format_exc()}")
+        
+        origin = request.headers.get("origin", "*")
+        response = JSONResponse(
+            status_code=500,
+            content={"detail": f"Internal Server Error: {str(exc)}"}
+        )
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "*"
+        return response
 
 # Configure CORS middleware
 origins = [origin.strip() for origin in settings.CORS_ALLOWED_ORIGINS.split(",") if origin.strip()]
@@ -92,7 +103,7 @@ origins = [origin.strip() for origin in settings.CORS_ALLOWED_ORIGINS.split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"^https://([a-z0-9-]+\.vercel\.app|([a-z0-9-]+\.)*mitindia\.com)$",
+    allow_origin_regex=r"^https?://([a-z0-9-]+\.vercel\.app|([a-z0-9-]+\.)*mitindia\.com|localhost(:[0-9]+)?|127\.0\.0\.1(:[0-9]+)?)$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
