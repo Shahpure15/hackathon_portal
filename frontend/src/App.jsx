@@ -7,6 +7,10 @@ import ErrorBoundary from './components/ErrorBoundary';
 
 // Pages
 import Login from './pages/Login';
+import EventConcluded from './pages/EventConcluded';
+
+const ADMIN_SUFFIX = import.meta.env.VITE_ADMIN_PATH_SUFFIX || 'k9v4m8q2x7p1w5r3y9z0b6c2';
+const ADMIN_ROUTE_PATH = `/portal-admin-${ADMIN_SUFFIX}`;
 
 // Helper to auto-retry dynamic module imports if a deployment updated JS chunk hashes
 const lazyWithRetry = (componentImport) =>
@@ -76,7 +80,7 @@ const Home = () => {
 
   switch (user.role) {
     case 'ADMIN':
-      return <Navigate to="/admin" replace />;
+      return <Navigate to={ADMIN_ROUTE_PATH} replace />;
     case 'VOLUNTEER':
       return <Navigate to="/volunteer" replace />;
     case 'LEADER':
@@ -95,13 +99,14 @@ const App = () => {
             <BrowserRouter>
               <Routes>
                 <Route path="/login" element={<Login />} />
+                <Route path="/event-concluded" element={<EventConcluded />} />
                 
                 {/* Dynamic Root Redirection */}
                 <Route path="/" element={<Home />} />
                 
-                {/* Protected Role Routes */}
+                {/* Obfuscated Admin Route */}
                 <Route
-                  path="/admin/*"
+                  path={`${ADMIN_ROUTE_PATH}/*`}
                   element={
                     <ProtectedRoute allowedRole="ADMIN">
                       <Suspense fallback={DashboardFallback}>
@@ -110,6 +115,12 @@ const App = () => {
                     </ProtectedRoute>
                   }
                 />
+
+                {/* Old Admin Path Redirection to Event Concluded */}
+                <Route path="/admin/*" element={<Navigate to="/event-concluded" replace />} />
+                <Route path="/admin" element={<Navigate to="/event-concluded" replace />} />
+
+                {/* Protected Role Routes */}
                 <Route
                   path="/volunteer/*"
                   element={
@@ -131,8 +142,8 @@ const App = () => {
                   }
                 />
 
-                {/* Catch-all redirection */}
-                <Route path="*" element={<Navigate to="/" replace />} />
+                {/* Catch-all route to Event Concluded page */}
+                <Route path="*" element={<EventConcluded />} />
               </Routes>
             </BrowserRouter>
           </AuthProvider>

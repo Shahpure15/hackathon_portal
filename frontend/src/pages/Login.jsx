@@ -42,6 +42,9 @@ const Login = () => {
     if (result.success) {
       addToast('Logged in successfully!', 'success');
       navigate('/');
+    } else if (result.status === 410) {
+      addToast(result.error, 'error');
+      navigate('/event-concluded');
     } else {
       addToast(result.error, 'error');
     }

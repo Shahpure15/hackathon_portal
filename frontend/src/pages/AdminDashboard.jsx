@@ -2498,19 +2498,20 @@ const PanelsView = () => {
   };
 
   const handleExportPanels = async () => {
+    addToast('Preparing Panels master workbook download...', 'info');
     try {
       const res = await api.get('/admin/panels/export', { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', 'panels_export.csv');
+      link.setAttribute('download', 'panels_master_workbook.xlsx');
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      addToast('Panels exported successfully!', 'success');
+      addToast('Panels master workbook downloaded successfully!', 'success');
     } catch (err) {
-      addToast('Failed to export panels', 'error');
+      addToast('Failed to export panels workbook', 'error');
     }
   };
 
@@ -2559,8 +2560,8 @@ const PanelsView = () => {
         <button onClick={handleDownloadPanelsTemplate} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download Panels Template CSV">
           <Download size={16} /> Template CSV
         </button>
-        <button onClick={handleExportPanels} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Export Panels CSV">
-          <Download size={16} /> Export CSV
+        <button onClick={handleExportPanels} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Export Panels Master Workbook (.xlsx)">
+          <Download size={16} /> Export Workbook
         </button>
         <button onClick={() => setShowImportModal(true)} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Import Panels CSV">
           <Upload size={16} /> Import CSV
@@ -3284,7 +3285,7 @@ const PodsView = ({ pods, fetchPodsPool }) => {
   };
 
   const handleExportPods = async () => {
-    addToast('Preparing PODs download...', 'info');
+    addToast('Preparing PODs master workbook download...', 'info');
     try {
       const response = await api.get('/admin/pods/export', {
         responseType: 'blob'
@@ -3292,14 +3293,14 @@ const PodsView = ({ pods, fetchPodsPool }) => {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', 'pods_export.csv');
+      link.setAttribute('download', 'pods_master_workbook.xlsx');
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      addToast('PODs list downloaded successfully!', 'success');
+      addToast('PODs master workbook downloaded successfully!', 'success');
     } catch (err) {
-      addToast('Failed to download PODs list', 'error');
+      addToast('Failed to download PODs workbook', 'error');
     }
   };
 
@@ -3347,9 +3348,9 @@ const PodsView = ({ pods, fetchPodsPool }) => {
           <Upload size={16} />
           Import CSV
         </button>
-        <button onClick={handleExportPods} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+        <button onClick={handleExportPods} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Export PODs Master Workbook (.xlsx)">
           <Download size={16} />
-          Export CSV
+          Export Workbook
         </button>
         <button onClick={() => setShowCreateModal(true)} className="btn btn-primary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
           + Create POD Group
@@ -4522,7 +4523,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
   };
 
   const handleExportVolunteers = async () => {
-    addToast('Preparing volunteers download...', 'info');
+    addToast('Preparing Volunteers & Staff master workbook download...', 'info');
     try {
       const response = await api.get('/admin/volunteers/export', {
         responseType: 'blob'
@@ -4530,14 +4531,14 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', 'volunteers_export.csv');
+      link.setAttribute('download', 'volunteers_master_workbook.xlsx');
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      addToast('Volunteers list downloaded successfully!', 'success');
+      addToast('Volunteers master workbook downloaded successfully!', 'success');
     } catch (err) {
-      addToast('Failed to download volunteers list', 'error');
+      addToast('Failed to download volunteers workbook', 'error');
     }
   };
 
@@ -4558,14 +4559,24 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
 
   const renderRoleBadge = (t) => {
     const rolesMap = {
-      FACULTY: 'Faculty Lead',
-      JUDGE: 'Judge / Evaluator',
-      VOLUNTEER: 'Volunteer / Monitor'
+      FACULTY: { label: 'Faculty', bg: 'rgba(59, 130, 246, 0.15)', color: '#60A5FA', border: 'rgba(59, 130, 246, 0.3)' },
+      JUDGE: { label: 'Judge', bg: 'rgba(168, 85, 247, 0.15)', color: '#C084FC', border: 'rgba(168, 85, 247, 0.3)' },
+      VOLUNTEER: { label: 'Volunteer', bg: 'rgba(16, 185, 129, 0.15)', color: '#34D399', border: 'rgba(16, 185, 129, 0.3)' }
     };
-    const displayLabel = rolesMap[t] || t || 'Member';
+    const style = rolesMap[t] || rolesMap.VOLUNTEER;
     return (
-      <span style={{ fontSize: '0.75rem', background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8', border: '1px solid rgba(99, 102, 241, 0.3)', padding: '4px 8px', borderRadius: '6px', fontWeight: 700, display: 'inline-block' }}>
-        {displayLabel}
+      <span style={{
+        fontSize: '0.75rem',
+        padding: '3px 8px',
+        borderRadius: '999px',
+        fontWeight: 600,
+        backgroundColor: style.bg,
+        color: style.color,
+        border: `1px solid ${style.border}`,
+        display: 'inline-flex',
+        alignItems: 'center'
+      }}>
+        {style.label}
       </span>
     );
   };
@@ -4574,63 +4585,24 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
     <div style={{ marginBottom: '28px' }}>
       {/* Title Section */}
       <div style={{ marginBottom: '16px' }}>
-        <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>People & Staff <span className="font-accent">Directory</span></h1>
+        <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>People & <span className="font-accent">Organizers</span></h1>
         <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
-          Faculty leads, judges, and event volunteers.
+          Manage faculty leads, student volunteers, and judges.
         </p>
       </div>
 
-      {/* Volunteer PS Selection Emergency Mode Toggle */}
-      <div 
-        className="glass-panel" 
-        style={{ 
-          padding: '16px 20px', 
-          borderRadius: '16px', 
-          marginBottom: '20px', 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center', 
-          flexWrap: 'wrap', 
-          gap: '14px', 
-          background: allowVolunteerPs ? 'rgba(16, 185, 129, 0.08)' : 'rgba(255, 255, 255, 0.02)', 
-          border: allowVolunteerPs ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid var(--border-light)' 
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div style={{ 
-            padding: '10px', 
-            borderRadius: '12px', 
-            background: allowVolunteerPs ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.05)', 
-            color: allowVolunteerPs ? '#10b981' : 'var(--text-muted)' 
-          }}>
-            <Layers size={22} />
-          </div>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              Volunteer Problem Statement Allotment
-              <span 
-                style={{ 
-                  fontSize: '0.7rem', 
-                  fontWeight: 800, 
-                  padding: '2px 8px', 
-                  borderRadius: '6px', 
-                  background: allowVolunteerPs ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.15)', 
-                  color: allowVolunteerPs ? '#10b981' : 'var(--danger)' 
-                }}
-              >
-                {allowVolunteerPs ? 'ACTIVE / ALLOWED' : 'DISABLED'}
-              </span>
-            </div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-              When enabled, volunteers can assign and lock in problem statements directly for teams during physical check-in.
-            </div>
-          </div>
+      <div className="glass-panel" style={{ padding: '16px 20px', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+        <div>
+          <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>Volunteer Self-Assignment to PS</h3>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
+            Allow volunteers to assign problem statements to themselves directly from their dashboard.
+          </p>
         </div>
         <button
           onClick={handleToggleVolunteerPs}
+          className={`btn ${allowVolunteerPs ? 'btn-secondary' : 'btn-primary'}`}
           disabled={isTogglingPs}
-          className={`btn ${allowVolunteerPs ? 'btn-danger' : 'btn-primary'}`}
-          style={{ padding: '8px 18px', fontSize: '0.85rem', fontWeight: 600, minHeight: '38px', height: '38px' }}
+          style={{ fontSize: '0.85rem' }}
         >
           {isTogglingPs ? 'Saving...' : allowVolunteerPs ? 'Disable Volunteer PS Selection' : 'Enable Volunteer PS Selection'}
         </button>
@@ -4651,9 +4623,9 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
           <Upload size={16} />
           Import CSV
         </button>
-        <button onClick={handleExportVolunteers} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+        <button onClick={handleExportVolunteers} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Export Volunteers & Faculty Master Workbook (.xlsx)">
           <Download size={16} />
-          Export CSV
+          Export Workbook
         </button>
         <button onClick={() => setShowAddModal(true)} className="btn btn-primary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
           + Add Person
@@ -6322,7 +6294,7 @@ const PSView = () => {
   };
 
   const handleExportPS = async () => {
-    addToast('Preparing problem statements download...', 'info');
+    addToast('Preparing Problem Statements master workbook download...', 'info');
     try {
       const response = await api.get('/admin/problem-statements/export', {
         responseType: 'blob'
@@ -6330,14 +6302,14 @@ const PSView = () => {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', 'problem_statements_export.csv');
+      link.setAttribute('download', 'problem_statements_master_workbook.xlsx');
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      addToast('Problem Statements downloaded successfully!', 'success');
+      addToast('Problem Statements master workbook downloaded successfully!', 'success');
     } catch (err) {
-      addToast('Failed to download problem statements', 'error');
+      addToast('Failed to download problem statements workbook', 'error');
     }
   };
 
@@ -6379,9 +6351,9 @@ const PSView = () => {
           <Upload size={16} />
           Import PS CSV
         </button>
-        <button onClick={handleExportPS} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+        <button onClick={handleExportPS} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Export Problem Statements Master Workbook (.xlsx)">
           <Download size={16} />
-          Export CSV
+          Export Workbook
         </button>
       </div>
 

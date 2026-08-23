@@ -41,6 +41,7 @@ class Event(Base):
     startDate = Column(DateTime, nullable=False)
     endDate = Column(DateTime, nullable=False)
     isActive = Column(Boolean, default=True, nullable=False)
+    status = Column(String(20), default="active", nullable=False) # 'upcoming', 'active', 'concluded'
     createdAt = Column(DateTime, default=func.now(), nullable=False)
 
     # Relationships

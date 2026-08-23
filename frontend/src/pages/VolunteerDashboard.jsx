@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  Users, UserCheck, Search, X, CheckCircle, ChevronLeft, ChevronRight, LogOut, Info, QrCode, Menu, Layers
+  Users, UserCheck, Search, X, CheckCircle, ChevronLeft, ChevronRight, LogOut, Info, QrCode, Menu, Layers, Download
 } from 'lucide-react';
 import api, { getAccessToken } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -129,6 +129,26 @@ const VolunteerDashboard = () => {
       }
     } finally {
       setMarkingPersonId('');
+    }
+  };
+
+  const handleExportPeople = async () => {
+    addToast('Preparing people check-in download...', 'info');
+    try {
+      const response = await api.get('/volunteer/people/export', {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'people_checkin_export.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      addToast('People list downloaded successfully!', 'success');
+    } catch (err) {
+      addToast('Failed to download people check-in list', 'error');
     }
   };
 
@@ -533,6 +553,16 @@ const VolunteerDashboard = () => {
                 <option value="JUDGE">Judges</option>
                 <option value="VOLUNTEER">Volunteers</option>
               </select>
+
+              <button
+                onClick={handleExportPeople}
+                className="btn btn-secondary"
+                style={{ minHeight: '42px', height: '42px', padding: '0 16px', display: 'inline-flex', alignItems: 'center', gap: '8px', fontWeight: 600, fontSize: '0.85rem' }}
+                title="Export People Check-In Roster"
+              >
+                <Download size={16} />
+                Export CSV
+              </button>
             </div>
 
             {/* People Table */}

@@ -5,7 +5,7 @@ from sqlalchemy import func
 from pydantic import BaseModel
 
 from app.database import get_db
-from app.models import User, RefreshToken, Role
+from app.models import User, RefreshToken, Role, Event
 from app.schemas import UserLogin, TokenResponse
 from app.config import settings
 from app.auth import (
@@ -65,6 +65,15 @@ def login(
     if new_hash is not None:
         user.passwordHash = new_hash
         db.commit()
+
+    # Event-scoped conclusion check (non-admin users)
+    if user.role != Role.ADMIN and user.eventId:
+        event = db.query(Event).filter(Event.id == user.eventId).first()
+        if event and (event.status == "concluded" or not event.isActive):
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE,
+                detail="This event has concluded. The portal is now read-only."
+            )
 
     # Generate payloads
     token_payload = {

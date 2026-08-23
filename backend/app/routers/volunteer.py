@@ -1,6 +1,9 @@
+import io
+import csv
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, and_, func
 from sqlalchemy.exc import IntegrityError
@@ -494,3 +497,89 @@ def mark_volunteer_people_checkin(
         "markedBy": current_user.username,
         "timestamp": datetime.utcnow()
     }
+
+
+def _csv_safe(value: Any) -> str:
+    s = str(value) if value is not None else ""
+    if s and s[0] in ('=', '+', '-', '@'):
+        return "'" + s
+    return s
+
+
+@router.get("/people/export")
+def export_volunteer_people(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.VOLUNTEER))
+):
+    people = db.query(Volunteer).options(
+        joinedload(Volunteer.pod),
+        joinedload(Volunteer.attendanceRecords)
+    ).filter(Volunteer.eventId == current_user.eventId).order_by(Volunteer.name).all()
+
+    checkpoints = db.query(CheckpointType).filter(
+        CheckpointType.eventId == current_user.eventId
+    ).order_by(CheckpointType.name).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    headers = [
+        "Name", "Role / Type", "Contact", "Assigned POD Group", "Remarks"
+    ]
+
+    if checkpoints:
+        for cp in checkpoints:
+            headers.extend([
+                f"{cp.name} (Checked In)",
+                f"{cp.name} Check-In Time",
+                f"{cp.name} Marked By"
+            ])
+    else:
+        headers.extend(["Checked In", "Check-In Time", "Marked By"])
+
+    writer.writerow([_csv_safe(h) for h in headers])
+
+    for p in people:
+        pod_name = p.pod.name if p.pod else "Unassigned"
+        vol_type_str = p.type.value if hasattr(p.type, 'value') else str(p.type or "")
+        
+        row = [
+            p.name,
+            vol_type_str,
+            p.contact or "",
+            pod_name,
+            p.remarks or ""
+        ]
+
+        att_map = {rec.checkpointTypeId: rec for rec in (p.attendanceRecords or [])}
+        if checkpoints:
+            for cp in checkpoints:
+                rec = att_map.get(cp.id)
+                if rec:
+                    row.extend([
+                        "Yes",
+                        rec.timestamp.strftime("%Y-%m-%d %H:%M:%S") if rec.timestamp else "",
+                        rec.markedBy or ""
+                    ])
+                else:
+                    row.extend(["No", "", ""])
+        else:
+            if p.attendanceRecords:
+                first_rec = p.attendanceRecords[0]
+                row.extend([
+                    "Yes",
+                    first_rec.timestamp.strftime("%Y-%m-%d %H:%M:%S") if first_rec.timestamp else "",
+                    first_rec.markedBy or ""
+                ])
+            else:
+                row.extend(["No", "", ""])
+
+        writer.writerow([_csv_safe(v) for v in row])
+
+    output.seek(0)
+
+    headers = {
+        'Content-Disposition': 'attachment; filename="people_checkin_export.csv"',
+        'Content-Type': 'text/csv; charset=utf-8'
+    }
+    return StreamingResponse(iter([output.getvalue()]), headers=headers)

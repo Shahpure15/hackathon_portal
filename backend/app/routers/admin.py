@@ -26,7 +26,8 @@ from app.models import (
     User, Role, Team, TeamMember, TeamStatus, Pod, Volunteer, 
     VolunteerType, ProblemStatement, PSSelection, AuditLog, 
     PendingImport, EventConfig, CheckpointType, AttendanceRecord,
-    Panel, EvaluationRound, Submission, Discipline, RefreshToken
+    VolunteerAttendanceRecord, Panel, EvaluationRound, Submission,
+    Discipline, RefreshToken
 )
 from app.auth import require_role, CurrentUser, get_password_hash
 from app.schemas import (
@@ -1372,41 +1373,301 @@ def export_pods(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
-    pods = db.query(Pod).options(
-        joinedload(Pod.teams),
-        joinedload(Pod.volunteers)
-    ).filter(Pod.eventId == current_user.eventId).order_by(Pod.name).all()
+    pods = (
+        db.query(Pod)
+        .options(
+            joinedload(Pod.teams).joinedload(Team.members),
+            joinedload(Pod.teams).joinedload(Team.psSelection).joinedload(PSSelection.ps),
+            joinedload(Pod.volunteers)
+        )
+        .filter(Pod.eventId == current_user.eventId)
+        .order_by(Pod.name)
+        .all()
+    )
     
-    import io
-    output = io.StringIO()
-    writer = csv.writer(output)
+    wb = openpyxl.Workbook()
+    if "Sheet" in wb.sheetnames:
+        wb.remove(wb["Sheet"])
+
+    # Color Palette & Styles
+    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    section_fill = PatternFill(start_color="334155", end_color="334155", fill_type="solid")
+    sub_header_fill = PatternFill(start_color="475569", end_color="475569", fill_type="solid")
+    meta_banner_fill = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
     
-    safe_writerow(writer, [
+    title_font = Font(name="Calibri", size=12, bold=True, color="FFFFFF")
+    section_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    header_font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+    meta_bold_font = Font(name="Calibri", size=10, bold=True, color="1E293B")
+    meta_regular_font = Font(name="Calibri", size=10, color="334155")
+    data_font = Font(name="Calibri", size=10, color="0F172A")
+    italic_note_font = Font(name="Calibri", size=10, italic=True, color="64748B")
+
+    thin_border = Border(
+        left=Side(style='thin', color='CBD5E1'),
+        right=Side(style='thin', color='CBD5E1'),
+        top=Side(style='thin', color='CBD5E1'),
+        bottom=Side(style='thin', color='CBD5E1')
+    )
+
+    # -------------------------------------------------------------
+    # SHEET 1: ALL PODS OVERVIEW
+    # -------------------------------------------------------------
+    ws_summary = wb.create_sheet(title="PODs Overview")
+    
+    # Title Row
+    ws_summary.append(["EVENT POD GROUPS MASTER OVERVIEW"])
+    ws_summary.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
+    cell_title = ws_summary.cell(row=1, column=1)
+    cell_title.fill = header_fill
+    cell_title.font = title_font
+    cell_title.alignment = Alignment(horizontal="center", vertical="center")
+    ws_summary.row_dimensions[1].height = 28
+
+    # Summary Table Headers
+    summary_headers = [
         "POD Name", "Capacity Limit", "Current Team Count", 
         "Assigned Faculty", "Assigned Student Volunteers", "Assigned Teams"
-    ])
-    
+    ]
+    ws_summary.append(summary_headers)
+    ws_summary.row_dimensions[2].height = 22
+
+    for col_idx in range(1, len(summary_headers) + 1):
+        cell = ws_summary.cell(row=2, column=col_idx)
+        cell.fill = section_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="left", vertical="center")
+        cell.border = thin_border
+
+    if not pods:
+        ws_summary.append(["No POD groups created yet.", "", "", "", "", ""])
+        cell = ws_summary.cell(row=3, column=1)
+        cell.font = italic_note_font
+    else:
+        for p in pods:
+            faculty = [v.name for v in p.volunteers if (v.type == VolunteerType.FACULTY if hasattr(VolunteerType, 'FACULTY') else str(v.type).upper() == 'FACULTY')]
+            students = [v.name for v in p.volunteers if (v.type == VolunteerType.VOLUNTEER if hasattr(VolunteerType, 'VOLUNTEER') else str(v.type).upper() in ['VOLUNTEER', 'STUDENT'])]
+            other_vols = [v.name for v in p.volunteers if v.name not in faculty and v.name not in students]
+            if other_vols:
+                students.extend(other_vols)
+                
+            teams_list = [f"{t.registrationId} - {t.name}" for t in p.teams]
+            
+            row_vals = [
+                p.name,
+                p.capacity if p.capacity is not None else "Unlimited",
+                len(p.teams),
+                ", ".join(faculty) if faculty else "None",
+                ", ".join(students) if students else "None",
+                ", ".join(teams_list) if teams_list else "None"
+            ]
+            ws_summary.append(row_vals)
+            curr_row = ws_summary.max_row
+            ws_summary.row_dimensions[curr_row].height = 20
+            for col_idx in range(1, len(row_vals) + 1):
+                c = ws_summary.cell(row=curr_row, column=col_idx)
+                c.font = data_font
+                c.border = thin_border
+                c.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+    # Auto adjust summary column widths
+    for col in ws_summary.columns:
+        max_len = 0
+        col_letter = get_column_letter(col[0].column)
+        for cell in col:
+            val_str = str(cell.value or '')
+            if cell.row == 1:
+                continue
+            if len(val_str) > max_len:
+                max_len = min(len(val_str), 40)
+        ws_summary.column_dimensions[col_letter].width = min(max(max_len + 4, 16), 50)
+
+    # -------------------------------------------------------------
+    # POD-WISE SHEETS
+    # -------------------------------------------------------------
+    used_titles = {"pods overview"}
     for p in pods:
-        faculty = [v.name for v in p.volunteers if v.type == VolunteerType.FACULTY]
-        students = [v.name for v in p.volunteers if v.type == VolunteerType.STUDENT]
-        teams_list = [t.name for t in p.teams]
+        # Sanitize sheet title (Excel limit 31 chars)
+        raw_name = p.name or "POD"
+        sheet_title = raw_name[:30]
+        for char in [':', '\\', '/', '?', '*', '[', ']']:
+            sheet_title = sheet_title.replace(char, '_')
+        sheet_title = sheet_title.strip() or "POD"
         
-        safe_writerow(writer, [
-            p.name,
-            p.capacity if p.capacity is not None else "",
-            len(p.teams),
-            ", ".join(faculty),
-            ", ".join(students),
-            ", ".join(teams_list)
-        ])
+        base_title = sheet_title
+        counter = 1
+        while sheet_title.lower() in used_titles:
+            sheet_title = f"{base_title[:27]}_{counter}"
+            counter += 1
+        used_titles.add(sheet_title.lower())
+
+        ws = wb.create_sheet(title=sheet_title)
         
+        # 1. Header Banner
+        ws.append([f"POD GROUP: {p.name.upper()}"])
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=11)
+        banner_cell = ws.cell(row=1, column=1)
+        banner_cell.fill = header_fill
+        banner_cell.font = title_font
+        banner_cell.alignment = Alignment(horizontal="center", vertical="center")
+        ws.row_dimensions[1].height = 28
+
+        # 2. Metadata details
+        cap_str = str(p.capacity) if p.capacity is not None else "Unlimited"
+        meta_row = [
+            f"Capacity Limit: {cap_str}",
+            f"Total Assigned Teams: {len(p.teams)}",
+            f"Total Assigned Volunteers: {len(p.volunteers)}",
+            "", "", "", "", "", "", "", ""
+        ]
+        ws.append(meta_row)
+        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=3)
+        meta_cell = ws.cell(row=2, column=1)
+        meta_cell.fill = meta_banner_fill
+        meta_cell.font = meta_bold_font
+        meta_cell.alignment = Alignment(horizontal="left", vertical="center")
+        ws.row_dimensions[2].height = 22
+
+        ws.append([]) # Empty spacer row 3
+
+        # 3. Section 1: Assigned Faculty & Volunteers
+        ws.append(["ASSIGNED FACULTY & VOLUNTEERS"])
+        sec1_row = ws.max_row
+        ws.merge_cells(start_row=sec1_row, start_column=1, end_row=sec1_row, end_column=5)
+        sec1_cell = ws.cell(row=sec1_row, column=1)
+        sec1_cell.fill = section_fill
+        sec1_cell.font = section_font
+        sec1_cell.alignment = Alignment(horizontal="left", vertical="center")
+        ws.row_dimensions[sec1_row].height = 22
+
+        vol_headers = ["Name", "Role / Designation", "Contact (Phone/Email)", "Remarks"]
+        ws.append(vol_headers)
+        vol_hdr_row = ws.max_row
+        ws.row_dimensions[vol_hdr_row].height = 20
+        for c_idx in range(1, len(vol_headers) + 1):
+            c = ws.cell(row=vol_hdr_row, column=c_idx)
+            c.fill = sub_header_fill
+            c.font = header_font
+            c.border = thin_border
+            c.alignment = Alignment(horizontal="left", vertical="center")
+
+        if not p.volunteers:
+            ws.append(["No faculty or volunteers assigned to this POD.", "", "", ""])
+            empty_row = ws.max_row
+            ws.merge_cells(start_row=empty_row, start_column=1, end_row=empty_row, end_column=4)
+            c = ws.cell(row=empty_row, column=1)
+            c.font = italic_note_font
+            c.border = thin_border
+        else:
+            for v in p.volunteers:
+                vol_type_str = v.type.value if hasattr(v.type, 'value') else str(v.type or "VOLUNTEER")
+                row_vals = [
+                    v.name or "",
+                    vol_type_str,
+                    v.contact or "",
+                    v.remarks or ""
+                ]
+                ws.append(row_vals)
+                curr_row = ws.max_row
+                ws.row_dimensions[curr_row].height = 19
+                for c_idx in range(1, len(row_vals) + 1):
+                    c = ws.cell(row=curr_row, column=c_idx)
+                    c.font = data_font
+                    c.border = thin_border
+                    c.alignment = Alignment(horizontal="left", vertical="center")
+
+        ws.append([]) # Spacer row
+
+        # 4. Section 2: Assigned Teams
+        ws.append(["ASSIGNED TEAMS"])
+        sec2_row = ws.max_row
+        ws.merge_cells(start_row=sec2_row, start_column=1, end_row=sec2_row, end_column=11)
+        sec2_cell = ws.cell(row=sec2_row, column=1)
+        sec2_cell.fill = section_fill
+        sec2_cell.font = section_font
+        sec2_cell.alignment = Alignment(horizontal="left", vertical="center")
+        ws.row_dimensions[sec2_row].height = 22
+
+        team_headers = [
+            "Team Code", "Team Name", "PS Code", "PS Title",
+            "Leader Name", "Leader Email", "Leader Phone",
+            "College Name", "Category", "Desk No.", "Status", "Team Members"
+        ]
+        ws.append(team_headers)
+        team_hdr_row = ws.max_row
+        ws.row_dimensions[team_hdr_row].height = 20
+        for c_idx in range(1, len(team_headers) + 1):
+            c = ws.cell(row=team_hdr_row, column=c_idx)
+            c.fill = sub_header_fill
+            c.font = header_font
+            c.border = thin_border
+            c.alignment = Alignment(horizontal="left", vertical="center")
+
+        if not p.teams:
+            ws.append(["No teams assigned to this POD.", "", "", "", "", "", "", "", "", "", "", ""])
+            empty_row = ws.max_row
+            ws.merge_cells(start_row=empty_row, start_column=1, end_row=empty_row, end_column=12)
+            c = ws.cell(row=empty_row, column=1)
+            c.font = italic_note_font
+            c.border = thin_border
+        else:
+            for t in p.teams:
+                ps_code = ""
+                ps_title = ""
+                if t.psSelection and t.psSelection.ps:
+                    ps_code = t.psSelection.ps.code or ""
+                    ps_title = t.psSelection.ps.title or ""
+                
+                status_str = t.status.value if hasattr(t.status, 'value') else str(t.status or "")
+                category_str = t.category.value if hasattr(t.category, 'value') else str(t.category or "")
+                members_str = ", ".join([m.name for m in t.members if m.name]) if t.members else ""
+
+                row_vals = [
+                    t.registrationId or "",
+                    t.name or "",
+                    ps_code,
+                    ps_title,
+                    t.leaderName or "",
+                    t.leaderEmail or "",
+                    t.leaderPhone or "",
+                    t.collegeName or "",
+                    category_str,
+                    t.deskNumber or "",
+                    status_str,
+                    members_str
+                ]
+                ws.append(row_vals)
+                curr_row = ws.max_row
+                ws.row_dimensions[curr_row].height = 19
+                for c_idx in range(1, len(row_vals) + 1):
+                    c = ws.cell(row=curr_row, column=c_idx)
+                    c.font = data_font
+                    c.border = thin_border
+                    c.alignment = Alignment(horizontal="left", vertical="center")
+
+        # Auto adjust column widths for this POD sheet
+        for col in ws.columns:
+            max_len = 0
+            col_letter = get_column_letter(col[0].column)
+            for cell in col:
+                # Ignore merged title & banner rows for width calculation
+                if cell.row in [1, 2, sec1_row, sec2_row]:
+                    continue
+                val_str = str(cell.value or '')
+                if len(val_str) > max_len:
+                    max_len = min(len(val_str), 40)
+            ws.column_dimensions[col_letter].width = min(max(max_len + 4, 14), 50)
+
+    output = io.BytesIO()
+    wb.save(output)
     output.seek(0)
     
-    headers = {
-        'Content-Disposition': 'attachment; filename="pods_export.csv"',
-        'Content-Type': 'text/csv'
-    }
-    return StreamingResponse(iter([output.getvalue()]), headers=headers)
+    logger.info(f"Exported PODs workbook with {len(pods)} pod sheets for event {current_user.eventId}")
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="pods_master_workbook.xlsx"'}
+    )
 
 
 @router.post("/pods/import/preview")
@@ -1615,65 +1876,298 @@ def export_volunteers(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
-    volunteers = db.query(Volunteer).options(
-        joinedload(Volunteer.pod),
-        joinedload(Volunteer.user)
-    ).filter(Volunteer.eventId == current_user.eventId).order_by(Volunteer.name).all()
+    volunteers = (
+        db.query(Volunteer)
+        .options(
+            joinedload(Volunteer.pod),
+            joinedload(Volunteer.panel),
+            joinedload(Volunteer.problemStatement),
+            joinedload(Volunteer.user),
+            joinedload(Volunteer.attendanceRecords)
+        )
+        .filter(Volunteer.eventId == current_user.eventId)
+        .order_by(Volunteer.name)
+        .all()
+    )
     
-    import io
-    output = io.StringIO()
-    writer = csv.writer(output)
-    
-    safe_writerow(writer, [
-        "Name", "Type", "Email", "Phone", "Assigned POD Group", "Login Access Created", "Username", "Password"
-    ])
-    
-    for v in volunteers:
-        pod_name = v.pod.name if v.pod else "Unassigned"
-        
-        email = ""
-        phone = ""
-        if v.contact:
-            if " | " in v.contact:
-                parts = v.contact.split(" | ")
-                email = parts[0]
-                phone = parts[1]
-            elif "@" in v.contact:
-                email = v.contact
-            else:
-                phone = v.contact
-                
-        has_login = "Yes" if v.user else "No"
-        username = v.user.username if v.user else ""
-        
-        # Derive standard password format for export
-        password_str = ""
-        if v.user:
-            digits = re.sub(r'\D', '', phone)
-            if len(digits) >= 5:
-                password_str = f"MitVol@{digits[-5:]}"
-            else:
-                password_str = "MitVolunteer@123"
+    checkpoints = (
+        db.query(CheckpointType)
+        .filter(CheckpointType.eventId == current_user.eventId)
+        .order_by(CheckpointType.name)
+        .all()
+    )
 
-        vol_type_str = v.type.value if hasattr(v.type, 'value') else str(v.type or "")
-        safe_writerow(writer, [
-            v.name,
-            vol_type_str,
-            email,
-            phone,
-            pod_name,
-            has_login,
-            username,
-            password_str
-        ])
-        
+    wb = openpyxl.Workbook()
+    if "Sheet" in wb.sheetnames:
+        wb.remove(wb["Sheet"])
+
+    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    section_fill = PatternFill(start_color="334155", end_color="334155", fill_type="solid")
+    meta_banner_fill = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
+
+    title_font = Font(name="Calibri", size=12, bold=True, color="FFFFFF")
+    section_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    header_font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+    meta_bold_font = Font(name="Calibri", size=10, bold=True, color="1E293B")
+    data_font = Font(name="Calibri", size=10, color="0F172A")
+    italic_note_font = Font(name="Calibri", size=10, italic=True, color="64748B")
+
+    thin_border = Border(
+        left=Side(style='thin', color='CBD5E1'),
+        right=Side(style='thin', color='CBD5E1'),
+        top=Side(style='thin', color='CBD5E1'),
+        bottom=Side(style='thin', color='CBD5E1')
+    )
+
+    # Helper function to parse contact into email & phone
+    def parse_contact_info(contact_raw):
+        email, phone = "", ""
+        if contact_raw:
+            if " | " in contact_raw:
+                parts = contact_raw.split(" | ")
+                email = parts[0].strip()
+                phone = parts[1].strip()
+            elif "@" in contact_raw:
+                email = contact_raw.strip()
+            else:
+                phone = contact_raw.strip()
+        return email, phone
+
+    # -------------------------------------------------------------
+    # SHEET 1: VOLUNTEERS OVERVIEW & ANALYSIS
+    # -------------------------------------------------------------
+    ws_summary = wb.create_sheet(title="Volunteers Overview")
+
+    ws_summary.append(["VOLUNTEERS & FACULTY MASTER OVERVIEW"])
+    ws_summary.merge_cells(start_row=1, start_column=1, end_row=1, end_column=10)
+    cell_title = ws_summary.cell(row=1, column=1)
+    cell_title.fill = header_fill
+    cell_title.font = title_font
+    cell_title.alignment = Alignment(horizontal="center", vertical="center")
+    ws_summary.row_dimensions[1].height = 28
+
+    total_count = len(volunteers)
+    faculty_count = sum(1 for v in volunteers if (v.type == VolunteerType.FACULTY if hasattr(VolunteerType, 'FACULTY') else str(v.type).upper() == 'FACULTY'))
+    judge_count = sum(1 for v in volunteers if (v.type == VolunteerType.JUDGE if hasattr(VolunteerType, 'JUDGE') else str(v.type).upper() == 'JUDGE'))
+    vol_count = total_count - faculty_count - judge_count
+    checked_in_count = sum(1 for v in volunteers if v.attendanceRecords and len(v.attendanceRecords) > 0)
+
+    kpi_row = [
+        f"Total People: {total_count} | Faculty: {faculty_count} | Volunteers: {vol_count} | Judges: {judge_count} | Checked In: {checked_in_count}",
+        "", "", "", "", "", "", "", "", ""
+    ]
+    ws_summary.append(kpi_row)
+    ws_summary.merge_cells(start_row=2, start_column=1, end_row=2, end_column=10)
+    kpi_cell = ws_summary.cell(row=2, column=1)
+    kpi_cell.fill = meta_banner_fill
+    kpi_cell.font = meta_bold_font
+    kpi_cell.alignment = Alignment(horizontal="left", vertical="center")
+    ws_summary.row_dimensions[2].height = 22
+
+    ws_summary.append([]) # Spacer row 3
+
+    headers_summary = [
+        "Name", "Role / Type", "Email", "Phone",
+        "Assigned POD", "Assigned Panel", "Assigned PS", "Login Created", "Check-In Status", "Remarks"
+    ]
+    ws_summary.append(headers_summary)
+    ws_summary.row_dimensions[4].height = 22
+
+    for col_idx in range(1, len(headers_summary) + 1):
+        c = ws_summary.cell(row=4, column=col_idx)
+        c.fill = section_fill
+        c.font = header_font
+        c.alignment = Alignment(horizontal="left", vertical="center")
+        c.border = thin_border
+
+    if not volunteers:
+        ws_summary.append(["No volunteers or staff records available.", "", "", "", "", "", "", "", "", ""])
+        c = ws_summary.cell(row=5, column=1)
+        c.font = italic_note_font
+    else:
+        for v in volunteers:
+            email, phone = parse_contact_info(v.contact)
+            vol_type_str = v.type.value if hasattr(v.type, 'value') else str(v.type or "VOLUNTEER")
+            pod_name = v.pod.name if v.pod else "Unassigned"
+            panel_name = v.panel.name if v.panel else "Unassigned"
+            ps_str = f"{v.problemStatement.code}" if v.problemStatement else "Unassigned"
+            has_login = "Yes" if v.user else "No"
+            checkin_str = "Checked In" if (v.attendanceRecords and len(v.attendanceRecords) > 0) else "Not Checked In"
+
+            row_vals = [
+                v.name or "",
+                vol_type_str,
+                email,
+                phone,
+                pod_name,
+                panel_name,
+                ps_str,
+                has_login,
+                checkin_str,
+                v.remarks or ""
+            ]
+            ws_summary.append(row_vals)
+            curr_row = ws_summary.max_row
+            ws_summary.row_dimensions[curr_row].height = 20
+            for col_idx in range(1, len(row_vals) + 1):
+                c = ws_summary.cell(row=curr_row, column=col_idx)
+                c.font = data_font
+                c.border = thin_border
+                c.alignment = Alignment(horizontal="left", vertical="center")
+
+    for col in ws_summary.columns:
+        max_len = 0
+        col_letter = get_column_letter(col[0].column)
+        for cell in col:
+            val_str = str(cell.value or '')
+            if cell.row in [1, 2]:
+                continue
+            if len(val_str) > max_len:
+                max_len = min(len(val_str), 40)
+        ws_summary.column_dimensions[col_letter].width = min(max(max_len + 4, 14), 50)
+
+    # -------------------------------------------------------------
+    # ROLE-DIFFERENTIATED WORKSHEETS
+    # -------------------------------------------------------------
+    roles_map = {
+        "Faculty": [v for v in volunteers if (v.type == VolunteerType.FACULTY if hasattr(VolunteerType, 'FACULTY') else str(v.type).upper() == 'FACULTY')],
+        "Judges": [v for v in volunteers if (v.type == VolunteerType.JUDGE if hasattr(VolunteerType, 'JUDGE') else str(v.type).upper() == 'JUDGE')],
+        "Student Volunteers": [v for v in volunteers if not ((v.type == VolunteerType.FACULTY if hasattr(VolunteerType, 'FACULTY') else str(v.type).upper() == 'FACULTY') or (v.type == VolunteerType.JUDGE if hasattr(VolunteerType, 'JUDGE') else str(v.type).upper() == 'JUDGE'))]
+    }
+
+    for role_title, role_vols in roles_map.items():
+        ws = wb.create_sheet(title=role_title)
+
+        ws.append([f"{role_title.upper()} MASTER ROSTER & CHECK-IN DETAILS"])
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=10 + len(checkpoints) * 3)
+        banner_cell = ws.cell(row=1, column=1)
+        banner_cell.fill = header_fill
+        banner_cell.font = title_font
+        banner_cell.alignment = Alignment(horizontal="center", vertical="center")
+        ws.row_dimensions[1].height = 28
+
+        ws.append([f"Total {role_title}: {len(role_vols)}"])
+        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=5)
+        meta_cell = ws.cell(row=2, column=1)
+        meta_cell.fill = meta_banner_fill
+        meta_cell.font = meta_bold_font
+        meta_cell.alignment = Alignment(horizontal="left", vertical="center")
+        ws.row_dimensions[2].height = 22
+
+        ws.append([]) # Spacer row 3
+
+        role_headers = [
+            "Name", "Type / Sub-role", "Email", "Phone",
+            "Assigned POD", "Assigned Panel", "Assigned PS",
+            "Username", "Password", "Remarks"
+        ]
+        if checkpoints:
+            for cp in checkpoints:
+                role_headers.extend([
+                    f"{cp.name} Check-In",
+                    f"{cp.name} Time",
+                    f"{cp.name} Marked By"
+                ])
+        else:
+            role_headers.extend(["Check-In Status", "Check-In Time", "Marked By"])
+
+        ws.append(role_headers)
+        hdr_row = ws.max_row
+        ws.row_dimensions[hdr_row].height = 22
+        for col_idx in range(1, len(role_headers) + 1):
+            c = ws.cell(row=hdr_row, column=col_idx)
+            c.fill = section_fill
+            c.font = header_font
+            c.border = thin_border
+            c.alignment = Alignment(horizontal="left", vertical="center")
+
+        if not role_vols:
+            ws.append([f"No {role_title.lower()} recorded.", "", "", "", "", "", "", "", "", ""])
+            c = ws.cell(row=ws.max_row, column=1)
+            c.font = italic_note_font
+        else:
+            for v in role_vols:
+                email, phone = parse_contact_info(v.contact)
+                vol_type_str = v.type.value if hasattr(v.type, 'value') else str(v.type or "")
+                pod_name = v.pod.name if v.pod else "Unassigned"
+                panel_name = v.panel.name if v.panel else "Unassigned"
+                ps_str = f"{v.problemStatement.code}" if v.problemStatement else "Unassigned"
+                username = v.user.username if v.user else ""
+
+                password_str = ""
+                if v.user:
+                    digits = re.sub(r'\D', '', phone)
+                    if len(digits) >= 5:
+                        password_str = f"MitVol@{digits[-5:]}"
+                    else:
+                        password_str = "MitVolunteer@123"
+
+                row_vals = [
+                    v.name or "",
+                    vol_type_str,
+                    email,
+                    phone,
+                    pod_name,
+                    panel_name,
+                    ps_str,
+                    username,
+                    password_str,
+                    v.remarks or ""
+                ]
+
+                att_map = {rec.checkpointTypeId: rec for rec in (v.attendanceRecords or [])}
+                if checkpoints:
+                    for cp in checkpoints:
+                        rec = att_map.get(cp.id)
+                        if rec:
+                            row_vals.extend([
+                                "Yes",
+                                rec.timestamp.strftime("%Y-%m-%d %H:%M:%S") if rec.timestamp else "",
+                                rec.markedBy or ""
+                            ])
+                        else:
+                            row_vals.extend(["No", "", ""])
+                else:
+                    if v.attendanceRecords:
+                        first_rec = v.attendanceRecords[0]
+                        row_vals.extend([
+                            "Yes",
+                            first_rec.timestamp.strftime("%Y-%m-%d %H:%M:%S") if first_rec.timestamp else "",
+                            first_rec.markedBy or ""
+                        ])
+                    else:
+                        row_vals.extend(["No", "", ""])
+
+                ws.append(row_vals)
+                curr_row = ws.max_row
+                ws.row_dimensions[curr_row].height = 19
+                for col_idx in range(1, len(row_vals) + 1):
+                    c = ws.cell(row=curr_row, column=col_idx)
+                    c.font = data_font
+                    c.border = thin_border
+                    c.alignment = Alignment(horizontal="left", vertical="center")
+
+        for col in ws.columns:
+            max_len = 0
+            col_letter = get_column_letter(col[0].column)
+            for cell in col:
+                if cell.row in [1, 2]:
+                    continue
+                val_str = str(cell.value or '')
+                if len(val_str) > max_len:
+                    max_len = min(len(val_str), 40)
+            ws.column_dimensions[col_letter].width = min(max(max_len + 4, 14), 50)
+
+    output = io.BytesIO()
+    wb.save(output)
     output.seek(0)
     
-    headers = {
-        'Content-Disposition': 'attachment; filename="volunteers_export.csv"',
-        'Content-Type': 'text/csv'
-    }
-    return StreamingResponse(iter([output.getvalue()]), headers=headers)
+    logger.info(f"Exported volunteers master workbook for event {current_user.eventId}")
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="volunteers_master_workbook.xlsx"'}
+    )
 
 
 @router.get("/volunteers")
@@ -2732,45 +3226,288 @@ def export_problem_statements(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
-    statements = db.query(ProblemStatement).options(
-        joinedload(ProblemStatement.selections).joinedload(PSSelection.team)
-    ).filter(ProblemStatement.eventId == current_user.eventId).order_by(ProblemStatement.code).all()
-    
-    import io
-    output = io.StringIO()
-    writer = csv.writer(output)
-    
-    safe_writerow(writer, [
-        "Code", "Title", "Discipline", "Requirements", "Description", "Capacity", "Slots Remaining", "Assigned Teams", "Selection Times"
-    ])
-    
+    statements = (
+        db.query(ProblemStatement)
+        .options(
+            joinedload(ProblemStatement.panel),
+            joinedload(ProblemStatement.selections).joinedload(PSSelection.team).joinedload(Team.pod),
+            joinedload(ProblemStatement.selections).joinedload(PSSelection.team).joinedload(Team.members)
+        )
+        .filter(ProblemStatement.eventId == current_user.eventId)
+        .order_by(ProblemStatement.code)
+        .all()
+    )
+
+    wb = openpyxl.Workbook()
+    if "Sheet" in wb.sheetnames:
+        wb.remove(wb["Sheet"])
+
+    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    section_fill = PatternFill(start_color="334155", end_color="334155", fill_type="solid")
+    sub_header_fill = PatternFill(start_color="475569", end_color="475569", fill_type="solid")
+    meta_banner_fill = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
+
+    title_font = Font(name="Calibri", size=12, bold=True, color="FFFFFF")
+    section_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    header_font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+    meta_bold_font = Font(name="Calibri", size=10, bold=True, color="1E293B")
+    data_font = Font(name="Calibri", size=10, color="0F172A")
+    italic_note_font = Font(name="Calibri", size=10, italic=True, color="64748B")
+
+    thin_border = Border(
+        left=Side(style='thin', color='CBD5E1'),
+        right=Side(style='thin', color='CBD5E1'),
+        top=Side(style='thin', color='CBD5E1'),
+        bottom=Side(style='thin', color='CBD5E1')
+    )
+
+    # -------------------------------------------------------------
+    # SHEET 1: PS OVERVIEW & FINGERTIPS ANALYSIS
+    # -------------------------------------------------------------
+    ws_summary = wb.create_sheet(title="PS Overview")
+
+    ws_summary.append(["PROBLEM STATEMENTS MASTER OVERVIEW & ANALYSIS"])
+    ws_summary.merge_cells(start_row=1, start_column=1, end_row=1, end_column=8)
+    cell_title = ws_summary.cell(row=1, column=1)
+    cell_title.fill = header_fill
+    cell_title.font = title_font
+    cell_title.alignment = Alignment(horizontal="center", vertical="center")
+    ws_summary.row_dimensions[1].height = 28
+
+    total_ps = len(statements)
+    total_capacity = sum(s.capacity or 0 for s in statements)
+    total_selected = sum(len(s.selections) for s in statements)
+    fill_pct = (total_selected / total_capacity * 100) if total_capacity > 0 else 0
+
+    kpi_row = [
+        f"Total PS Challenges: {total_ps} | Total Capacity: {total_capacity} | Teams Selected: {total_selected} | Overall Fill Rate: {fill_pct:.1f}%",
+        "", "", "", "", "", "", ""
+    ]
+    ws_summary.append(kpi_row)
+    ws_summary.merge_cells(start_row=2, start_column=1, end_row=2, end_column=8)
+    kpi_cell = ws_summary.cell(row=2, column=1)
+    kpi_cell.fill = meta_banner_fill
+    kpi_cell.font = meta_bold_font
+    kpi_cell.alignment = Alignment(horizontal="left", vertical="center")
+    ws_summary.row_dimensions[2].height = 22
+
+    ws_summary.append([]) # Spacer row 3
+
+    summary_headers = [
+        "PS Code", "Problem Statement Title", "Discipline / Category",
+        "Capacity", "Teams Selected", "Slots Remaining", "Fill %", "Assigned Panel"
+    ]
+    ws_summary.append(summary_headers)
+    ws_summary.row_dimensions[4].height = 22
+
+    for col_idx in range(1, len(summary_headers) + 1):
+        c = ws_summary.cell(row=4, column=col_idx)
+        c.fill = section_fill
+        c.font = header_font
+        c.alignment = Alignment(horizontal="left", vertical="center")
+        c.border = thin_border
+
+    if not statements:
+        ws_summary.append(["No problem statements configured.", "", "", "", "", "", "", ""])
+        c = ws_summary.cell(row=5, column=1)
+        c.font = italic_note_font
+    else:
+        for s in statements:
+            cap = s.capacity or 0
+            sel_cnt = len(s.selections)
+            rem = max(cap - sel_cnt, 0)
+            ps_fill = (sel_cnt / cap * 100) if cap > 0 else 0
+            disc_str = s.discipline.value if hasattr(s.discipline, 'value') else str(s.discipline or "BOTH")
+            panel_name = s.panel.name if s.panel else "Unassigned"
+
+            row_vals = [
+                s.code,
+                s.title,
+                disc_str,
+                cap,
+                sel_cnt,
+                rem,
+                f"{ps_fill:.1f}%",
+                panel_name
+            ]
+            ws_summary.append(row_vals)
+            curr_row = ws_summary.max_row
+            ws_summary.row_dimensions[curr_row].height = 20
+            for col_idx in range(1, len(row_vals) + 1):
+                c = ws_summary.cell(row=curr_row, column=col_idx)
+                c.font = data_font
+                c.border = thin_border
+                c.alignment = Alignment(horizontal="left", vertical="center")
+
+    for col in ws_summary.columns:
+        max_len = 0
+        col_letter = get_column_letter(col[0].column)
+        for cell in col:
+            val_str = str(cell.value or '')
+            if cell.row in [1, 2]:
+                continue
+            if len(val_str) > max_len:
+                max_len = min(len(val_str), 40)
+        ws_summary.column_dimensions[col_letter].width = min(max(max_len + 4, 14), 50)
+
+    # -------------------------------------------------------------
+    # PS-WISE SHEETS
+    # -------------------------------------------------------------
+    used_titles = {"ps overview"}
     for s in statements:
-        team_names = []
-        selection_times = []
-        for sel in s.selections:
-            team_names.append(f"{sel.team.name} ({sel.team.registrationId})")
-            sel_time = sel.selectedAt.strftime("%Y-%m-%d %H:%M:%S") if sel.selectedAt else ""
-            selection_times.append(f"{sel.team.name}: {sel_time}")
-            
-        safe_writerow(writer, [
-            s.code,
-            s.title,
-            s.discipline or "BOTH",
-            s.requirements or "",
-            s.description,
-            s.capacity or 0,
-            max((s.capacity or 0) - len(s.selections), 0),
-            "; ".join(team_names),
-            "; ".join(selection_times)
-        ])
+        raw_code = s.code or "PS"
+        sheet_title = raw_code[:30]
+        for char in [':', '\\', '/', '?', '*', '[', ']']:
+            sheet_title = sheet_title.replace(char, '_')
+        sheet_title = sheet_title.strip() or "PS"
+
+        base_title = sheet_title
+        counter = 1
+        while sheet_title.lower() in used_titles:
+            sheet_title = f"{base_title[:27]}_{counter}"
+            counter += 1
+        used_titles.add(sheet_title.lower())
+
+        ws = wb.create_sheet(title=sheet_title)
+
+        ws.append([f"PROBLEM STATEMENT: {s.code} - {s.title.upper()}"])
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=11)
+        banner_cell = ws.cell(row=1, column=1)
+        banner_cell.fill = header_fill
+        banner_cell.font = title_font
+        banner_cell.alignment = Alignment(horizontal="center", vertical="center")
+        ws.row_dimensions[1].height = 28
+
+        disc_str = s.discipline.value if hasattr(s.discipline, 'value') else str(s.discipline or "BOTH")
+        cap = s.capacity or 0
+        sel_cnt = len(s.selections)
+        rem = max(cap - sel_cnt, 0)
+        panel_name = s.panel.name if s.panel else "Unassigned"
+
+        meta_row = [
+            f"Discipline: {disc_str} | Capacity: {cap} | Teams Selected: {sel_cnt} | Slots Remaining: {rem} | Assigned Panel: {panel_name}",
+            "", "", "", "", "", "", "", "", "", ""
+        ]
+        ws.append(meta_row)
+        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=11)
+        meta_cell = ws.cell(row=2, column=1)
+        meta_cell.fill = meta_banner_fill
+        meta_cell.font = meta_bold_font
+        meta_cell.alignment = Alignment(horizontal="left", vertical="center")
+        ws.row_dimensions[2].height = 22
+
+        ws.append([]) # Row 3 spacer
+
+        # Description & Requirements Block
+        ws.append(["CHALLENGE DESCRIPTION & REQUIREMENTS"])
+        desc_sec_row = ws.max_row
+        ws.merge_cells(start_row=desc_sec_row, start_column=1, end_row=desc_sec_row, end_column=11)
+        c_sec = ws.cell(row=desc_sec_row, column=1)
+        c_sec.fill = section_fill
+        c_sec.font = section_font
+        ws.row_dimensions[desc_sec_row].height = 20
+
+        req_str = s.requirements or "None specified"
+        desc_str = s.description or "No description provided."
         
+        ws.append(["Requirements:", req_str, "", "", "", "", "", "", "", "", ""])
+        req_row = ws.max_row
+        ws.merge_cells(start_row=req_row, start_column=2, end_row=req_row, end_column=11)
+        ws.cell(row=req_row, column=1).font = meta_bold_font
+        ws.cell(row=req_row, column=2).font = data_font
+
+        ws.append(["Description:", desc_str, "", "", "", "", "", "", "", "", ""])
+        desc_row = ws.max_row
+        ws.merge_cells(start_row=desc_row, start_column=2, end_row=desc_row, end_column=11)
+        ws.cell(row=desc_row, column=1).font = meta_bold_font
+        ws.cell(row=desc_row, column=2).font = data_font
+        ws.row_dimensions[desc_row].height = 28
+
+        ws.append([]) # Spacer row
+
+        # Section: Selected Teams
+        ws.append(["TEAMS WHO SELECTED THIS PROBLEM STATEMENT"])
+        teams_sec_row = ws.max_row
+        ws.merge_cells(start_row=teams_sec_row, start_column=1, end_row=teams_sec_row, end_column=11)
+        c_tsec = ws.cell(row=teams_sec_row, column=1)
+        c_tsec.fill = section_fill
+        c_tsec.font = section_font
+        ws.row_dimensions[teams_sec_row].height = 22
+
+        team_headers = [
+            "#", "Selection Timestamp", "Team Code", "Team Name",
+            "Leader Name", "Leader Email", "Leader Phone",
+            "College Name", "Desk No.", "Status", "Assigned POD"
+        ]
+        ws.append(team_headers)
+        th_row = ws.max_row
+        ws.row_dimensions[th_row].height = 20
+        for col_idx in range(1, len(team_headers) + 1):
+            c = ws.cell(row=th_row, column=col_idx)
+            c.fill = sub_header_fill
+            c.font = header_font
+            c.border = thin_border
+
+        if not s.selections:
+            ws.append(["No teams have selected this problem statement yet.", "", "", "", "", "", "", "", "", "", ""])
+            empty_row = ws.max_row
+            ws.merge_cells(start_row=empty_row, start_column=1, end_row=empty_row, end_column=11)
+            c = ws.cell(row=empty_row, column=1)
+            c.font = italic_note_font
+            c.border = thin_border
+        else:
+            sorted_sels = sorted(s.selections, key=lambda sel: sel.selectedAt if sel.selectedAt else datetime.min)
+            for idx, sel in enumerate(sorted_sels, 1):
+                t = sel.team
+                if not t:
+                    continue
+                sel_time = sel.selectedAt.strftime("%Y-%m-%d %H:%M:%S") if sel.selectedAt else "N/A"
+                pod_name = t.pod.name if t.pod else "Unassigned"
+                status_str = t.status.value if hasattr(t.status, 'value') else str(t.status or "")
+
+                row_vals = [
+                    idx,
+                    sel_time,
+                    t.registrationId or "",
+                    t.name or "",
+                    t.leaderName or "",
+                    t.leaderEmail or "",
+                    t.leaderPhone or "",
+                    t.collegeName or "",
+                    t.deskNumber or "",
+                    status_str,
+                    pod_name
+                ]
+                ws.append(row_vals)
+                curr_row = ws.max_row
+                ws.row_dimensions[curr_row].height = 19
+                for col_idx in range(1, len(row_vals) + 1):
+                    c = ws.cell(row=curr_row, column=col_idx)
+                    c.font = data_font
+                    c.border = thin_border
+                    c.alignment = Alignment(horizontal="left", vertical="center")
+
+        for col in ws.columns:
+            max_len = 0
+            col_letter = get_column_letter(col[0].column)
+            for cell in col:
+                if cell.row in [1, 2, desc_sec_row, teams_sec_row, req_row, desc_row]:
+                    continue
+                val_str = str(cell.value or '')
+                if len(val_str) > max_len:
+                    max_len = min(len(val_str), 40)
+            ws.column_dimensions[col_letter].width = min(max(max_len + 4, 14), 50)
+
+    output = io.BytesIO()
+    wb.save(output)
     output.seek(0)
     
-    headers = {
-        'Content-Disposition': 'attachment; filename="problem_statements_export.csv"',
-        'Content-Type': 'text/csv'
-    }
-    return StreamingResponse(iter([output.getvalue()]), headers=headers)
+    logger.info(f"Exported problem statements master workbook for event {current_user.eventId}")
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="problem_statements_master_workbook.xlsx"'}
+    )
 
 
 @router.post("/problem-statements/import/preview")
@@ -3827,19 +4564,305 @@ def export_panels(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_role(Role.ADMIN))
 ):
-    panels = db.query(Panel).filter(Panel.eventId == current_user.eventId).order_by(Panel.name).all()
-    output = io.StringIO()
-    writer = csv.writer(output)
-    safe_writerow(writer, ["Panel Name", "Problem Statement Code", "Faculty Lead", "Judges"])
-    for p in panels:
-        ps_code = p.problemStatement.code if p.problemStatement else ""
-        judges_str = "; ".join(p.memberNames) if p.memberNames else ""
-        safe_writerow(writer, [p.name, ps_code, p.facultyMemberName or "", judges_str])
+    panels = (
+        db.query(Panel)
+        .options(
+            joinedload(Panel.problemStatement).joinedload(ProblemStatement.selections).joinedload(PSSelection.team).joinedload(Team.members),
+            joinedload(Panel.volunteers)
+        )
+        .filter(Panel.eventId == current_user.eventId)
+        .order_by(Panel.name)
+        .all()
+    )
 
+    wb = openpyxl.Workbook()
+    if "Sheet" in wb.sheetnames:
+        wb.remove(wb["Sheet"])
+
+    # Color Palette & Styles
+    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    section_fill = PatternFill(start_color="334155", end_color="334155", fill_type="solid")
+    sub_header_fill = PatternFill(start_color="475569", end_color="475569", fill_type="solid")
+    meta_banner_fill = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
+
+    title_font = Font(name="Calibri", size=12, bold=True, color="FFFFFF")
+    section_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    header_font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+    meta_bold_font = Font(name="Calibri", size=10, bold=True, color="1E293B")
+    data_font = Font(name="Calibri", size=10, color="0F172A")
+    italic_note_font = Font(name="Calibri", size=10, italic=True, color="64748B")
+
+    thin_border = Border(
+        left=Side(style='thin', color='CBD5E1'),
+        right=Side(style='thin', color='CBD5E1'),
+        top=Side(style='thin', color='CBD5E1'),
+        bottom=Side(style='thin', color='CBD5E1')
+    )
+
+    # -------------------------------------------------------------
+    # SHEET 1: PANELS OVERVIEW & ANALYSIS
+    # -------------------------------------------------------------
+    ws_summary = wb.create_sheet(title="Panels Overview")
+    
+    ws_summary.append(["EVALUATION PANELS MASTER OVERVIEW & ANALYSIS"])
+    ws_summary.merge_cells(start_row=1, start_column=1, end_row=1, end_column=7)
+    cell_title = ws_summary.cell(row=1, column=1)
+    cell_title.fill = header_fill
+    cell_title.font = title_font
+    cell_title.alignment = Alignment(horizontal="center", vertical="center")
+    ws_summary.row_dimensions[1].height = 28
+
+    # KPI Banner
+    total_panels = len(panels)
+    total_assigned_ps = sum(1 for p in panels if p.problemStatementId)
+    total_judges_faculty = sum((len(p.memberNames or []) + (1 if p.facultyMemberName else 0) + len(p.volunteers or [])) for p in panels)
+    total_eval_teams = sum(len(p.problemStatement.selections) for p in panels if p.problemStatement and p.problemStatement.selections)
+
+    kpi_row = [
+        f"Total Panels: {total_panels} | Assigned PS: {total_assigned_ps} | Evaluators/Judges: {total_judges_faculty} | Total Teams to Evaluate: {total_eval_teams}",
+        "", "", "", "", "", ""
+    ]
+    ws_summary.append(kpi_row)
+    ws_summary.merge_cells(start_row=2, start_column=1, end_row=2, end_column=7)
+    kpi_cell = ws_summary.cell(row=2, column=1)
+    kpi_cell.fill = meta_banner_fill
+    kpi_cell.font = meta_bold_font
+    kpi_cell.alignment = Alignment(horizontal="left", vertical="center")
+    ws_summary.row_dimensions[2].height = 22
+
+    ws_summary.append([]) # Spacer row 3
+
+    summary_headers = [
+        "Panel Name", "Assigned PS Code", "Assigned PS Title",
+        "Faculty Lead", "Assigned Judges / Evaluators", "Assigned Volunteers", "Total Teams to Evaluate"
+    ]
+    ws_summary.append(summary_headers)
+    ws_summary.row_dimensions[4].height = 22
+
+    for col_idx in range(1, len(summary_headers) + 1):
+        cell = ws_summary.cell(row=4, column=col_idx)
+        cell.fill = section_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="left", vertical="center")
+        cell.border = thin_border
+
+    if not panels:
+        ws_summary.append(["No evaluation panels configured yet.", "", "", "", "", "", ""])
+        cell = ws_summary.cell(row=5, column=1)
+        cell.font = italic_note_font
+    else:
+        for p in panels:
+            ps_code = p.problemStatement.code if p.problemStatement else "Unassigned"
+            ps_title = p.problemStatement.title if p.problemStatement else "Unassigned"
+            judges_str = ", ".join(p.memberNames) if p.memberNames else "None"
+            vols_str = ", ".join([v.name for v in p.volunteers]) if p.volunteers else "None"
+            teams_count = len(p.problemStatement.selections) if (p.problemStatement and p.problemStatement.selections) else 0
+
+            row_vals = [
+                p.name,
+                ps_code,
+                ps_title,
+                p.facultyMemberName or "Unassigned",
+                judges_str,
+                vols_str,
+                teams_count
+            ]
+            ws_summary.append(row_vals)
+            curr_row = ws_summary.max_row
+            ws_summary.row_dimensions[curr_row].height = 20
+            for col_idx in range(1, len(row_vals) + 1):
+                c = ws_summary.cell(row=curr_row, column=col_idx)
+                c.font = data_font
+                c.border = thin_border
+                c.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+    for col in ws_summary.columns:
+        max_len = 0
+        col_letter = get_column_letter(col[0].column)
+        for cell in col:
+            val_str = str(cell.value or '')
+            if cell.row in [1, 2]:
+                continue
+            if len(val_str) > max_len:
+                max_len = min(len(val_str), 40)
+        ws_summary.column_dimensions[col_letter].width = min(max(max_len + 4, 16), 50)
+
+    # -------------------------------------------------------------
+    # PANEL-WISE SHEETS
+    # -------------------------------------------------------------
+    used_titles = {"panels overview"}
+    for p in panels:
+        raw_name = p.name or "Panel"
+        sheet_title = raw_name[:30]
+        for char in [':', '\\', '/', '?', '*', '[', ']']:
+            sheet_title = sheet_title.replace(char, '_')
+        sheet_title = sheet_title.strip() or "Panel"
+
+        base_title = sheet_title
+        counter = 1
+        while sheet_title.lower() in used_titles:
+            sheet_title = f"{base_title[:27]}_{counter}"
+            counter += 1
+        used_titles.add(sheet_title.lower())
+
+        ws = wb.create_sheet(title=sheet_title)
+
+        ws.append([f"EVALUATION PANEL: {p.name.upper()}"])
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=10)
+        banner_cell = ws.cell(row=1, column=1)
+        banner_cell.fill = header_fill
+        banner_cell.font = title_font
+        banner_cell.alignment = Alignment(horizontal="center", vertical="center")
+        ws.row_dimensions[1].height = 28
+
+        ps_code = p.problemStatement.code if p.problemStatement else "N/A"
+        ps_title = p.problemStatement.title if p.problemStatement else "N/A"
+        teams = p.problemStatement.selections if (p.problemStatement and p.problemStatement.selections) else []
+
+        meta_row = [
+            f"Assigned PS: {ps_code} - {ps_title} | Faculty Lead: {p.facultyMemberName or 'None'} | Teams to Evaluate: {len(teams)}",
+            "", "", "", "", "", "", "", "", ""
+        ]
+        ws.append(meta_row)
+        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=10)
+        meta_cell = ws.cell(row=2, column=1)
+        meta_cell.fill = meta_banner_fill
+        meta_cell.font = meta_bold_font
+        meta_cell.alignment = Alignment(horizontal="left", vertical="center")
+        ws.row_dimensions[2].height = 22
+
+        ws.append([]) # Spacer row 3
+
+        # Section 1: Assigned Faculty & Judges
+        ws.append(["PANEL EVALUATORS & FACULTY LEADS"])
+        sec1_row = ws.max_row
+        ws.merge_cells(start_row=sec1_row, start_column=1, end_row=sec1_row, end_column=4)
+        sec1_cell = ws.cell(row=sec1_row, column=1)
+        sec1_cell.fill = section_fill
+        sec1_cell.font = section_font
+        sec1_cell.alignment = Alignment(horizontal="left", vertical="center")
+        ws.row_dimensions[sec1_row].height = 22
+
+        eval_headers = ["Name", "Role / Designation", "Contact", "Source / Group"]
+        ws.append(eval_headers)
+        eval_hdr_row = ws.max_row
+        ws.row_dimensions[eval_hdr_row].height = 20
+        for c_idx in range(1, len(eval_headers) + 1):
+            c = ws.cell(row=eval_hdr_row, column=c_idx)
+            c.fill = sub_header_fill
+            c.font = header_font
+            c.border = thin_border
+
+        eval_list = []
+        if p.facultyMemberName:
+            eval_list.append((p.facultyMemberName, "Faculty Lead", "", "Panel Config"))
+        if p.memberNames:
+            for j in p.memberNames:
+                eval_list.append((j, "Judge / Evaluator", "", "Panel Config"))
+        if p.volunteers:
+            for v in p.volunteers:
+                v_type = v.type.value if hasattr(v.type, 'value') else str(v.type or "Volunteer")
+                eval_list.append((v.name, v_type, v.contact or "", "Assigned Volunteer"))
+
+        if not eval_list:
+            ws.append(["No evaluators or faculty currently assigned.", "", "", ""])
+            empty_row = ws.max_row
+            ws.merge_cells(start_row=empty_row, start_column=1, end_row=empty_row, end_column=4)
+            c = ws.cell(row=empty_row, column=1)
+            c.font = italic_note_font
+            c.border = thin_border
+        else:
+            for item in eval_list:
+                row_vals = [item[0], item[1], item[2], item[3]]
+                ws.append(row_vals)
+                curr_row = ws.max_row
+                ws.row_dimensions[curr_row].height = 19
+                for c_idx in range(1, len(row_vals) + 1):
+                    c = ws.cell(row=curr_row, column=c_idx)
+                    c.font = data_font
+                    c.border = thin_border
+
+        ws.append([]) # Spacer row
+
+        # Section 2: Assigned Teams
+        ws.append(["TEAMS ASSIGNED FOR EVALUATION"])
+        sec2_row = ws.max_row
+        ws.merge_cells(start_row=sec2_row, start_column=1, end_row=sec2_row, end_column=10)
+        sec2_cell = ws.cell(row=sec2_row, column=1)
+        sec2_cell.fill = section_fill
+        sec2_cell.font = section_font
+        sec2_cell.alignment = Alignment(horizontal="left", vertical="center")
+        ws.row_dimensions[sec2_row].height = 22
+
+        team_headers = [
+            "Team Code", "Team Name", "Leader Name", "Leader Email",
+            "Leader Phone", "College Name", "Desk No.", "Status", "Assigned POD", "Team Members"
+        ]
+        ws.append(team_headers)
+        team_hdr_row = ws.max_row
+        ws.row_dimensions[team_hdr_row].height = 20
+        for c_idx in range(1, len(team_headers) + 1):
+            c = ws.cell(row=team_hdr_row, column=c_idx)
+            c.fill = sub_header_fill
+            c.font = header_font
+            c.border = thin_border
+
+        if not teams:
+            ws.append(["No teams assigned to this panel yet.", "", "", "", "", "", "", "", "", ""])
+            empty_row = ws.max_row
+            ws.merge_cells(start_row=empty_row, start_column=1, end_row=empty_row, end_column=10)
+            c = ws.cell(row=empty_row, column=1)
+            c.font = italic_note_font
+            c.border = thin_border
+        else:
+            for sel in teams:
+                t = sel.team
+                if not t:
+                    continue
+                pod_name = t.pod.name if t.pod else "Unassigned"
+                members_str = ", ".join([m.name for m in t.members if m.name]) if t.members else ""
+                status_str = t.status.value if hasattr(t.status, 'value') else str(t.status or "")
+                
+                row_vals = [
+                    t.registrationId or "",
+                    t.name or "",
+                    t.leaderName or "",
+                    t.leaderEmail or "",
+                    t.leaderPhone or "",
+                    t.collegeName or "",
+                    t.deskNumber or "",
+                    status_str,
+                    pod_name,
+                    members_str
+                ]
+                ws.append(row_vals)
+                curr_row = ws.max_row
+                ws.row_dimensions[curr_row].height = 19
+                for c_idx in range(1, len(row_vals) + 1):
+                    c = ws.cell(row=curr_row, column=c_idx)
+                    c.font = data_font
+                    c.border = thin_border
+
+        for col in ws.columns:
+            max_len = 0
+            col_letter = get_column_letter(col[0].column)
+            for cell in col:
+                if cell.row in [1, 2, sec1_row, sec2_row]:
+                    continue
+                val_str = str(cell.value or '')
+                if len(val_str) > max_len:
+                    max_len = min(len(val_str), 40)
+            ws.column_dimensions[col_letter].width = min(max(max_len + 4, 14), 50)
+
+    output = io.BytesIO()
+    wb.save(output)
     output.seek(0)
+
+    logger.info(f"Exported panels master workbook with {len(panels)} panel sheets")
     return StreamingResponse(
-        iter([output.getvalue()]),
-        headers={'Content-Disposition': 'attachment; filename="panels_export.csv"', 'Content-Type': 'text/csv'}
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="panels_master_workbook.xlsx"'}
     )
 
 @router.post("/panels/import")

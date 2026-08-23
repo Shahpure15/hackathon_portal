@@ -17,6 +17,9 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('has_session', 'true');
       return { success: true };
     } catch (error) {
+      if (error.response?.status === 410) {
+        return { success: false, status: 410, error: error.response?.data?.detail || 'This event has concluded. The portal is now read-only.' };
+      }
       if (error.response?.status === 429) {
         return { success: false, error: 'Too many attempts. Please try again in a few minutes.' };
       }
