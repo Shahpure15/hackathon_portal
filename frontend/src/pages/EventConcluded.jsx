@@ -1,13 +1,11 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Award, CheckCircle, ArrowRight, ShieldAlert } from 'lucide-react';
+import { CheckCircle, ShieldAlert } from 'lucide-react';
 import AmbientCursorGlow from '../components/AmbientCursorGlow';
 import logoMitIndia from '../assets/logo_mitindia.jpg';
 import logoDarkMode from '../assets/logo_darkmode.png';
 import { useTheme } from '../contexts/ThemeContext';
 
 const EventConcluded = () => {
-  const navigate = useNavigate();
   const { theme } = useTheme();
 
   return (
@@ -60,32 +58,12 @@ const EventConcluded = () => {
         }}>
           <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-light)', borderRadius: '12px' }}>
             <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-main)' }}>
-              <Award size={16} color="var(--primary)" /> Certificate Access
-            </h4>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, lineHeight: '1.4' }}>
-              Participating leaders can log in to view and download their official participation certificates.
-            </p>
-          </div>
-
-          <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-light)', borderRadius: '12px' }}>
-            <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-main)' }}>
               <ShieldAlert size={16} color="#eab308" /> Multi-Phase Portal
             </h4>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, lineHeight: '1.4' }}>
               Future qualifiers (e.g. Delhi Phase) will open on their scheduled dates under their dedicated event portals.
             </p>
           </div>
-        </div>
-
-        {/* Action Button */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          <button 
-            onClick={() => navigate('/login')} 
-            className="btn btn-primary touch-target" 
-            style={{ padding: '12px 24px', fontSize: '0.9rem', fontWeight: 600, borderRadius: '10px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
-          >
-            Go to Portal Login <ArrowRight size={16} />
-          </button>
         </div>
 
       </div>

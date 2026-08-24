@@ -580,6 +580,6 @@ def export_volunteer_people(
 
     headers = {
         'Content-Disposition': 'attachment; filename="people_checkin_export.csv"',
-        'Content-Type': 'text/csv; charset=utf-8'
+        'Content-Type': 'text/csv; charset=utf-8-sig'
     }
-    return StreamingResponse(iter([output.getvalue()]), headers=headers)
+    return StreamingResponse(iter([output.getvalue().encode('utf-8-sig')]), headers=headers)

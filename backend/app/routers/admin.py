@@ -341,9 +341,9 @@ def export_teams(
     
     headers = {
         'Content-Disposition': 'attachment; filename="teams_roster_export.csv"',
-        'Content-Type': 'text/csv'
+        'Content-Type': 'text/csv; charset=utf-8-sig'
     }
-    return StreamingResponse(iter([output.getvalue()]), headers=headers)
+    return StreamingResponse(iter([output.getvalue().encode('utf-8-sig')]), headers=headers)
 
 @router.get("/teams/unresolved-leaders")
 def get_unresolved_leaders_report(
@@ -1861,10 +1861,10 @@ def export_pod_roster(
     
     headers = {
         'Content-Disposition': f'attachment; filename="pod_{pod.name.replace(" ", "_")}_roster.csv"',
-        'Content-Type': 'text/csv'
+        'Content-Type': 'text/csv; charset=utf-8-sig'
     }
     
-    return StreamingResponse(iter([output.getvalue()]), headers=headers)
+    return StreamingResponse(iter([output.getvalue().encode('utf-8-sig')]), headers=headers)
 
 
 # ==========================================
@@ -4012,6 +4012,477 @@ def clear_checkpoint_records(
     return {"message": f"Cleared {record_count} attendance record(s) for checkpoint '{cp.name}'", "count": record_count}
 
 
+@router.get("/checkpoints/export-master-workbook")
+def export_attendance_master_workbook(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    """
+    Exports a comprehensive multi-sheet Master Excel Workbook containing:
+    1. Overall Checkpoint Summary
+    2. Participant Attendance Matrix (all team members across all checkpoints)
+    3. Volunteer Attendance Matrix (all volunteers across all checkpoints)
+    4. Individual Sheets for each Checkpoint / Attendance Slot
+    """
+    checkpoints = db.query(CheckpointType).filter(
+        CheckpointType.eventId == current_user.eventId
+    ).order_by(CheckpointType.name).all()
+
+    members = db.query(TeamMember).options(
+        joinedload(TeamMember.team).joinedload(Team.pod),
+        joinedload(TeamMember.attendanceRecords)
+    ).join(Team).filter(
+        Team.eventId == current_user.eventId
+    ).order_by(Team.registrationId, TeamMember.isLeader.desc(), TeamMember.name).all()
+
+    volunteers = db.query(Volunteer).options(
+        joinedload(Volunteer.pod),
+        joinedload(Volunteer.attendanceRecords)
+    ).filter(
+        Volunteer.eventId == current_user.eventId
+    ).order_by(Volunteer.name).all()
+
+    wb = openpyxl.Workbook()
+    if "Sheet" in wb.sheetnames:
+        wb.remove(wb["Sheet"])
+
+    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    sub_header_fill = PatternFill(start_color="475569", end_color="475569", fill_type="solid")
+    meta_banner_fill = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
+
+    title_font = Font(name="Calibri", size=12, bold=True, color="FFFFFF")
+    header_font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+    meta_bold_font = Font(name="Calibri", size=10, bold=True, color="1E293B")
+    data_font = Font(name="Calibri", size=10, color="0F172A")
+    yes_font = Font(name="Calibri", size=10, bold=True, color="166534")
+    no_font = Font(name="Calibri", size=10, color="991B1B")
+
+    thin_border = Border(
+        left=Side(style='thin', color='CBD5E1'),
+        right=Side(style='thin', color='CBD5E1'),
+        top=Side(style='thin', color='CBD5E1'),
+        bottom=Side(style='thin', color='CBD5E1')
+    )
+
+    # -------------------------------------------------------------
+    # SHEET 1: OVERALL ATTENDANCE SUMMARY
+    # -------------------------------------------------------------
+    ws_summary = wb.create_sheet(title="Attendance Overview")
+    ws_summary.append(["ATTENDANCE & CHECKPOINT MASTER SUMMARY"])
+    ws_summary.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
+    cell_title = ws_summary.cell(row=1, column=1)
+    cell_title.fill = header_fill
+    cell_title.font = title_font
+    cell_title.alignment = Alignment(horizontal="center", vertical="center")
+    ws_summary.row_dimensions[1].height = 28
+
+    total_participants = len(members)
+    total_vols = len(volunteers)
+
+    ws_summary.append([f"Total Registered Participants: {total_participants}  |  Total Volunteers: {total_vols}  |  Total Slots: {len(checkpoints)}"])
+    ws_summary.merge_cells(start_row=2, start_column=1, end_row=2, end_column=6)
+    cell_meta = ws_summary.cell(row=2, column=1)
+    cell_meta.fill = meta_banner_fill
+    cell_meta.font = meta_bold_font
+    cell_meta.alignment = Alignment(horizontal="center", vertical="center")
+    ws_summary.row_dimensions[2].height = 20
+
+    ws_summary.append([]) # Empty row
+
+    summary_headers = [
+        "Checkpoint / Slot Name", "Description", "Participants Checked In", 
+        "Participant Rate %", "Volunteers Checked In", "Volunteer Rate %"
+    ]
+    ws_summary.append(summary_headers)
+    ws_summary.row_dimensions[4].height = 22
+    for col_idx in range(1, len(summary_headers) + 1):
+        c = ws_summary.cell(row=4, column=col_idx)
+        c.fill = sub_header_fill
+        c.font = header_font
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = thin_border
+
+    row_idx = 5
+    for cp in checkpoints:
+        p_count = sum(1 for m in members if any(r.checkpointTypeId == cp.id for r in (m.attendanceRecords or [])))
+        v_count = sum(1 for v in volunteers if any(r.checkpointTypeId == cp.id for r in (v.attendanceRecords or [])))
+        
+        p_pct = f"{(p_count / total_participants * 100):.1f}%" if total_participants > 0 else "0.0%"
+        v_pct = f"{(v_count / total_vols * 100):.1f}%" if total_vols > 0 else "0.0%"
+
+        ws_summary.append([cp.name, cp.description or "", p_count, p_pct, v_count, v_pct])
+        ws_summary.row_dimensions[row_idx].height = 19
+        for col_idx in range(1, len(summary_headers) + 1):
+            c = ws_summary.cell(row=row_idx, column=col_idx)
+            c.font = data_font
+            c.border = thin_border
+            if col_idx in [3, 4, 5, 6]:
+                c.alignment = Alignment(horizontal="center", vertical="center")
+            else:
+                c.alignment = Alignment(horizontal="left", vertical="center")
+        row_idx += 1
+
+    for col in ws_summary.columns:
+        max_len = max(len(str(cell.value or '')) for cell in col)
+        col_letter = get_column_letter(col[0].column)
+        ws_summary.column_dimensions[col_letter].width = max(max_len + 4, 15)
+
+    # -------------------------------------------------------------
+    # SHEET 2: PARTICIPANTS MASTER ATTENDANCE
+    # -------------------------------------------------------------
+    ws_part = wb.create_sheet(title="Participants Master")
+    ws_part.append(["PARTICIPANTS ATTENDANCE MATRIX"])
+    max_part_cols = max(1, 6 + len(checkpoints) * 2)
+    ws_part.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max_part_cols)
+    cell_title = ws_part.cell(row=1, column=1)
+    cell_title.fill = header_fill
+    cell_title.font = title_font
+    cell_title.alignment = Alignment(horizontal="center", vertical="center")
+    ws_part.row_dimensions[1].height = 28
+
+    part_headers = ["Team Code", "Team Name", "Member Name", "Role", "Contact No.", "POD Group"]
+    for cp in checkpoints:
+        part_headers.extend([f"{cp.name} Status", f"{cp.name} Check-In Time"])
+    
+    ws_part.append(part_headers)
+    ws_part.row_dimensions[2].height = 22
+    for col_idx in range(1, len(part_headers) + 1):
+        c = ws_part.cell(row=2, column=col_idx)
+        c.fill = sub_header_fill
+        c.font = header_font
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = thin_border
+
+    row_idx = 3
+    for m in members:
+        team_code = m.team.registrationId if m.team else ""
+        team_name = m.team.name if m.team else ""
+        pod_name = m.team.pod.name if (m.team and m.team.pod) else "Unassigned"
+        role_str = "Leader" if m.isLeader else "Member"
+
+        row_vals = [team_code, team_name, m.name, role_str, m.contact or "", pod_name]
+        att_map = {rec.checkpointTypeId: rec for rec in (m.attendanceRecords or [])}
+
+        for cp in checkpoints:
+            rec = att_map.get(cp.id)
+            if rec:
+                ts_str = rec.timestamp.strftime("%Y-%m-%d %H:%M:%S") if rec.timestamp else "Yes"
+                row_vals.extend(["Yes", ts_str])
+            else:
+                row_vals.extend(["No", "-"])
+
+        ws_part.append(row_vals)
+        ws_part.row_dimensions[row_idx].height = 19
+        for col_idx in range(1, len(part_headers) + 1):
+            c = ws_part.cell(row=row_idx, column=col_idx)
+            c.font = data_font
+            c.border = thin_border
+            val_str = str(row_vals[col_idx - 1])
+            if val_str == "Yes":
+                c.font = yes_font
+                c.alignment = Alignment(horizontal="center", vertical="center")
+            elif val_str == "No":
+                c.font = no_font
+                c.alignment = Alignment(horizontal="center", vertical="center")
+            else:
+                c.alignment = Alignment(horizontal="left", vertical="center")
+        row_idx += 1
+
+    for col in ws_part.columns:
+        max_len = max(len(str(cell.value or '')) for cell in col)
+        col_letter = get_column_letter(col[0].column)
+        ws_part.column_dimensions[col_letter].width = max(max_len + 3, 12)
+
+    # -------------------------------------------------------------
+    # SHEET 3: VOLUNTEERS MASTER ATTENDANCE
+    # -------------------------------------------------------------
+    ws_vol = wb.create_sheet(title="Volunteers Master")
+    ws_vol.append(["VOLUNTEERS ATTENDANCE MATRIX"])
+    max_vol_cols = max(1, 4 + len(checkpoints) * 2)
+    ws_vol.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max_vol_cols)
+    cell_title = ws_vol.cell(row=1, column=1)
+    cell_title.fill = header_fill
+    cell_title.font = title_font
+    cell_title.alignment = Alignment(horizontal="center", vertical="center")
+    ws_vol.row_dimensions[1].height = 28
+
+    vol_headers = ["Volunteer Name", "Role / Type", "Contact No.", "Assigned POD Group"]
+    for cp in checkpoints:
+        vol_headers.extend([f"{cp.name} Status", f"{cp.name} Check-In Time"])
+
+    ws_vol.append(vol_headers)
+    ws_vol.row_dimensions[2].height = 22
+    for col_idx in range(1, len(vol_headers) + 1):
+        c = ws_vol.cell(row=2, column=col_idx)
+        c.fill = sub_header_fill
+        c.font = header_font
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = thin_border
+
+    row_idx = 3
+    for v in volunteers:
+        vol_type = v.type.value if hasattr(v.type, 'value') else str(v.type or "")
+        pod_name = v.pod.name if v.pod else "Unassigned"
+        row_vals = [v.name, vol_type, v.contact or "", pod_name]
+        att_map = {rec.checkpointTypeId: rec for rec in (v.attendanceRecords or [])}
+
+        for cp in checkpoints:
+            rec = att_map.get(cp.id)
+            if rec:
+                ts_str = rec.timestamp.strftime("%Y-%m-%d %H:%M:%S") if rec.timestamp else "Yes"
+                row_vals.extend(["Yes", ts_str])
+            else:
+                row_vals.extend(["No", "-"])
+
+        ws_vol.append(row_vals)
+        ws_vol.row_dimensions[row_idx].height = 19
+        for col_idx in range(1, len(vol_headers) + 1):
+            c = ws_vol.cell(row=row_idx, column=col_idx)
+            c.font = data_font
+            c.border = thin_border
+            val_str = str(row_vals[col_idx - 1])
+            if val_str == "Yes":
+                c.font = yes_font
+                c.alignment = Alignment(horizontal="center", vertical="center")
+            elif val_str == "No":
+                c.font = no_font
+                c.alignment = Alignment(horizontal="center", vertical="center")
+            else:
+                c.alignment = Alignment(horizontal="left", vertical="center")
+        row_idx += 1
+
+    for col in ws_vol.columns:
+        max_len = max(len(str(cell.value or '')) for cell in col)
+        col_letter = get_column_letter(col[0].column)
+        ws_vol.column_dimensions[col_letter].width = max(max_len + 3, 12)
+
+    # -------------------------------------------------------------
+    # SHEET 4+: INDIVIDUAL CHECKPOINT SHEETS
+    # -------------------------------------------------------------
+    for cp in checkpoints:
+        clean_title = re.sub(r'[\/*?:\[\]]', '', cp.name)[:30]
+        ws_cp = wb.create_sheet(title=clean_title)
+        
+        ws_cp.append([f"CHECKPOINT RECORDS: {cp.name.upper()}"])
+        ws_cp.merge_cells(start_row=1, start_column=1, end_row=1, end_column=7)
+        cell_title = ws_cp.cell(row=1, column=1)
+        cell_title.fill = header_fill
+        cell_title.font = title_font
+        cell_title.alignment = Alignment(horizontal="center", vertical="center")
+        ws_cp.row_dimensions[1].height = 28
+
+        cp_headers = ["Record Type", "Code / Type", "Name", "Team / Pod Name", "Contact", "Check-in Timestamp", "Marked By"]
+        ws_cp.append(cp_headers)
+        ws_cp.row_dimensions[2].height = 22
+        for col_idx in range(1, len(cp_headers) + 1):
+            c = ws_cp.cell(row=2, column=col_idx)
+            c.fill = sub_header_fill
+            c.font = header_font
+            c.alignment = Alignment(horizontal="center", vertical="center")
+            c.border = thin_border
+
+        row_idx = 3
+        # Add participant records for this checkpoint
+        for m in members:
+            rec = next((r for r in (m.attendanceRecords or []) if r.checkpointTypeId == cp.id), None)
+            if rec:
+                team_code = m.team.registrationId if m.team else ""
+                team_name = m.team.name if m.team else ""
+                ts_str = rec.timestamp.strftime("%Y-%m-%d %H:%M:%S") if rec.timestamp else ""
+                ws_cp.append(["Participant", team_code, m.name, team_name, m.contact or "", ts_str, rec.markedBy or ""])
+                ws_cp.row_dimensions[row_idx].height = 19
+                for col_idx in range(1, len(cp_headers) + 1):
+                    c = ws_cp.cell(row=row_idx, column=col_idx)
+                    c.font = data_font
+                    c.border = thin_border
+                row_idx += 1
+
+        # Add volunteer records for this checkpoint
+        for v in volunteers:
+            rec = next((r for r in (v.attendanceRecords or []) if r.checkpointTypeId == cp.id), None)
+            if rec:
+                vol_type = v.type.value if hasattr(v.type, 'value') else str(v.type or "")
+                pod_name = v.pod.name if v.pod else "Unassigned"
+                ts_str = rec.timestamp.strftime("%Y-%m-%d %H:%M:%S") if rec.timestamp else ""
+                ws_cp.append(["Volunteer", vol_type, v.name, pod_name, v.contact or "", ts_str, rec.markedBy or ""])
+                ws_cp.row_dimensions[row_idx].height = 19
+                for col_idx in range(1, len(cp_headers) + 1):
+                    c = ws_cp.cell(row=row_idx, column=col_idx)
+                    c.font = data_font
+                    c.border = thin_border
+                row_idx += 1
+
+        for col in ws_cp.columns:
+            max_len = max(len(str(cell.value or '')) for cell in col)
+            col_letter = get_column_letter(col[0].column)
+            ws_cp.column_dimensions[col_letter].width = max(max_len + 3, 14)
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    logger.info(f"Exported master attendance workbook across {len(checkpoints)} checkpoints for event {current_user.eventId}")
+    headers = {
+        'Content-Disposition': 'attachment; filename="attendance_master_workbook.xlsx"',
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    }
+    return StreamingResponse(output, headers=headers)
+
+
+@router.get("/checkpoints/{id}/export")
+def export_single_checkpoint_sheet(
+    id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+):
+    """
+    Exports a single checkpoint sheet workbook containing participant and volunteer check-in records for that specific checkpoint.
+    """
+    cp = db.query(CheckpointType).filter(
+        CheckpointType.id == id,
+        CheckpointType.eventId == current_user.eventId
+    ).first()
+    if not cp:
+        raise HTTPException(status_code=404, detail="Checkpoint not found")
+
+    members = db.query(TeamMember).options(
+        joinedload(TeamMember.team),
+        joinedload(TeamMember.attendanceRecords)
+    ).join(Team).filter(
+        Team.eventId == current_user.eventId
+    ).order_by(Team.registrationId, TeamMember.name).all()
+
+    volunteers = db.query(Volunteer).options(
+        joinedload(Volunteer.pod),
+        joinedload(Volunteer.attendanceRecords)
+    ).filter(
+        Volunteer.eventId == current_user.eventId
+    ).order_by(Volunteer.name).all()
+
+    wb = openpyxl.Workbook()
+    if "Sheet" in wb.sheetnames:
+        wb.remove(wb["Sheet"])
+
+    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    sub_header_fill = PatternFill(start_color="475569", end_color="475569", fill_type="solid")
+    title_font = Font(name="Calibri", size=12, bold=True, color="FFFFFF")
+    header_font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+    data_font = Font(name="Calibri", size=10, color="0F172A")
+    yes_font = Font(name="Calibri", size=10, bold=True, color="166534")
+    no_font = Font(name="Calibri", size=10, color="991B1B")
+
+    thin_border = Border(
+        left=Side(style='thin', color='CBD5E1'),
+        right=Side(style='thin', color='CBD5E1'),
+        top=Side(style='thin', color='CBD5E1'),
+        bottom=Side(style='thin', color='CBD5E1')
+    )
+
+    clean_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', cp.name).strip('_')
+
+    # Participant sheet
+    ws_p = wb.create_sheet(title="Participants")
+    ws_p.append([f"CHECKPOINT: {cp.name.upper()} — PARTICIPANTS"])
+    ws_p.merge_cells(start_row=1, start_column=1, end_row=1, end_column=7)
+    cell_title = ws_p.cell(row=1, column=1)
+    cell_title.fill = header_fill
+    cell_title.font = title_font
+    cell_title.alignment = Alignment(horizontal="center", vertical="center")
+    ws_p.row_dimensions[1].height = 28
+
+    headers_p = ["Team Code", "Team Name", "Member Name", "Role", "Check-in Status", "Check-in Timestamp", "Marked By"]
+    ws_p.append(headers_p)
+    ws_p.row_dimensions[2].height = 22
+    for col_idx in range(1, len(headers_p) + 1):
+        c = ws_p.cell(row=2, column=col_idx)
+        c.fill = sub_header_fill
+        c.font = header_font
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = thin_border
+
+    row_idx = 3
+    for m in members:
+        rec = next((r for r in (m.attendanceRecords or []) if r.checkpointTypeId == cp.id), None)
+        team_code = m.team.registrationId if m.team else ""
+        team_name = m.team.name if m.team else ""
+        role_str = "Leader" if m.isLeader else "Member"
+        status_str = "Checked In" if rec else "Pending"
+        ts_str = rec.timestamp.strftime("%Y-%m-%d %H:%M:%S") if (rec and rec.timestamp) else "-"
+        marked_by = rec.markedBy if rec else "-"
+
+        ws_p.append([team_code, team_name, m.name, role_str, status_str, ts_str, marked_by])
+        ws_p.row_dimensions[row_idx].height = 19
+        for col_idx in range(1, len(headers_p) + 1):
+            c = ws_p.cell(row=row_idx, column=col_idx)
+            c.font = data_font
+            c.border = thin_border
+            if col_idx == 5:
+                c.font = yes_font if rec else no_font
+                c.alignment = Alignment(horizontal="center", vertical="center")
+        row_idx += 1
+
+    for col in ws_p.columns:
+        max_len = max(len(str(cell.value or '')) for cell in col)
+        col_letter = get_column_letter(col[0].column)
+        ws_p.column_dimensions[col_letter].width = max(max_len + 3, 14)
+
+    # Volunteer sheet
+    ws_v = wb.create_sheet(title="Volunteers")
+    ws_v.append([f"CHECKPOINT: {cp.name.upper()} — VOLUNTEERS"])
+    ws_v.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
+    cell_title = ws_v.cell(row=1, column=1)
+    cell_title.fill = header_fill
+    cell_title.font = title_font
+    cell_title.alignment = Alignment(horizontal="center", vertical="center")
+    ws_v.row_dimensions[1].height = 28
+
+    headers_v = ["Volunteer Name", "Role / Type", "Assigned Pod", "Check-in Status", "Check-in Timestamp", "Marked By"]
+    ws_v.append(headers_v)
+    ws_v.row_dimensions[2].height = 22
+    for col_idx in range(1, len(headers_v) + 1):
+        c = ws_v.cell(row=2, column=col_idx)
+        c.fill = sub_header_fill
+        c.font = header_font
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = thin_border
+
+    row_idx = 3
+    for v in volunteers:
+        rec = next((r for r in (v.attendanceRecords or []) if r.checkpointTypeId == cp.id), None)
+        vol_type = v.type.value if hasattr(v.type, 'value') else str(v.type or "")
+        pod_name = v.pod.name if v.pod else "Unassigned"
+        status_str = "Checked In" if rec else "Pending"
+        ts_str = rec.timestamp.strftime("%Y-%m-%d %H:%M:%S") if (rec and rec.timestamp) else "-"
+        marked_by = rec.markedBy if rec else "-"
+
+        ws_v.append([v.name, vol_type, pod_name, status_str, ts_str, marked_by])
+        ws_v.row_dimensions[row_idx].height = 19
+        for col_idx in range(1, len(headers_v) + 1):
+            c = ws_v.cell(row=row_idx, column=col_idx)
+            c.font = data_font
+            c.border = thin_border
+            if col_idx == 4:
+                c.font = yes_font if rec else no_font
+                c.alignment = Alignment(horizontal="center", vertical="center")
+        row_idx += 1
+
+    for col in ws_v.columns:
+        max_len = max(len(str(cell.value or '')) for cell in col)
+        col_letter = get_column_letter(col[0].column)
+        ws_v.column_dimensions[col_letter].width = max(max_len + 3, 14)
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    filename = f"{clean_name}_attendance_export.xlsx"
+    headers = {
+        'Content-Disposition': f'attachment; filename="{filename}"',
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    }
+    return StreamingResponse(output, headers=headers)
+
+
 # ==========================================
 # PANELS & EVALUATION ROSTER EXPORT
 # ==========================================
@@ -4186,8 +4657,8 @@ def export_evaluation_sheet(
     output.seek(0)
     logger.info(f"Exported evaluation sheet (ps_id={ps_id}, total_teams={len(teams)})")
     return StreamingResponse(
-        iter([output.getvalue()]),
-        headers={'Content-Disposition': 'attachment; filename="evaluation_roster.csv"', 'Content-Type': 'text/csv'}
+        iter([output.getvalue().encode('utf-8-sig')]),
+        headers={'Content-Disposition': 'attachment; filename="evaluation_roster.csv"', 'Content-Type': 'text/csv; charset=utf-8-sig'}
     )
 
 
@@ -4938,8 +5409,8 @@ def export_evaluation_rounds(
 
     output.seek(0)
     return StreamingResponse(
-        iter([output.getvalue()]),
-        headers={'Content-Disposition': 'attachment; filename="evaluation_rounds_export.csv"', 'Content-Type': 'text/csv'}
+        iter([output.getvalue().encode('utf-8-sig')]),
+        headers={'Content-Disposition': 'attachment; filename="evaluation_rounds_export.csv"', 'Content-Type': 'text/csv; charset=utf-8-sig'}
     )
 
 @router.post("/evaluation-rounds/import")
@@ -5003,8 +5474,8 @@ def export_attendance_slots(
 
     output.seek(0)
     return StreamingResponse(
-        iter([output.getvalue()]),
-        headers={'Content-Disposition': 'attachment; filename="attendance_slots_export.csv"', 'Content-Type': 'text/csv'}
+        iter([output.getvalue().encode('utf-8-sig')]),
+        headers={'Content-Disposition': 'attachment; filename="attendance_slots_export.csv"', 'Content-Type': 'text/csv; charset=utf-8-sig'}
     )
 
 @router.post("/attendance-slots/import")

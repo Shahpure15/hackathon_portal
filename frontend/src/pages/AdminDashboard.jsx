@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Users, Layers, UserCheck, FileText, Download, Upload,
+  Users, Layers, UserCheck, FileText, FileSpreadsheet, Download, Upload,
   Search, X, Edit2, AlertCircle, CheckCircle, Info, ChevronLeft, ChevronRight, Eye, EyeOff, LogOut, Menu, Lock, Plus, Trash2, QrCode
 } from 'lucide-react';
 import api from '../services/api';
@@ -5896,6 +5896,41 @@ const CheckpointsView = () => {
     }
   };
 
+  const handleExportMasterWorkbook = async () => {
+    try {
+      const res = await api.get('/admin/checkpoints/export-master-workbook', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'attendance_master_workbook.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      addToast('Attendance Master Workbook exported!', 'success');
+    } catch (err) {
+      addToast('Failed to export Master Attendance Workbook', 'error');
+    }
+  };
+
+  const handleExportSingleCheckpoint = async (cp) => {
+    try {
+      const res = await api.get(`/admin/checkpoints/${cp.id}/export`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const cleanName = cp.name.replace(/[^a-zA-Z0-9_\-]/g, '_');
+      link.setAttribute('download', `${cleanName}_attendance_export.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      addToast(`Attendance sheet exported for ${cp.name}!`, 'success');
+    } catch (err) {
+      addToast(`Failed to export sheet for ${cp.name}`, 'error');
+    }
+  };
+
   return (
     <div style={{ marginBottom: '28px' }}>
       {/* Title Section */}
@@ -5908,6 +5943,9 @@ const CheckpointsView = () => {
 
       {/* Action Grid Toolbar */}
       <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
+        <button onClick={handleExportMasterWorkbook} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--primary)', borderColor: 'rgba(99, 102, 241, 0.3)' }} title="Export Complete Multi-Sheet Excel Master Workbook">
+          <FileSpreadsheet size={16} /> Master Workbook
+        </button>
         <button onClick={handleDownloadSlotsTemplate} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download Slots Template CSV">
           <Download size={16} /> Template CSV
         </button>
@@ -5967,9 +6005,17 @@ const CheckpointsView = () => {
           {
             header: '',
             align: 'right',
-            width: '200px',
+            width: '280px',
             render: (c) => (
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleExportSingleCheckpoint(c); }}
+                  className="btn btn-secondary"
+                  style={{ padding: '6px 10px', minHeight: 'auto', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                  title="Download single sheet Excel export for this checkpoint"
+                >
+                  <Download size={14} /> Download Sheet
+                </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); openClearConfirm(c); }}
                   className="btn btn-secondary"
