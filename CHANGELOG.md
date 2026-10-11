@@ -3,6 +3,8 @@
 Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.md). Every entry ends with its change ID.
 
 ## [Unreleased]
+
+## [10.1.0] - 2026-10-11
 ### Added
 - Admin UI version badge showing app and API versions with a mismatch warning. [P0-C06]
 - GET /admin/system/info (admin only): app version, Alembic schema revision, commit, environment. [P0-C05]
