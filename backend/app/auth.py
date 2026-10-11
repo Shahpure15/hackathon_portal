@@ -91,6 +91,9 @@ async def get_current_user(
     if user is None:
         raise credentials_exception
 
+    if getattr(user, 'status', 'active') == 'disabled':
+        raise credentials_exception
+
     return CurrentUser(
         id=user.id,
         eventId=user.eventId,
