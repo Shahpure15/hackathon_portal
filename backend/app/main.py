@@ -7,7 +7,7 @@ from sqlalchemy import text
 
 from app.config import settings
 from app.database import get_db, engine
-from app.routers import auth, admin, leader, volunteer
+from app.routers import auth, admin, leader, volunteer, system
 from app.limiter import limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
@@ -148,3 +148,4 @@ app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(leader.router)
 app.include_router(volunteer.router)
+app.include_router(system.router)
