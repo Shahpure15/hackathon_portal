@@ -4,9 +4,13 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 ### Added
+- Rounds API with rubric editing and publishing. [P2-C05]
 - Rubric service with versioning, publish and lock rules. [P2-C04]
 - Pure scoring engine: judge totals, aggregation, ranking, display scale, rubric validation. [P2-C03]
 - Unified round columns and rubric_versions/rubric_fields tables. [P2-C02]
+
+### Changed
+- Leader round list and submission ignore rounds with submissions disabled. [P2-C05]
 
 ## [10.3.0] - 2026-10-11
 ### Added
