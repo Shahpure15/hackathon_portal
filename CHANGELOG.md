@@ -3,6 +3,8 @@
 Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.md). Every entry ends with its change ID.
 
 ## [Unreleased]
+
+## [10.5.0] - 2026-10-11
 ### Added
 - Shared scoring vectors checked on both backend and frontend in CI. [P3-C09]
 - Accept-invite page; Email module; Judging tab with assignment wizard, progress console and rubric revise; judge console. [P3-C08]

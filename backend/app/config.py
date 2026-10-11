@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     CORS_ALLOWED_ORIGIN_REGEX: str = ""
     ENVIRONMENT: str = "development"
     SENTRY_DSN: str = ""
-    BACKEND_VERSION: str = "10.4.0"
+    BACKEND_VERSION: str = "10.5.0"
     SECRETS_ENCRYPTION_KEY: str = ""
     FRONTEND_BASE_URL: str = ""
     EMAIL_WORKER_ENABLED: bool = True
