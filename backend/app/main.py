@@ -89,7 +89,7 @@ async def log_requests(request: Request, call_next):
         origin = request.headers.get("origin", "*")
         response = JSONResponse(
             status_code=500,
-            content={"detail": f"Internal Server Error: {str(exc)}"}
+            content={"detail": "Internal Server Error"}
         )
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Credentials"] = "true"

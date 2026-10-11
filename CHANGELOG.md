@@ -3,6 +3,8 @@
 Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.md). Every entry ends with its change ID.
 
 ## [Unreleased]
+### Security
+- 500 responses no longer include exception text; details remain in server logs only. [P0-C02]
 
 ## [10.0.0] - 2026-10-10
 ### Baseline
