@@ -4,6 +4,7 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 ### Added
+- Permission usage and role-by-route parity tests. [P1-C09]
 - GET /auth/me returning the caller's permissions, scope, features and module gates. [P1-C08]
 - RBAC core: Principal, require_permission, require_principal, team scope filter, 15-second access cache. [P1-C05]
 - RBAC tables (roles, role_permissions, role_templates, user_role_assignments) with seeded Volunteer and Judge roles and backfilled volunteer assignments. [P1-C04]
