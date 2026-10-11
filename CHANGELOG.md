@@ -4,6 +4,7 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 ### Added
+- Permission catalog (46 keys) with tiers, implications and scopable flags. [P1-C03]
 - Test factories for events, users, volunteers, teams and auth headers. [P1-C02]
 
 ## [10.1.0] - 2026-10-11
