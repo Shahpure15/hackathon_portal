@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import (
     Column, String, Integer, Boolean, DateTime, ForeignKey, 
-    Enum, JSON, Index, UniqueConstraint, func, Text, Numeric
+    Enum, JSON, Index, UniqueConstraint, func, Text, Numeric, text
 )
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -497,4 +497,233 @@ class UserRoleAssignment(Base):
     __table_args__ = (
         UniqueConstraint("userId", "roleId", name="uq_user_role_assignments_user_role"),
     )
+
+
+class SmtpAccount(Base):
+    __tablename__ = "smtp_accounts"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    orgId = Column(String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
+    label = Column(String(100), nullable=False)
+    host = Column(String(255), nullable=False)
+    port = Column(Integer, nullable=False)
+    security = Column(String(20), nullable=False)  # starttls | ssl
+    username = Column(String(255), nullable=False)
+    passwordEnc = Column(Text, nullable=False)
+    fromEmail = Column(String(255), nullable=False)
+    fromName = Column(String(255), nullable=False)
+    replyTo = Column(String(255), nullable=True)
+    dailyLimit = Column(Integer, nullable=True)
+    perMinuteLimit = Column(Integer, nullable=True)
+    sentToday = Column(Integer, default=0, nullable=False)
+    windowStartedAt = Column(DateTime, nullable=True)
+    resetsAt = Column(DateTime, nullable=True)
+    status = Column(String(20), default="active", nullable=False)  # active | exhausted | auth_failed | disabled
+    lastError = Column(Text, nullable=True)
+    priority = Column(Integer, default=0, nullable=False)
+    createdAt = Column(DateTime, default=func.now(), nullable=False)
+
+    organization = relationship("Organization")
+
+
+class EmailTemplate(Base):
+    __tablename__ = "email_templates"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=True)
+    key = Column(String(60), nullable=False)
+    subject = Column(String(255), nullable=False)
+    body = Column(Text, nullable=False)
+    version = Column(Integer, default=1, nullable=False)
+    updatedBy = Column(String(100), nullable=True)
+    updatedAt = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+
+    event = relationship("Event")
+
+    __table_args__ = (
+        UniqueConstraint("eventId", "key", name="uq_email_templates_event_key"),
+    )
+
+
+class EmailBatch(Base):
+    __tablename__ = "email_batches"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    templateKey = Column(String(60), nullable=False)
+    templateSnapshot = Column(JSON, nullable=True)
+    audience = Column(JSON, nullable=True)
+    category = Column(String(20), nullable=False)
+    status = Column(String(20), default="queued", nullable=False)
+    counts = Column(JSON, nullable=True)
+    pausedReason = Column(String(255), nullable=True)
+    resumeAt = Column(DateTime, nullable=True)
+    createdBy = Column(String(100), nullable=True)
+    createdAt = Column(DateTime, default=func.now(), nullable=False)
+
+    event = relationship("Event")
+    outboxRows = relationship("EmailOutbox", back_populates="batch")
+
+
+class EmailOutbox(Base):
+    __tablename__ = "email_outbox"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    batchId = Column(String(36), ForeignKey("email_batches.id", ondelete="SET NULL"), nullable=True)
+    toEmail = Column(String(255), nullable=False)
+    toUserId = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    templateKey = Column(String(60), nullable=False)
+    subject = Column(String(255), nullable=False)
+    body = Column(Text, nullable=False)
+    priority = Column(Integer, default=5, nullable=False)  # 0 critical, 5 normal, 9 bulk
+    status = Column(String(20), default="queued", nullable=False)  # queued | sending | sent | failed | expired | cancelled
+    attempts = Column(Integer, default=0, nullable=False)
+    nextAttemptAt = Column(DateTime, nullable=False)
+    expiresAt = Column(DateTime, nullable=True)
+    accountId = Column(String(36), ForeignKey("smtp_accounts.id", ondelete="SET NULL"), nullable=True)
+    error = Column(Text, nullable=True)
+    sentAt = Column(DateTime, nullable=True)
+    createdAt = Column(DateTime, default=func.now(), nullable=False)
+
+    event = relationship("Event")
+    batch = relationship("EmailBatch", back_populates="outboxRows")
+    account = relationship("SmtpAccount")
+    user = relationship("User")
+
+    __table_args__ = (
+        Index("ix_email_outbox_due", "status", "nextAttemptAt", "priority"),
+    )
+
+
+class AuthToken(Base):
+    __tablename__ = "auth_tokens"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=True)
+    userId = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind = Column(String(10), nullable=False)  # invite | reset
+    tokenHash = Column(String(64), nullable=False, unique=True)
+    expiresAt = Column(DateTime, nullable=False)
+    usedAt = Column(DateTime, nullable=True)
+    createdAt = Column(DateTime, default=func.now(), nullable=False)
+
+    user = relationship("User")
+    event = relationship("Event")
+
+
+class JudgeAssignment(Base):
+    __tablename__ = "judge_assignments"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    roundId = Column(String(36), ForeignKey("evaluation_rounds.id", ondelete="CASCADE"), nullable=False)
+    teamId = Column(String(36), ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
+    judgeVolunteerId = Column(String(36), ForeignKey("volunteers.id", ondelete="CASCADE"), nullable=False)
+    source = Column(String(20), default="wizard", nullable=False)  # manual | wizard
+    status = Column(String(20), default="active", nullable=False)  # active | revoked
+    createdBy = Column(String(100), nullable=True)
+    createdAt = Column(DateTime, default=func.now(), nullable=False)
+    revokedAt = Column(DateTime, nullable=True)
+    revokedBy = Column(String(100), nullable=True)
+
+    event = relationship("Event")
+    round = relationship("EvaluationRound")
+    team = relationship("Team")
+    judgeVolunteer = relationship("Volunteer")
+
+    __table_args__ = (
+        UniqueConstraint("roundId", "teamId", "judgeVolunteerId", name="uq_judge_assignments_round_team_judge"),
+        Index("ix_judge_assignments_round_judge", "roundId", "judgeVolunteerId"),
+    )
+
+
+class Evaluation(Base):
+    __tablename__ = "evaluations"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    roundId = Column(String(36), ForeignKey("evaluation_rounds.id", ondelete="CASCADE"), nullable=False)
+    teamId = Column(String(36), ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
+    judgeVolunteerId = Column(String(36), ForeignKey("volunteers.id", ondelete="CASCADE"), nullable=False)
+    currentVersionId = Column(String(36), nullable=True)
+    createdAt = Column(DateTime, default=func.now(), nullable=False)
+
+    event = relationship("Event")
+    round = relationship("EvaluationRound")
+    team = relationship("Team")
+    judgeVolunteer = relationship("Volunteer")
+    versions = relationship("EvaluationVersion", back_populates="evaluation", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("roundId", "teamId", "judgeVolunteerId", name="uq_evaluations_round_team_judge"),
+    )
+
+
+class EvaluationVersion(Base):
+    __tablename__ = "evaluation_versions"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    evaluationId = Column(String(36), ForeignKey("evaluations.id", ondelete="CASCADE"), nullable=False)
+    version = Column(Integer, nullable=False)
+    rubricVersionId = Column(String(36), ForeignKey("rubric_versions.id", ondelete="SET NULL"), nullable=True)
+    status = Column(String(20), nullable=False)  # draft | final | superseded | discarded
+    totalPct = Column(Numeric(6, 3), nullable=True)
+    submittedAt = Column(DateTime, nullable=True)
+    supersededAt = Column(DateTime, nullable=True)
+    supersededReason = Column(String(30), nullable=True)  # unlock_resubmit | rubric_revise | admin_clear
+    createdAt = Column(DateTime, default=func.now(), nullable=False)
+    updatedAt = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+
+    event = relationship("Event")
+    evaluation = relationship("Evaluation", back_populates="versions")
+    rubricVersion = relationship("RubricVersion")
+    scores = relationship("EvaluationScore", back_populates="version", cascade="all, delete-orphan")
+    texts = relationship("EvaluationText", back_populates="version", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("evaluationId", "version", name="uq_evaluation_versions_eval_version"),
+        Index(
+            "uq_eval_version_single_draft",
+            "evaluationId",
+            unique=True,
+            postgresql_where=text("status = 'draft'"),
+            sqlite_where=text("status = 'draft'"),
+        ),
+        Index(
+            "uq_eval_version_single_final",
+            "evaluationId",
+            unique=True,
+            postgresql_where=text("status = 'final'"),
+            sqlite_where=text("status = 'final'"),
+        ),
+    )
+
+
+class EvaluationScore(Base):
+    __tablename__ = "evaluation_scores"
+
+    versionId = Column(String(36), ForeignKey("evaluation_versions.id", ondelete="CASCADE"), primary_key=True)
+    fieldId = Column(String(36), ForeignKey("rubric_fields.id", ondelete="CASCADE"), primary_key=True)
+    marks = Column(Numeric(8, 2), nullable=False)
+
+    version = relationship("EvaluationVersion", back_populates="scores")
+    field = relationship("RubricField")
+
+
+class EvaluationText(Base):
+    __tablename__ = "evaluation_texts"
+
+    versionId = Column(String(36), ForeignKey("evaluation_versions.id", ondelete="CASCADE"), primary_key=True)
+    fieldId = Column(String(36), ForeignKey("rubric_fields.id", ondelete="CASCADE"), primary_key=True)
+    value = Column(Text, nullable=True)
+    hiddenByAdmin = Column(Boolean, default=False, nullable=False)
+    hiddenBy = Column(String(100), nullable=True)
+    hiddenAt = Column(DateTime, nullable=True)
+
+    version = relationship("EvaluationVersion", back_populates="texts")
+    field = relationship("RubricField")
+
+
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Users, Layers, UserCheck, FileText, FileSpreadsheet, Download, Upload,
-  Search, X, Edit2, AlertCircle, CheckCircle, Info, ChevronLeft, ChevronRight, Eye, EyeOff, LogOut, Menu, Lock, Plus, Trash2, QrCode, ShieldCheck
+  Search, X, Edit2, AlertCircle, CheckCircle, Info, ChevronLeft, ChevronRight, Eye, EyeOff, LogOut, Menu, Lock, Plus, Trash2, QrCode, ShieldCheck, Mail
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -26,6 +26,7 @@ import { ADMIN_NAV_PERMISSIONS } from '../modules/registry';
 
 const RolesModule = React.lazy(() => import('../modules/roles/RolesModule'));
 const RoundsModule = React.lazy(() => import('../modules/rounds/RoundsModule'));
+const EmailModule = React.lazy(() => import('../modules/email/EmailModule'));
 
 
 
@@ -118,9 +119,13 @@ const AdminDashboard = () => {
           { id: 'checkpoints', label: 'Attendance Slots', icon: <FileText size={16} /> },
           { id: 'ps', label: 'Problem Statements', icon: <Layers size={16} /> },
           { id: 'psLive', label: 'Live PS View', icon: <Layers size={16} /> },
-          { id: 'roles', label: 'Roles & Access', icon: <ShieldCheck size={16} /> }
+          { id: 'roles', label: 'Roles & Access', icon: <ShieldCheck size={16} /> },
+          { id: 'email', label: 'Email', icon: <Mail size={16} /> }
         ].filter((item) => {
           if (item.id === 'pods' && features?.pods === false) return false;
+          if (Array.isArray(ADMIN_NAV_PERMISSIONS[item.id])) {
+            return ADMIN_NAV_PERMISSIONS[item.id].some((p) => can(p));
+          }
           return can(ADMIN_NAV_PERMISSIONS[item.id]);
         })}
       />
@@ -139,6 +144,11 @@ const AdminDashboard = () => {
         <div style={{ display: activeTab === 'roles' ? 'block' : 'none' }} className="fade-in-up">
           <React.Suspense fallback={<Skeleton count={4} />}>
             <RolesModule />
+          </React.Suspense>
+        </div>
+        <div style={{ display: activeTab === 'email' ? 'block' : 'none' }} className="fade-in-up">
+          <React.Suspense fallback={<Skeleton count={4} />}>
+            <EmailModule />
           </React.Suspense>
         </div>
         <div style={{ display: activeTab === 'teams' ? 'block' : 'none' }} className="fade-in-up">

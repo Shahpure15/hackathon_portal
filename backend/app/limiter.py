@@ -40,5 +40,18 @@ def team_key_func(request: Request) -> str:
             pass
     return get_real_ip(request)
 
+def user_key_func(request: Request) -> str:
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1]
+        try:
+            payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=["HS256"], options={"verify_signature": False})
+            sub = payload.get("sub")
+            if sub:
+                return f"user:{sub}"
+        except Exception:
+            pass
+    return get_real_ip(request)
+
 limiter = Limiter(key_func=get_real_ip)
 

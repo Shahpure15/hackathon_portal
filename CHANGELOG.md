@@ -4,6 +4,17 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 
+## [10.5.0] - 2026-10-11
+### Added
+- Shared scoring vectors checked on both backend and frontend in CI. [P3-C09]
+- Accept-invite page; Email module; Judging tab with assignment wizard, progress console and rubric revise; judge console. [P3-C08]
+- Judge API: assigned rounds and teams, draft autosave, locking submit; per-user rate limits. [P3-C07]
+- SMTP account and template management, staff invitations by email, public accept-invite flow. [P3-C06]
+- Assignment planner, preview-and-commit assignment API with manual precedence, progress, trail, unlock, comment hiding and rubric revise endpoints. [P3-C05]
+- Evaluation service: drafts, locking submit, unlock versions, rubric revise. [P3-C04]
+- Evaluation tables: assignments, evaluations, versions, scores, texts. [P3-C03]
+- Email core: encrypted SMTP accounts, sandboxed templates, durable outbox and worker, one-time auth tokens. [P3-C02]
+
 ## [10.4.0] - 2026-10-11
 ### Added
 - Rounds admin module with judging toggle and rubric editor. [P2-C06]

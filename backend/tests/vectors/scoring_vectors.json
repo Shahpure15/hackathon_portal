@@ -1,0 +1,209 @@
+[
+  {
+    "name": "single_field_full_marks",
+    "fields": [
+      {
+        "id": "f1",
+        "maxMarks": "10",
+        "weight": "100"
+      }
+    ],
+    "marks": {
+      "f1": "10"
+    },
+    "shouldError": false,
+    "expectedTotalPct": 100.0
+  },
+  {
+    "name": "single_field_zero_marks",
+    "fields": [
+      {
+        "id": "f1",
+        "maxMarks": "10",
+        "weight": "100"
+      }
+    ],
+    "marks": {
+      "f1": "0"
+    },
+    "shouldError": false,
+    "expectedTotalPct": 0.0
+  },
+  {
+    "name": "single_field_half_marks",
+    "fields": [
+      {
+        "id": "f1",
+        "maxMarks": "10",
+        "weight": "100"
+      }
+    ],
+    "marks": {
+      "f1": "5"
+    },
+    "shouldError": false,
+    "expectedTotalPct": 50.0
+  },
+  {
+    "name": "repeating_fraction_third",
+    "fields": [
+      {
+        "id": "f1",
+        "maxMarks": "3",
+        "weight": "100"
+      }
+    ],
+    "marks": {
+      "f1": "1"
+    },
+    "shouldError": false,
+    "expectedTotalPct": 33.333
+  },
+  {
+    "name": "equal_weights_three_criteria",
+    "fields": [
+      {
+        "id": "c1",
+        "maxMarks": "10",
+        "weight": "33.333"
+      },
+      {
+        "id": "c2",
+        "maxMarks": "10",
+        "weight": "33.333"
+      },
+      {
+        "id": "c3",
+        "maxMarks": "10",
+        "weight": "33.334"
+      }
+    ],
+    "marks": {
+      "c1": "7",
+      "c2": "8.5",
+      "c3": "9"
+    },
+    "shouldError": false,
+    "expectedTotalPct": 81.667
+  },
+  {
+    "name": "unequal_weights_and_scales",
+    "fields": [
+      {
+        "id": "f1",
+        "maxMarks": "25",
+        "weight": "40"
+      },
+      {
+        "id": "f2",
+        "maxMarks": "50",
+        "weight": "30"
+      },
+      {
+        "id": "f3",
+        "maxMarks": "10",
+        "weight": "20"
+      },
+      {
+        "id": "f4",
+        "maxMarks": "100",
+        "weight": "10"
+      }
+    ],
+    "marks": {
+      "f1": "20",
+      "f2": "35",
+      "f3": "8.5",
+      "f4": "72"
+    },
+    "shouldError": false,
+    "expectedTotalPct": 77.2
+  },
+  {
+    "name": "fine_decimal_steps",
+    "fields": [
+      {
+        "id": "tech",
+        "maxMarks": "20",
+        "weight": "50"
+      },
+      {
+        "id": "pres",
+        "maxMarks": "10",
+        "weight": "30"
+      },
+      {
+        "id": "orig",
+        "maxMarks": "5",
+        "weight": "20"
+      }
+    ],
+    "marks": {
+      "tech": "17.75",
+      "pres": "8.25",
+      "orig": "4.5"
+    },
+    "shouldError": false,
+    "expectedTotalPct": 87.125
+  },
+  {
+    "name": "marks_exceed_max_error",
+    "fields": [
+      {
+        "id": "f1",
+        "maxMarks": "10",
+        "weight": "100"
+      }
+    ],
+    "marks": {
+      "f1": "12"
+    },
+    "shouldError": true,
+    "expectedTotalPct": null
+  },
+  {
+    "name": "marks_negative_error",
+    "fields": [
+      {
+        "id": "f1",
+        "maxMarks": "10",
+        "weight": "100"
+      }
+    ],
+    "marks": {
+      "f1": "-1"
+    },
+    "shouldError": true,
+    "expectedTotalPct": null
+  },
+  {
+    "name": "non_positive_max_marks_error",
+    "fields": [
+      {
+        "id": "f1",
+        "maxMarks": "0",
+        "weight": "100"
+      }
+    ],
+    "marks": {
+      "f1": "0"
+    },
+    "shouldError": true,
+    "expectedTotalPct": null
+  },
+  {
+    "name": "zero_total_weight_error",
+    "fields": [
+      {
+        "id": "f1",
+        "maxMarks": "10",
+        "weight": "0"
+      }
+    ],
+    "marks": {
+      "f1": "5"
+    },
+    "shouldError": true,
+    "expectedTotalPct": null
+  }
+]

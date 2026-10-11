@@ -25,6 +25,7 @@ export const RubricEditor = ({
   isPublished = false,
   onPublishChanged,
   evaluationEnabled = true,
+  onReviseRubric,
 }) => {
   const { addToast } = useToast();
   const [publishing, setPublishing] = useState(false);
@@ -216,8 +217,8 @@ export const RubricEditor = ({
             color: '#ef4444',
           }}
         >
-          <Lock size={20} />
-          <div>
+          <Lock size={20} style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
             <strong style={{ display: 'block', fontSize: '0.9rem' }}>
               Rubric locked: judges have started scoring
             </strong>
@@ -225,6 +226,22 @@ export const RubricEditor = ({
               Structural attributes, max marks, and weights cannot be modified. Only descriptions and descriptive benchmark anchors remain editable.
             </span>
           </div>
+          {onReviseRubric && (
+            <button
+              type="button"
+              onClick={onReviseRubric}
+              className="btn btn-secondary"
+              style={{
+                fontSize: '0.8rem',
+                color: '#ef4444',
+                borderColor: 'rgba(239, 68, 68, 0.4)',
+                background: 'rgba(239, 68, 68, 0.1)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Revise Rubric
+            </button>
+          )}
         </div>
       )}
 
