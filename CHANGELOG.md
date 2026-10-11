@@ -4,6 +4,7 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 ### Added
+- Rubric service with versioning, publish and lock rules. [P2-C04]
 - Pure scoring engine: judge totals, aggregation, ranking, display scale, rubric validation. [P2-C03]
 - Unified round columns and rubric_versions/rubric_fields tables. [P2-C02]
 
