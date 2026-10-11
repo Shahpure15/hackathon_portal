@@ -4,6 +4,14 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 
+## [10.3.0] - 2026-10-11
+### Added
+- Roles & Access admin module: permission editor, member scopes, templates, event feature toggles. [P1b-C03]
+- Roles, templates, scoped member assignments and event feature flags (admin API). [P1b-C02]
+
+### Changed
+- Staff screen shows modules and controls according to the signed-in role's permissions; pod shown as a label only. [P1b-C04]
+
 ## [10.2.0] - 2026-10-11
 ### Added
 - Frontend permission context (can, canAny, features) and permission-filtered navigation. [P1-C10]

@@ -12,6 +12,7 @@ export const ADMIN_NAV_PERMISSIONS = {
   checkpoints: 'checkpoint.view',
   ps: 'ps.view',
   psLive: 'ps.view',
+  roles: 'role.manage',
 };
 
 export const STAFF_TAB_PERMISSIONS = {

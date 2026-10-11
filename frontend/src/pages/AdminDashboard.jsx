@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Users, Layers, UserCheck, FileText, FileSpreadsheet, Download, Upload,
-  Search, X, Edit2, AlertCircle, CheckCircle, Info, ChevronLeft, ChevronRight, Eye, EyeOff, LogOut, Menu, Lock, Plus, Trash2, QrCode
+  Search, X, Edit2, AlertCircle, CheckCircle, Info, ChevronLeft, ChevronRight, Eye, EyeOff, LogOut, Menu, Lock, Plus, Trash2, QrCode, ShieldCheck
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -24,6 +24,8 @@ import { useAuth } from '../contexts/AuthContext';
 import VersionBadge from '../components/VersionBadge';
 import { ADMIN_NAV_PERMISSIONS } from '../modules/registry';
 
+const RolesModule = React.lazy(() => import('../modules/roles/RolesModule'));
+
 
 
 
@@ -41,7 +43,7 @@ const formatContact = (contactStr) => {
 };
 
 const AdminDashboard = () => {
-  const { user, can } = useAuth();
+  const { user, can, features } = useAuth();
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem('adminActiveTab') || 'teams');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -114,8 +116,12 @@ const AdminDashboard = () => {
           { id: 'volunteers', label: 'People & Organizers', icon: <UserCheck size={16} /> },
           { id: 'checkpoints', label: 'Attendance Slots', icon: <FileText size={16} /> },
           { id: 'ps', label: 'Problem Statements', icon: <Layers size={16} /> },
-          { id: 'psLive', label: 'Live PS View', icon: <Layers size={16} /> }
-        ].filter((item) => can(ADMIN_NAV_PERMISSIONS[item.id]))}
+          { id: 'psLive', label: 'Live PS View', icon: <Layers size={16} /> },
+          { id: 'roles', label: 'Roles & Access', icon: <ShieldCheck size={16} /> }
+        ].filter((item) => {
+          if (item.id === 'pods' && features?.pods === false) return false;
+          return can(ADMIN_NAV_PERMISSIONS[item.id]);
+        })}
       />
 
       {/* Main Content Area */}
@@ -129,6 +135,11 @@ const AdminDashboard = () => {
           boxSizing: 'border-box'
         }}
       >
+        <div style={{ display: activeTab === 'roles' ? 'block' : 'none' }} className="fade-in-up">
+          <React.Suspense fallback={<Skeleton count={4} />}>
+            <RolesModule />
+          </React.Suspense>
+        </div>
         <div style={{ display: activeTab === 'teams' ? 'block' : 'none' }} className="fade-in-up">
           <TeamsView 
             pods={pods} 
