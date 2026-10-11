@@ -523,6 +523,7 @@ select.form-input option:checked {
   }
 }
 
+.modal-overlay,
 .modal-overlay-fade {
   position: fixed;
   top: 0;
@@ -535,9 +536,9 @@ select.form-input option:checked {
   z-index: 10000;
   padding: 24px;
   overflow-y: auto;
-  background-color: rgba(22, 16, 10, 0.52);
-  backdrop-filter: blur(10px) saturate(140%);
-  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  background-color: rgba(22, 16, 10, 0.65);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
   animation: fadeInOverlay 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
@@ -553,15 +554,65 @@ select.form-input option:checked {
 
 .modal-scale-up {
   animation: scaleInModal 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  background: rgba(244, 239, 230, 0.88) !important;
-  /* Rich warm cream glass surface */
-  backdrop-filter: blur(28px) saturate(180%) brightness(0.98) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(180%) brightness(0.98) !important;
+  background: #fdfbf7 !important;
+  /* Rich warm solid cream surface to eliminate background bleed-through */
   border: 1px solid rgba(185, 111, 56, 0.3) !important;
   border-top: 1px solid rgba(255, 255, 255, 0.85) !important;
-  box-shadow: 0 24px 64px -12px rgba(33, 26, 19, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+  box-shadow: 0 24px 64px -12px rgba(33, 26, 19, 0.45), 0 4px 16px rgba(0, 0, 0, 0.15) !important;
   border-radius: 20px !important;
   margin: auto;
+}
+
+.glass-card.modal-scale-up:hover {
+  transform: none !important;
+  box-shadow: 0 24px 64px -12px rgba(33, 26, 19, 0.45), 0 4px 16px rgba(0, 0, 0, 0.15) !important;
+}
+
+[data-theme="dark"] .modal-scale-up {
+  background: #181410 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 24px 64px -12px rgba(0, 0, 0, 0.8), 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+  color: #f4efe6 !important;
+}
+
+[data-theme="dark"] .glass-card.modal-scale-up:hover {
+  transform: none !important;
+  box-shadow: 0 24px 64px -12px rgba(0, 0, 0, 0.8), 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+}
+
+.input-field {
+  width: 100%;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(43, 33, 24, 0.22);
+  border-radius: var(--radius, 10px);
+  color: var(--ink, #1a130b);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  outline: none;
+  min-height: 42px;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.input-field:focus {
+  border-color: var(--hero-deep, #b96f38);
+  box-shadow: 0 0 0 3px rgba(185, 111, 56, 0.2);
+  background: #ffffff;
+}
+
+[data-theme="dark"] .input-field {
+  background: rgba(24, 20, 16, 0.8);
+  border-color: rgba(244, 239, 230, 0.18);
+  color: #f4efe6;
+}
+
+[data-theme="dark"] .input-field:focus {
+  background: #181410;
+  border-color: #e08c4e;
+  box-shadow: 0 0 0 3px rgba(224, 140, 78, 0.25);
 }
 
 /* Modal Form Inputs: Warm Beige Recessed Glass Fields */

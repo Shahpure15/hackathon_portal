@@ -6,6 +6,7 @@ import {
 import api from '../../services/api';
 import { useToast } from '../../contexts/ToastContext';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import Modal from '../../components/Modal';
 
 export default function AssignmentWizard({ roundId, features = { pods: true }, onUpdated }) {
   const [step, setStep] = useState(1);
@@ -823,79 +824,74 @@ export default function AssignmentWizard({ roundId, features = { pods: true }, o
       </div>
 
       {/* Manual Assignment Modal */}
-      {showManualModal && (
-        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
-          <div className="glass-card" style={{ width: '100%', maxWidth: '600px', padding: '24px', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '18px' }}>Direct Manual Assignment</h3>
-                <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '10px', background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', fontWeight: 600 }}>
-                  Manual (Always Wins)
-                </span>
-              </div>
-              <button className="btn btn-secondary" style={{ padding: '4px 8px' }} onClick={() => setShowManualModal(false)}>
-                <X size={16} />
-              </button>
-            </div>
+      <Modal
+        isOpen={showManualModal}
+        onClose={() => setShowManualModal(false)}
+        title="Direct Manual Assignment"
+        maxWidth="600px"
+      >
+        <div style={{ marginBottom: '14px' }}>
+          <span style={{ fontSize: '11px', padding: '3px 10px', borderRadius: '12px', background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', fontWeight: 600 }}>
+            Manual (Always Wins)
+          </span>
+        </div>
 
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
-                Select Teams ({manualTeams.length} selected):
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '6px', color: 'var(--ink)' }}>
+            Select Teams ({manualTeams.length} selected):
+          </label>
+          <div style={{ maxHeight: '160px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px', background: 'var(--bg-main)' }}>
+            {teams.map((t) => (
+              <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', fontSize: '13px', cursor: 'pointer', borderRadius: '4px' }}>
+                <input
+                  type="checkbox"
+                  checked={manualTeams.includes(t.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) setManualTeams([...manualTeams, t.id]);
+                    else setManualTeams(manualTeams.filter((id) => id !== t.id));
+                  }}
+                />
+                <span>{t.name} ({t.registrationId})</span>
               </label>
-              <div style={{ maxHeight: '160px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '6px' }}>
-                {teams.map((t) => (
-                  <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 8px', fontSize: '12px', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={manualTeams.includes(t.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) setManualTeams([...manualTeams, t.id]);
-                        else setManualTeams(manualTeams.filter((id) => id !== t.id));
-                      }}
-                    />
-                    <span>{t.name} ({t.registrationId})</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
-                Select Judges ({manualJudges.length} selected):
-              </label>
-              <div style={{ maxHeight: '160px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '6px' }}>
-                {judges.map((j) => (
-                  <label key={j.volunteerId} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 8px', fontSize: '12px', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={manualJudges.includes(j.volunteerId)}
-                      onChange={(e) => {
-                        if (e.target.checked) setManualJudges([...manualJudges, j.volunteerId]);
-                        else setManualJudges(manualJudges.filter((id) => id !== j.volunteerId));
-                      }}
-                    />
-                    <span>{j.name} ({j.type})</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setShowManualModal(false)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleManualAssign}
-                disabled={manualTeams.length === 0 || manualJudges.length === 0}
-              >
-                Assign Manually
-              </button>
-            </div>
+            ))}
           </div>
         </div>
-      )}
+
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '6px', color: 'var(--ink)' }}>
+            Select Judges ({manualJudges.length} selected):
+          </label>
+          <div style={{ maxHeight: '160px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px', background: 'var(--bg-main)' }}>
+            {judges.map((j) => (
+              <label key={j.volunteerId} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', fontSize: '13px', cursor: 'pointer', borderRadius: '4px' }}>
+                <input
+                  type="checkbox"
+                  checked={manualJudges.includes(j.volunteerId)}
+                  onChange={(e) => {
+                    if (e.target.checked) setManualJudges([...manualJudges, j.volunteerId]);
+                    else setManualJudges(manualJudges.filter((id) => id !== j.volunteerId));
+                  }}
+                />
+                <span>{j.name} ({j.type})</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+          <button type="button" className="btn btn-secondary" onClick={() => setShowManualModal(false)}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handleManualAssign}
+            disabled={manualTeams.length === 0 || manualJudges.length === 0}
+          >
+            Assign Manually
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

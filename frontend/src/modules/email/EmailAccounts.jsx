@@ -3,6 +3,7 @@ import { Mail, Plus, Trash2, CheckCircle2, AlertCircle, RefreshCw, KeyRound, Ser
 import api from '../../services/api';
 import { useToast } from '../../contexts/ToastContext';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import Modal from '../../components/Modal';
 
 export default function EmailAccounts() {
   const [accounts, setAccounts] = useState([]);
@@ -205,143 +206,143 @@ export default function EmailAccounts() {
       )}
 
       {/* Add Account Modal */}
-      {showAddModal && (
-        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
-          <div className="glass-card" style={{ width: '100%', maxWidth: '520px', padding: '28px', maxHeight: '90vh', overflowY: 'auto' }}>
-            <h3 style={{ margin: '0 0 18px 0', fontSize: '18px' }}>Add SMTP Server</h3>
-            <form onSubmit={handleCreate}>
-              <div style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>Label</label>
-                <input
-                  type="text"
-                  className="input-field"
-                  style={{ width: '100%' }}
-                  placeholder="e.g., Primary Gmail / Resend"
-                  value={formData.label}
-                  onChange={(e) => setFormData({ ...formData, label: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px', marginBottom: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>Host</label>
-                  <input
-                    type="text"
-                    className="input-field"
-                    style={{ width: '100%' }}
-                    placeholder="smtp.gmail.com"
-                    value={formData.host}
-                    onChange={(e) => setFormData({ ...formData, host: e.target.value })}
-                    required
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>Port</label>
-                  <input
-                    type="number"
-                    className="input-field"
-                    style={{ width: '100%' }}
-                    placeholder="587"
-                    value={formData.port}
-                    onChange={(e) => setFormData({ ...formData, port: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>Security</label>
-                <select
-                  className="input-field"
-                  style={{ width: '100%' }}
-                  value={formData.security}
-                  onChange={(e) => setFormData({ ...formData, security: e.target.value })}
-                >
-                  <option value="starttls">STARTTLS (Port 587)</option>
-                  <option value="ssl">SSL / TLS (Port 465)</option>
-                </select>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>Username</label>
-                  <input
-                    type="text"
-                    className="input-field"
-                    style={{ width: '100%' }}
-                    placeholder="user@domain.com"
-                    value={formData.username}
-                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                    required
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>Password (App Password)</label>
-                  <input
-                    type="password"
-                    className="input-field"
-                    style={{ width: '100%' }}
-                    placeholder="••••••••••••"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>From Email</label>
-                  <input
-                    type="email"
-                    className="input-field"
-                    style={{ width: '100%' }}
-                    placeholder="noreply@domain.com"
-                    value={formData.fromEmail}
-                    onChange={(e) => setFormData({ ...formData, fromEmail: e.target.value })}
-                    required
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>From Name</label>
-                  <input
-                    type="text"
-                    className="input-field"
-                    style={{ width: '100%' }}
-                    placeholder="Hackathon Team"
-                    value={formData.fromName}
-                    onChange={(e) => setFormData({ ...formData, fromName: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowAddModal(false)}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  Save Account
-                </button>
-              </div>
-            </form>
+      <Modal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        title="Add SMTP Server"
+        maxWidth="520px"
+      >
+        <form onSubmit={handleCreate}>
+          <div style={{ marginBottom: '14px' }}>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '6px', color: 'var(--ink)' }}>Label</label>
+            <input
+              type="text"
+              className="form-input"
+              style={{ width: '100%' }}
+              placeholder="e.g., Primary Gmail / Resend"
+              value={formData.label}
+              onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+              required
+            />
           </div>
-        </div>
-      )}
 
-      {deleteId && (
-        <ConfirmDialog
-          title="Delete SMTP Account"
-          message="Are you sure you want to remove this SMTP server configuration?"
-          confirmText="Delete"
-          onConfirm={handleDelete}
-          onCancel={() => setDeleteId(null)}
-        />
-      )}
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px', marginBottom: '14px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '6px', color: 'var(--ink)' }}>Host</label>
+              <input
+                type="text"
+                className="form-input"
+                style={{ width: '100%' }}
+                placeholder="smtp.gmail.com"
+                value={formData.host}
+                onChange={(e) => setFormData({ ...formData, host: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '6px', color: 'var(--ink)' }}>Port</label>
+              <input
+                type="number"
+                className="form-input"
+                style={{ width: '100%' }}
+                placeholder="587"
+                value={formData.port}
+                onChange={(e) => setFormData({ ...formData, port: e.target.value })}
+                required
+              />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '14px' }}>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '6px', color: 'var(--ink)' }}>Security</label>
+            <select
+              className="form-input"
+              style={{ width: '100%' }}
+              value={formData.security}
+              onChange={(e) => setFormData({ ...formData, security: e.target.value })}
+            >
+              <option value="starttls">STARTTLS (Port 587)</option>
+              <option value="ssl">SSL / TLS (Port 465)</option>
+            </select>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '6px', color: 'var(--ink)' }}>Username</label>
+              <input
+                type="text"
+                className="form-input"
+                style={{ width: '100%' }}
+                placeholder="user@domain.com"
+                value={formData.username}
+                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '6px', color: 'var(--ink)' }}>Password (App Password)</label>
+              <input
+                type="password"
+                className="form-input"
+                style={{ width: '100%' }}
+                placeholder="••••••••••••"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                required
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '6px', color: 'var(--ink)' }}>From Email</label>
+              <input
+                type="email"
+                className="form-input"
+                style={{ width: '100%' }}
+                placeholder="noreply@domain.com"
+                value={formData.fromEmail}
+                onChange={(e) => setFormData({ ...formData, fromEmail: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '6px', color: 'var(--ink)' }}>From Name</label>
+              <input
+                type="text"
+                className="form-input"
+                style={{ width: '100%' }}
+                placeholder="Hackathon Team"
+                value={formData.fromName}
+                onChange={(e) => setFormData({ ...formData, fromName: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowAddModal(false)}
+            >
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-primary">
+              Save Account
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <ConfirmDialog
+        isOpen={!!deleteId}
+        title="Delete SMTP Account"
+        message="Are you sure you want to remove this SMTP server configuration?"
+        confirmLabel="Delete"
+        danger={true}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteId(null)}
+      />
     </div>
   );
 }

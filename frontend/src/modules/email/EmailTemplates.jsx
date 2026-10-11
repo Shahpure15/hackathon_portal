@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FileText, RotateCcw, Eye, Save, Code } from 'lucide-react';
 import api from '../../services/api';
 import { useToast } from '../../contexts/ToastContext';
+import Modal from '../../components/Modal';
 
 export default function EmailTemplates() {
   const [templates, setTemplates] = useState([]);
@@ -226,26 +227,20 @@ export default function EmailTemplates() {
       )}
 
       {/* Preview Modal */}
-      {showPreviewModal && preview && (
-        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
-          <div className="glass-card" style={{ width: '100%', maxWidth: '640px', padding: '28px', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-              <h3 style={{ margin: 0, fontSize: '18px' }}>Email Preview</h3>
-              <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: '12px' }} onClick={() => setShowPreviewModal(false)}>
-                Close
-              </button>
-            </div>
-
-            <div style={{ marginBottom: '12px', padding: '10px 14px', background: 'var(--bg-main)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-              <strong>Subject:</strong> {preview.subject}
-            </div>
-
-            <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '20px', background: '#ffffff', color: '#1f2937' }}>
-              <div dangerouslySetInnerHTML={{ __html: preview.html }} />
-            </div>
-          </div>
+      <Modal
+        isOpen={showPreviewModal && !!preview}
+        onClose={() => setShowPreviewModal(false)}
+        title="Email Preview"
+        maxWidth="680px"
+      >
+        <div style={{ marginBottom: '16px', padding: '10px 14px', background: 'var(--bg-main)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+          <strong>Subject:</strong> {preview?.subject}
         </div>
-      )}
+
+        <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '20px', background: '#ffffff', color: '#1f2937' }}>
+          <div dangerouslySetInnerHTML={{ __html: preview?.html || '' }} />
+        </div>
+      </Modal>
     </div>
   );
 }

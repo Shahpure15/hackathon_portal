@@ -49,7 +49,9 @@ const Modal = ({
           width: '100%', 
           maxWidth, 
           padding, 
-          position: 'relative' 
+          position: 'relative',
+          maxHeight: '90vh',
+          overflowY: 'auto'
         }}
       >
         {!hideCloseButton && (
