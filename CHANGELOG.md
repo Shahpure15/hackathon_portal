@@ -3,6 +3,8 @@
 Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.md). Every entry ends with its change ID.
 
 ## [Unreleased]
+### Added
+- Test factories for events, users, volunteers, teams and auth headers. [P1-C02]
 
 ## [10.1.0] - 2026-10-11
 ### Added
