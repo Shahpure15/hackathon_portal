@@ -498,3 +498,117 @@ class UserRoleAssignment(Base):
         UniqueConstraint("userId", "roleId", name="uq_user_role_assignments_user_role"),
     )
 
+
+class SmtpAccount(Base):
+    __tablename__ = "smtp_accounts"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    orgId = Column(String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
+    label = Column(String(100), nullable=False)
+    host = Column(String(255), nullable=False)
+    port = Column(Integer, nullable=False)
+    security = Column(String(20), nullable=False)  # starttls | ssl
+    username = Column(String(255), nullable=False)
+    passwordEnc = Column(Text, nullable=False)
+    fromEmail = Column(String(255), nullable=False)
+    fromName = Column(String(255), nullable=False)
+    replyTo = Column(String(255), nullable=True)
+    dailyLimit = Column(Integer, nullable=True)
+    perMinuteLimit = Column(Integer, nullable=True)
+    sentToday = Column(Integer, default=0, nullable=False)
+    windowStartedAt = Column(DateTime, nullable=True)
+    resetsAt = Column(DateTime, nullable=True)
+    status = Column(String(20), default="active", nullable=False)  # active | exhausted | auth_failed | disabled
+    lastError = Column(Text, nullable=True)
+    priority = Column(Integer, default=0, nullable=False)
+    createdAt = Column(DateTime, default=func.now(), nullable=False)
+
+    organization = relationship("Organization")
+
+
+class EmailTemplate(Base):
+    __tablename__ = "email_templates"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=True)
+    key = Column(String(60), nullable=False)
+    subject = Column(String(255), nullable=False)
+    body = Column(Text, nullable=False)
+    version = Column(Integer, default=1, nullable=False)
+    updatedBy = Column(String(100), nullable=True)
+    updatedAt = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+
+    event = relationship("Event")
+
+    __table_args__ = (
+        UniqueConstraint("eventId", "key", name="uq_email_templates_event_key"),
+    )
+
+
+class EmailBatch(Base):
+    __tablename__ = "email_batches"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    templateKey = Column(String(60), nullable=False)
+    templateSnapshot = Column(JSON, nullable=True)
+    audience = Column(JSON, nullable=True)
+    category = Column(String(20), nullable=False)
+    status = Column(String(20), default="queued", nullable=False)
+    counts = Column(JSON, nullable=True)
+    pausedReason = Column(String(255), nullable=True)
+    resumeAt = Column(DateTime, nullable=True)
+    createdBy = Column(String(100), nullable=True)
+    createdAt = Column(DateTime, default=func.now(), nullable=False)
+
+    event = relationship("Event")
+    outboxRows = relationship("EmailOutbox", back_populates="batch")
+
+
+class EmailOutbox(Base):
+    __tablename__ = "email_outbox"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    batchId = Column(String(36), ForeignKey("email_batches.id", ondelete="SET NULL"), nullable=True)
+    toEmail = Column(String(255), nullable=False)
+    toUserId = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    templateKey = Column(String(60), nullable=False)
+    subject = Column(String(255), nullable=False)
+    body = Column(Text, nullable=False)
+    priority = Column(Integer, default=5, nullable=False)  # 0 critical, 5 normal, 9 bulk
+    status = Column(String(20), default="queued", nullable=False)  # queued | sending | sent | failed | expired | cancelled
+    attempts = Column(Integer, default=0, nullable=False)
+    nextAttemptAt = Column(DateTime, nullable=False)
+    expiresAt = Column(DateTime, nullable=True)
+    accountId = Column(String(36), ForeignKey("smtp_accounts.id", ondelete="SET NULL"), nullable=True)
+    error = Column(Text, nullable=True)
+    sentAt = Column(DateTime, nullable=True)
+    createdAt = Column(DateTime, default=func.now(), nullable=False)
+
+    event = relationship("Event")
+    batch = relationship("EmailBatch", back_populates="outboxRows")
+    account = relationship("SmtpAccount")
+    user = relationship("User")
+
+    __table_args__ = (
+        Index("ix_email_outbox_due", "status", "nextAttemptAt", "priority"),
+    )
+
+
+class AuthToken(Base):
+    __tablename__ = "auth_tokens"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=True)
+    userId = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind = Column(String(10), nullable=False)  # invite | reset
+    tokenHash = Column(String(64), nullable=False, unique=True)
+    expiresAt = Column(DateTime, nullable=False)
+    usedAt = Column(DateTime, nullable=True)
+    createdAt = Column(DateTime, default=func.now(), nullable=False)
+
+    user = relationship("User")
+    event = relationship("Event")
+
+

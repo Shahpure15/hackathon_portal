@@ -3,6 +3,8 @@
 Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.md). Every entry ends with its change ID.
 
 ## [Unreleased]
+### Added
+- Email core: encrypted SMTP accounts, sandboxed templates, durable outbox and worker, one-time auth tokens. [P3-C02]
 
 ## [10.4.0] - 2026-10-11
 ### Added
