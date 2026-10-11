@@ -14,6 +14,10 @@ from app.auth import (
     pwd_context
 )
 from app.limiter import limiter, login_key_func
+from app.dto.rbac import AuthMeResponse
+from app.permissions import CATALOG
+from app.rbac import resolve_access
+from app.services.features import get_event_features, FeaturesConfig
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -228,3 +232,56 @@ def change_password(
     db.commit()
     
     return {"message": "Password changed successfully"}
+
+
+@router.get("/me", response_model=AuthMeResponse)
+def get_me(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user)
+):
+    role_val = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    is_admin = (current_user.role == Role.ADMIN) or (role_val.upper() == Role.ADMIN.value.upper())
+
+    if is_admin:
+        role_names = ['Admin']
+        permissions = sorted(list(CATALOG.keys()))
+        scope = {'teams': {'mode': 'all', 'ids': []}}
+    elif (current_user.role == Role.VOLUNTEER) or (role_val.upper() == Role.VOLUNTEER.value.upper()):
+        access = resolve_access(db, current_user)
+        role_names = access.role_names
+        permissions = sorted(list(access.permissions))
+        if access.team_scope_all:
+            scope = {'teams': {'mode': 'all', 'ids': []}}
+        elif access.pod_ids and not access.panel_ids:
+            scope = {'teams': {'mode': 'pods', 'ids': sorted(list(access.pod_ids))}}
+        elif access.panel_ids and not access.pod_ids:
+            scope = {'teams': {'mode': 'panels', 'ids': sorted(list(access.panel_ids))}}
+        elif access.pod_ids and access.panel_ids:
+            scope = {'teams': {'mode': 'mixed', 'ids': sorted(list(access.pod_ids | access.panel_ids))}}
+        else:
+            scope = {'teams': {'mode': 'all', 'ids': []}}
+    else:
+        role_names = []
+        permissions = []
+        scope = {'teams': {'mode': 'all', 'ids': []}}
+
+    if current_user.eventId:
+        features_config = get_event_features(db, current_user.eventId)
+        features_dict = features_config.model_dump()
+    else:
+        features_dict = FeaturesConfig().model_dump()
+
+    return AuthMeResponse(
+        username=current_user.username,
+        role=role_val,
+        eventId=current_user.eventId,
+        teamId=current_user.teamId,
+        status=getattr(current_user, 'status', 'active'),
+        isAdmin=is_admin,
+        roleNames=role_names,
+        permissions=permissions,
+        scope=scope,
+        features=features_dict,
+        moduleGates={}
+    )
+

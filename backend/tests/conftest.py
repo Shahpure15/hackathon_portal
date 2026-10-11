@@ -13,7 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import settings
-from app.database import Base, engine
+from app.database import Base, engine, SessionLocal
 from app.main import app
 
 assert settings.DATABASE_URL.startswith('sqlite:///'), 'tests must never use a real database'
@@ -25,6 +25,15 @@ def fresh_db():
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture()
+def db(fresh_db):
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
 
 
 @pytest.fixture()

@@ -1,10 +1,57 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api, { setAccessToken } from '../services/api';
 
 const AuthContext = createContext(null);
 
+const SEEDED_VOLUNTEER_PERMS = [
+  'team.view',
+  'team.checkin',
+  'people.view',
+  'ps.view',
+  'ps.select',
+  'checkpoint.view',
+  'checkpoint.log',
+  'qr.scan',
+  'announcement.view',
+];
+
+const buildFallbackAccess = (role) => {
+  const normalizedRole = (role || '').toUpperCase();
+  const isAdmin = normalizedRole === 'ADMIN';
+  const isVolunteer = normalizedRole === 'VOLUNTEER';
+  const perms = isVolunteer ? new Set(SEEDED_VOLUNTEER_PERMS) : new Set();
+
+  return {
+    permissions: perms,
+    isAdmin,
+    scope: isVolunteer ? 'all' : null,
+    features: {},
+    roleNames: role ? [role] : [],
+    moduleGates: {},
+  };
+};
+
+const fetchAccess = async (role) => {
+  try {
+    const response = await api.get('/auth/me');
+    const data = response.data;
+    return {
+      permissions: new Set(data.permissions || []),
+      isAdmin: Boolean(data.isAdmin),
+      scope: data.scope || null,
+      features: data.features || {},
+      roleNames: data.roleNames || [],
+      moduleGates: data.moduleGates || {},
+    };
+  } catch (err) {
+    console.warn('Failed to fetch /auth/me, falling back to role-based access:', err);
+    return buildFallbackAccess(role);
+  }
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [access, setAccess] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const login = async (username, password) => {
@@ -15,6 +62,10 @@ export const AuthProvider = ({ children }) => {
       setAccessToken(access_token);
       setUser({ username: responseUsername, role, eventId, teamId });
       localStorage.setItem('has_session', 'true');
+
+      const userAccess = await fetchAccess(role);
+      setAccess(userAccess);
+
       return { success: true };
     } catch (error) {
       if (error.response?.status === 410) {
@@ -39,6 +90,7 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('leaderActiveTab');
       setAccessToken(null);
       setUser(null);
+      setAccess(null);
     }
   };
 
@@ -55,6 +107,9 @@ export const AuthProvider = ({ children }) => {
       setAccessToken(access_token);
       setUser({ username, role, eventId, teamId });
       localStorage.setItem('has_session', 'true');
+
+      const userAccess = await fetchAccess(role);
+      setAccess(userAccess);
     } catch (error) {
       // Refresh token invalid or expired, clear session
       localStorage.removeItem('has_session');
@@ -62,10 +117,25 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('leaderActiveTab');
       setAccessToken(null);
       setUser(null);
+      setAccess(null);
     } finally {
       setLoading(false);
     }
   };
+
+  const can = useCallback((key) => {
+    if (!access) return false;
+    if (access.isAdmin) return true;
+    return Boolean(access.permissions?.has(key));
+  }, [access]);
+
+  const canAny = useCallback((keys) => {
+    if (!access) return false;
+    if (access.isAdmin) return true;
+    return (keys || []).some((k) => Boolean(access.permissions?.has(k)));
+  }, [access]);
+
+  const features = access?.features || {};
 
   useEffect(() => {
     checkAuth();
@@ -74,6 +144,7 @@ export const AuthProvider = ({ children }) => {
     const handleGlobalLogout = () => {
       localStorage.removeItem('has_session');
       setUser(null);
+      setAccess(null);
     };
 
     window.addEventListener('auth-logout', handleGlobalLogout);
@@ -83,7 +154,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, access, can, canAny, features, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

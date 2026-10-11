@@ -22,6 +22,7 @@ import AdminPSOverview from './AdminPSOverview';
 import AdminQRScannerView from '../components/AdminQRScannerView';
 import { useAuth } from '../contexts/AuthContext';
 import VersionBadge from '../components/VersionBadge';
+import { ADMIN_NAV_PERMISSIONS } from '../modules/registry';
 
 
 
@@ -40,7 +41,7 @@ const formatContact = (contactStr) => {
 };
 
 const AdminDashboard = () => {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem('adminActiveTab') || 'teams');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -114,7 +115,7 @@ const AdminDashboard = () => {
           { id: 'checkpoints', label: 'Attendance Slots', icon: <FileText size={16} /> },
           { id: 'ps', label: 'Problem Statements', icon: <Layers size={16} /> },
           { id: 'psLive', label: 'Live PS View', icon: <Layers size={16} /> }
-        ]}
+        ].filter((item) => can(ADMIN_NAV_PERMISSIONS[item.id]))}
       />
 
       {/* Main Content Area */}

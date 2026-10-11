@@ -11,12 +11,25 @@ import Navbar from '../components/Navbar';
 import Skeleton from '../components/Skeleton';
 import IconButton from '../components/IconButton';
 import QRScanner from '../components/QRScanner';
+import { STAFF_TAB_PERMISSIONS } from '../modules/registry';
 
 const VolunteerDashboard = () => {
-  const { logout } = useAuth();
+  const { logout, can } = useAuth();
   const { addToast } = useToast();
 
   const [activeTab, setActiveTab] = useState('checkin');
+
+  const allNavItems = [
+    { id: 'checkin', label: 'Teams Check-in', icon: <UserCheck size={16} /> },
+    { id: 'people', label: 'People / Faculty / Judges', icon: <Users size={16} /> }
+  ];
+  const navItems = allNavItems.filter((item) => !STAFF_TAB_PERMISSIONS[item.id] || can(STAFF_TAB_PERMISSIONS[item.id]));
+
+  useEffect(() => {
+    if (navItems.length > 0 && !navItems.some((item) => item.id === activeTab)) {
+      setActiveTab(navItems[0].id);
+    }
+  }, [navItems, activeTab]);
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1000);
@@ -320,10 +333,7 @@ const VolunteerDashboard = () => {
         title="MIT India Hackathon"
         user={{ username: 'Volunteer', role: 'Check-in Desk' }}
         onLogout={logout}
-        navItems={[
-          { id: 'checkin', label: 'Teams Check-in', icon: <UserCheck size={16} /> },
-          { id: 'people', label: 'People / Faculty / Judges', icon: <Users size={16} /> }
-        ]}
+        navItems={navItems}
         activeTab={activeTab}
         onTabChange={(tabId) => setActiveTab(tabId)}
       />

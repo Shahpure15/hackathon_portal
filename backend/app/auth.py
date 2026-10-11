@@ -29,6 +29,7 @@ class CurrentUser(BaseModel):
     username: str
     role: str
     teamId: Optional[str] = None
+    status: str = "active"
 
 # Password Hashing utilities
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -91,12 +92,16 @@ async def get_current_user(
     if user is None:
         raise credentials_exception
 
+    if getattr(user, 'status', 'active') == 'disabled':
+        raise credentials_exception
+
     return CurrentUser(
         id=user.id,
         eventId=user.eventId,
         username=user.username,
         role=user.role,
-        teamId=user.teamId
+        teamId=user.teamId,
+        status=getattr(user, 'status', 'active')
     )
 
 # Role Guards
