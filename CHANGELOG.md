@@ -4,6 +4,7 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 ### Added
+- Pure scoring engine: judge totals, aggregation, ranking, display scale, rubric validation. [P2-C03]
 - Unified round columns and rubric_versions/rubric_fields tables. [P2-C02]
 
 ## [10.3.0] - 2026-10-11
