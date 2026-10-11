@@ -4,6 +4,7 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 ### Added
+- Rounds admin module with judging toggle and rubric editor. [P2-C06]
 - Rounds API with rubric editing and publishing. [P2-C05]
 - Rubric service with versioning, publish and lock rules. [P2-C04]
 - Pure scoring engine: judge totals, aggregation, ranking, display scale, rubric validation. [P2-C03]
