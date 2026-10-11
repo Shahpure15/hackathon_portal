@@ -79,9 +79,10 @@ def serialize_diff(diff: Any) -> Any:
     return diff
 
 # Helper: Log audit trail
-def log_audit(db: Session, actor_id: str, action: str, entity_type: str, entity_id: str, diff: Optional[dict] = None):
+def log_audit(db: Session, actor_id: str, action: str, entity_type: str, entity_id: str, diff: Optional[dict] = None, event_id: Optional[str] = None):
     serialized_diff = serialize_diff(diff) if diff else None
     audit = AuditLog(
+        eventId=event_id,
         actorId=actor_id,
         action=action,
         entityType=entity_type,

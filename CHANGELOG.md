@@ -4,8 +4,15 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 ### Added
+- organizations table with a seeded default organization; events.orgId (nullable, backfilled). [P0-C04]
+- event_configs.features (JSON feature flags; defaults applied in code and backfilled). [P0-C04]
+- users.status (default 'active'), volunteers.email (nullable), audit_logs.eventId (nullable, indexed). [P0-C04]
+- app/services package with features and tenancy helpers. [P0-C04]
 - Backend pytest harness with a SQLite safety guard, route-guard, migration, error-handling and version tests. [P0-C03]
 - GitHub Actions CI: backend tests, version check, frontend build. [P0-C03]
+
+### Changed
+- log_audit accepts an optional event_id; existing callers unchanged. [P0-C04]
 
 ### Security
 - 500 responses no longer include exception text; details remain in server logs only. [P0-C02]
