@@ -28,3 +28,4 @@ jobs:
         working-directory: frontend
       - run: npx vite build
         working-directory: frontend
+      - run: node scripts/check_scoring_vectors.mjs
