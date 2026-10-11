@@ -4,6 +4,7 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 ### Added
+- Admin UI version badge showing app and API versions with a mismatch warning. [P0-C06]
 - GET /admin/system/info (admin only): app version, Alembic schema revision, commit, environment. [P0-C05]
 - organizations table with a seeded default organization; events.orgId (nullable, backfilled). [P0-C04]
 - event_configs.features (JSON feature flags; defaults applied in code and backfilled). [P0-C04]
