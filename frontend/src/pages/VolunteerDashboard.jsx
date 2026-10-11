@@ -14,13 +14,13 @@ import QRScanner from '../components/QRScanner';
 import { STAFF_TAB_PERMISSIONS } from '../modules/registry';
 
 const VolunteerDashboard = () => {
-  const { logout, can } = useAuth();
+  const { logout, can, features } = useAuth();
   const { addToast } = useToast();
 
   const [activeTab, setActiveTab] = useState('checkin');
 
   const allNavItems = [
-    { id: 'checkin', label: 'Teams Check-in', icon: <UserCheck size={16} /> },
+    { id: 'checkin', label: can('attendance.mark') ? 'Teams Check-in' : 'Teams', icon: <UserCheck size={16} /> },
     { id: 'people', label: 'People / Faculty / Judges', icon: <Users size={16} /> }
   ];
   const navItems = allNavItems.filter((item) => !STAFF_TAB_PERMISSIONS[item.id] || can(STAFF_TAB_PERMISSIONS[item.id]));
@@ -353,32 +353,55 @@ const VolunteerDashboard = () => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '20px' }}>
           <div>
             <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>
-              {activeTab === 'checkin' ? 'Teams Check-in' : 'Faculty, Judges & People'} <span className="font-accent">Desk</span>
+              {activeTab === 'checkin' ? (can('attendance.mark') ? 'Teams Check-in' : 'Teams') : 'Faculty, Judges & People'} <span className="font-accent">Desk</span>
             </h1>
             <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
               {activeTab === 'checkin'
-                ? 'Verify identity credentials, mark attendance checkpoints, and allot problem statements when enabled.'
+                ? (can('attendance.mark') ? 'Verify identity credentials, mark attendance checkpoints, and allot problem statements when enabled.' : 'View team rosters, members, and details.')
                 : 'Verify attendance for Faculty, Judges, Student Volunteers, Organizers, and event staff.'}
             </p>
           </div>
 
           {/* Active Checkpoint dropdown */}
-          <div className="glass-panel" style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
-              Active Checkpoint:
-            </span>
-            <select
-              value={activeCheckpointId}
-              onChange={(e) => setActiveCheckpointId(e.target.value)}
-              className="form-input"
-              style={{ width: '220px', minHeight: '38px', padding: '6px 12px' }}
-            >
-              {checkpoints.map(cp => (
-                <option key={cp.id} value={cp.id}>{cp.name}</option>
-              ))}
-            </select>
-          </div>
+          {can('attendance.mark') && (
+            <div className="glass-panel" style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                Active Checkpoint:
+              </span>
+              <select
+                value={activeCheckpointId}
+                onChange={(e) => setActiveCheckpointId(e.target.value)}
+                className="form-input"
+                style={{ width: '220px', minHeight: '38px', padding: '6px 12px' }}
+              >
+                {checkpoints.map(cp => (
+                  <option key={cp.id} value={cp.id}>{cp.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
+
+        {navItems.length === 0 && (
+          <div
+            className="glass-panel"
+            style={{
+              padding: '60px 20px',
+              textAlign: 'center',
+              borderRadius: '16px',
+              maxWidth: '540px',
+              margin: '40px auto',
+            }}
+          >
+            <Users size={48} style={{ color: 'var(--text-muted)', marginBottom: '16px' }} />
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '8px' }}>
+              No Accessible Modules
+            </h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
+              Your role has no modules yet. Ask an admin.
+            </p>
+          </div>
+        )}
 
         {/* TEAMS CHECK-IN TAB CONTENT */}
         {activeTab === 'checkin' && (
@@ -421,14 +444,16 @@ const VolunteerDashboard = () => {
                 />
               </div>
 
-              <button 
-                onClick={() => setScannerOpen(true)}
-                className="btn btn-primary"
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '160px', justifyContent: 'center' }}
-              >
-                <QrCode size={18} />
-                Scan Team QR
-              </button>
+              {can('attendance.mark') && (
+                <button 
+                  onClick={() => setScannerOpen(true)}
+                  className="btn btn-primary"
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '160px', justifyContent: 'center' }}
+                >
+                  <QrCode size={18} />
+                  Scan Team QR
+                </button>
+              )}
             </div>
 
             {/* Teams Table */}
@@ -467,7 +492,7 @@ const VolunteerDashboard = () => {
                     </span>
                   )
                 },
-                {
+                ...(features?.pods !== false ? [{
                   header: 'POD Group',
                   accessor: 'podName',
                   render: (t) => (
@@ -479,7 +504,7 @@ const VolunteerDashboard = () => {
                       <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Unassigned</span>
                     )
                   )
-                },
+                }] : []),
                 {
                   header: 'Check-In Status',
                   accessor: 'id',
@@ -507,7 +532,7 @@ const VolunteerDashboard = () => {
                       className="btn btn-secondary"
                       style={{ minHeight: '36px', padding: '6px 14px', fontSize: '0.8rem' }}
                     >
-                      Verify & Checkin
+                      {can('attendance.mark') ? 'Verify & Checkin' : 'View Team'}
                     </button>
                   )
                 }
@@ -631,7 +656,7 @@ const VolunteerDashboard = () => {
                     );
                   }
                 },
-                {
+                ...(can('people.checkin') ? [{
                   header: 'Action',
                   accessor: 'id',
                   align: 'right',
@@ -658,7 +683,7 @@ const VolunteerDashboard = () => {
                       </button>
                     );
                   }
-                }
+                }] : [])
               ]}
               data={peopleList}
               page={peoplePage}
@@ -697,9 +722,11 @@ const VolunteerDashboard = () => {
                 <span style={{ fontSize: '0.8rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-light)', padding: '4px 10px', borderRadius: '6px' }}>
                   Bench / Desk #: <strong style={{ color: 'var(--text-primary)' }}>{detailedTeam?.deskNumber || selectedTeam?.deskNumber || '—'}</strong>
                 </span>
-                <span style={{ fontSize: '0.8rem', background: 'rgba(185, 111, 56, 0.12)', border: '1px solid rgba(185, 111, 56, 0.3)', padding: '4px 10px', borderRadius: '6px', color: 'var(--primary)' }}>
-                  POD Group: <strong>{detailedTeam?.podName || selectedTeam?.podName || 'Unassigned'}</strong>
-                </span>
+                {features?.pods !== false && (
+                  <span style={{ fontSize: '0.8rem', background: 'rgba(185, 111, 56, 0.12)', border: '1px solid rgba(185, 111, 56, 0.3)', padding: '4px 10px', borderRadius: '6px', color: 'var(--primary)' }}>
+                    POD Group: <strong>{detailedTeam?.podName || selectedTeam?.podName || 'Unassigned'}</strong>
+                  </span>
+                )}
               </div>
 
               {modalLoading ? (
@@ -810,7 +837,7 @@ const VolunteerDashboard = () => {
                                 </span>
                                 Marked by {cpStatus.markedBy} at {new Date(cpStatus.timestamp).toLocaleTimeString()}
                               </div>
-                            ) : (
+                            ) : can('attendance.mark') ? (
                               <button
                                 onClick={() => handleMarkPresent(member.id, member.name)}
                                 className="btn btn-primary"
@@ -819,6 +846,8 @@ const VolunteerDashboard = () => {
                               >
                                 {markingMemberId === member.id ? <span className="spinner spinner-white" style={{ width: '16px', height: '16px' }}></span> : 'Mark Present'}
                               </button>
+                            ) : (
+                              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Not checked in</span>
                             )}
                           </div>
                         </div>
