@@ -10,6 +10,7 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 - Test factories for events, users, volunteers, teams and auth headers. [P1-C02]
 
 ### Changed
+- Admin routes use permission guards (behaviour unchanged: ADMIN holds every permission). [P1-C07]
 - Volunteer routes use permission guards (behaviour unchanged for seeded roles). [P1-C06]
 
 ### Security

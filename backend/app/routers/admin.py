@@ -30,6 +30,7 @@ from app.models import (
     Discipline, RefreshToken
 )
 from app.auth import require_role, CurrentUser, get_password_hash
+from app.rbac import Principal, require_permission
 from app.schemas import (
     TeamResponse, TeamDetailResponse, AuditLogResponse, 
     PodResponse, VolunteerResponse, ProblemStatementResponse,
@@ -179,7 +180,7 @@ def get_teams(
     page: int = 1,
     limit: int = 20,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('team.view'))
 ):
     query = db.query(Team).options(
         joinedload(Team.pod),
@@ -287,7 +288,7 @@ def get_teams(
 @router.get("/teams/export")
 def export_teams(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('team.export'))
 ):
     teams = db.query(Team).filter(Team.eventId == current_user.eventId).order_by(Team.registrationId).all()
     
@@ -349,7 +350,7 @@ def export_teams(
 @router.get("/teams/unresolved-leaders")
 def get_unresolved_leaders_report(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('team.view'))
 ):
     teams = db.query(Team).options(joinedload(Team.members)).filter(Team.eventId == current_user.eventId).all()
     unresolved = []
@@ -370,7 +371,7 @@ def get_unresolved_leaders_report(
 @router.get("/teams/export-credentials")
 def export_team_credentials(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('team.credentials'))
 ):
     teams = db.query(Team).filter(Team.eventId == current_user.eventId).order_by(Team.registrationId).all()
     credentials = []
@@ -392,7 +393,7 @@ def export_team_credentials(
 def get_team_detail(
     team_id: str,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('team.view'))
 ):
     team = db.query(Team).filter(
         Team.id == team_id, 
@@ -439,7 +440,7 @@ def patch_team(
     team_id: str,
     payload: Dict[str, Any],
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('team.edit'))
 ):
     team = db.query(Team).filter(
         Team.id == team_id,
@@ -622,7 +623,7 @@ def patch_team(
 async def import_teams_preview(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('team.import'))
 ):
     # 1. Validate file size and type
     if not file.filename.endswith('.csv'):
@@ -849,7 +850,7 @@ def import_teams_confirm(
     importId: str,
     decisions: Optional[Dict[str, str]] = None, # key: registrationId, value: "update" | "skip"
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('team.import'))
 ):
     pending = db.query(PendingImport).filter(
         PendingImport.id == importId,
@@ -1132,7 +1133,7 @@ def import_teams_confirm(
 @router.get("/pods", response_model=List[PodResponse])
 def get_pods(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('pod.view'))
 ):
     pods = db.query(Pod).options(
         joinedload(Pod.teams),
@@ -1156,7 +1157,7 @@ def get_pods(
 def create_pod(
     payload: Dict[str, Any],
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('pod.manage'))
 ):
     name = str(payload.get("name", "")).strip()
     capacity = payload.get("capacity")
@@ -1197,7 +1198,7 @@ def update_pod(
     pod_id: str,
     payload: Dict[str, Any],
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('pod.manage'))
 ):
     pod = db.query(Pod).filter(Pod.id == pod_id, Pod.eventId == current_user.eventId).first()
     if not pod:
@@ -1264,7 +1265,7 @@ def update_pod(
 def delete_pod(
     pod_id: str,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('pod.manage'))
 ):
     pod = db.query(Pod).filter(Pod.id == pod_id, Pod.eventId == current_user.eventId).first()
     if not pod:
@@ -1287,7 +1288,7 @@ def delete_pod(
 def assign_teams_to_pod(
     payload: Dict[str, Any],
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('pod.manage'))
 ):
     team_ids = payload.get("teamIds", [])
     pod_id = payload.get("podId") # Can be null to unassign
@@ -1372,7 +1373,7 @@ def assign_teams_to_pod(
 @router.get("/pods/export")
 def export_pods(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('pod.export'))
 ):
     pods = (
         db.query(Pod)
@@ -1675,7 +1676,7 @@ def export_pods(
 async def import_pods_preview(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('pod.manage'))
 ):
     if not file.filename.endswith('.csv'):
         raise HTTPException(status_code=400, detail="Invalid file type. Only CSV files allowed.")
@@ -1781,7 +1782,7 @@ def import_pods_confirm(
     importId: str,
     decisions: Optional[Dict[str, str]] = None,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('pod.manage'))
 ):
     pending = db.query(PendingImport).filter(
         PendingImport.id == importId,
@@ -1828,7 +1829,7 @@ def import_pods_confirm(
 def export_pod_roster(
     pod_id: str,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('pod.export'))
 ):
     pod = db.query(Pod).filter(Pod.id == pod_id, Pod.eventId == current_user.eventId).first()
     if not pod:
@@ -1875,7 +1876,7 @@ def export_pod_roster(
 @router.get("/volunteers/export")
 def export_volunteers(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('staff.export'))
 ):
     volunteers = (
         db.query(Volunteer)
@@ -2179,7 +2180,7 @@ def get_volunteers(
     page: Optional[int] = None,
     limit: Optional[int] = None,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('staff.view'))
 ):
     query = db.query(Volunteer).options(
         joinedload(Volunteer.pod),
@@ -2302,7 +2303,7 @@ def normalize_people_roles(roles_list):
 @router.get("/people-roles")
 def get_people_roles(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('staff.view'))
 ):
     config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
     if config and config.peopleRoles:
@@ -2313,7 +2314,7 @@ def get_people_roles(
 def add_people_role(
     payload: Dict[str, Any],
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('staff.manage'))
 ):
     role_name = str(payload.get("role", "")).strip()
     if not role_name:
@@ -2342,7 +2343,7 @@ def add_people_role(
 def delete_people_role(
     role_name: str,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('staff.manage'))
 ):
     config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
     if not config:
@@ -2437,7 +2438,7 @@ def sync_panel_volunteers(db: Session, panel: Panel, event_id: str):
 def create_volunteer(
     payload: Dict[str, Any],
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('staff.manage'))
 ):
     name = str(payload.get("name", "")).strip()
     type_str = payload.get("type")
@@ -2533,7 +2534,7 @@ def update_volunteer(
     volunteer_id: str,
     payload: Dict[str, Any],
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('staff.manage'))
 ):
     volunteer = db.query(Volunteer).filter(Volunteer.id == volunteer_id, Volunteer.eventId == current_user.eventId).first()
     if not volunteer:
@@ -2627,7 +2628,7 @@ def update_volunteer(
 def delete_volunteer(
     volunteer_id: str,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('staff.manage'))
 ):
     v = db.query(Volunteer).filter(Volunteer.id == volunteer_id, Volunteer.eventId == current_user.eventId).first()
     if not v:
@@ -2643,7 +2644,7 @@ def delete_volunteer(
 def create_volunteer_login(
     volunteer_id: str,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('staff.credentials'))
 ):
     v = db.query(Volunteer).filter(Volunteer.id == volunteer_id, Volunteer.eventId == current_user.eventId).first()
     if not v:
@@ -2685,7 +2686,7 @@ def create_volunteer_login(
 def revoke_volunteer_login(
     volunteer_id: str,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('staff.credentials'))
 ):
     v = db.query(Volunteer).filter(Volunteer.id == volunteer_id, Volunteer.eventId == current_user.eventId).first()
     if not v:
@@ -2705,7 +2706,7 @@ def reset_volunteer_password(
     volunteer_id: str,
     payload: Dict[str, Any] = None,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('staff.credentials'))
 ):
     v = db.query(Volunteer).filter(Volunteer.id == volunteer_id, Volunteer.eventId == current_user.eventId).first()
     if not v:
@@ -2734,7 +2735,7 @@ def reset_team_password(
     team_id: str,
     payload: Dict[str, Any] = None,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('team.credentials'))
 ):
     team = db.query(Team).filter(Team.id == team_id, Team.eventId == current_user.eventId).first()
     if not team:
@@ -2780,7 +2781,7 @@ def reset_team_password(
 async def import_volunteers_preview(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('staff.manage'))
 ):
     if not file.filename.endswith('.csv'):
         raise HTTPException(status_code=400, detail="Invalid file type. Only CSV files allowed.")
@@ -2907,7 +2908,7 @@ def import_volunteers_confirm(
     importId: str,
     decisions: Optional[Dict[str, str]] = None,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('staff.manage'))
 ):
     pending = db.query(PendingImport).filter(
         PendingImport.id == importId,
@@ -3037,7 +3038,7 @@ def import_volunteers_confirm(
 @router.get("/problem-statements", response_model=List[ProblemStatementResponse])
 def get_problem_statements(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('ps.view'))
 ):
     statements = db.query(ProblemStatement).filter(
         ProblemStatement.eventId == current_user.eventId
@@ -3063,7 +3064,7 @@ def get_problem_statements(
 def create_problem_statement(
     payload: ProblemStatementCreate,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('ps.manage'))
 ):
     existing = db.query(ProblemStatement).filter(
         ProblemStatement.eventId == current_user.eventId,
@@ -3101,7 +3102,7 @@ def create_problem_statement(
 @router.post("/problem-statements/clear-selections")
 def clear_all_ps_selections(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('ps.danger'))
 ):
     """One-click admin reset of all team leader problem statement selections."""
     event_teams = db.query(Team.id).filter(Team.eventId == current_user.eventId).subquery()
@@ -3130,7 +3131,7 @@ def clear_all_ps_selections(
 @router.post("/problem-statements/purge-test-data")
 def purge_problem_statements_and_selections(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('ps.danger'))
 ):
     """Deletes all PS selections AND deletes all test problem statements for this event."""
     event_teams = db.query(Team.id).filter(Team.eventId == current_user.eventId).subquery()
@@ -3163,7 +3164,7 @@ def update_problem_statement(
     ps_id: str,
     payload: ProblemStatementUpdate,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('ps.manage'))
 ):
     ps = db.query(ProblemStatement).filter(
         ProblemStatement.id == ps_id,
@@ -3205,7 +3206,7 @@ def update_problem_statement(
 def delete_problem_statement(
     ps_id: str,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('ps.manage'))
 ):
     ps = db.query(ProblemStatement).filter(
         ProblemStatement.id == ps_id,
@@ -3225,7 +3226,7 @@ def delete_problem_statement(
 @router.get("/problem-statements/export")
 def export_problem_statements(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('ps.export'))
 ):
     statements = (
         db.query(ProblemStatement)
@@ -3515,7 +3516,7 @@ def export_problem_statements(
 async def import_problem_statements_preview(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('ps.manage'))
 ):
     if not file.filename.endswith('.csv'):
         raise HTTPException(status_code=400, detail="Invalid file type. Only CSV files allowed.")
@@ -3675,7 +3676,7 @@ def import_problem_statements_confirm(
     importId: str,
     decisions: Optional[Dict[str, str]] = None,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('ps.manage'))
 ):
     pending = db.query(PendingImport).filter(
         PendingImport.id == importId,
@@ -3745,7 +3746,7 @@ def import_problem_statements_confirm(
 def get_ps_selected_teams(
     ps_id: str,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('ps.view'))
 ):
     ps = db.query(ProblemStatement).filter(
         ProblemStatement.id == ps_id,
@@ -3785,7 +3786,7 @@ def _format_dt_utc(dt: Optional[datetime]) -> Optional[datetime]:
 @router.get("/config")
 def get_event_config(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('config.view'))
 ):
     config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
     if not config:
@@ -3806,7 +3807,7 @@ def get_event_config(
 def update_ps_release_time(
     payload: Dict[str, Any],
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('config.manage'))
 ):
     config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
     if not config:
@@ -3869,7 +3870,7 @@ def update_ps_release_time(
 @router.get("/checkpoints", response_model=List[CheckpointTypeResponse])
 def get_checkpoints(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('checkpoint.view'))
 ):
     return db.query(CheckpointType).filter(CheckpointType.eventId == current_user.eventId).order_by(CheckpointType.name).all()
 
@@ -3877,7 +3878,7 @@ def get_checkpoints(
 def create_checkpoint(
     payload: CheckpointTypeCreate,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('checkpoint.manage'))
 ):
     existing = db.query(CheckpointType).filter(
         CheckpointType.eventId == current_user.eventId,
@@ -3908,7 +3909,7 @@ def update_checkpoint(
     id: str,
     payload: CheckpointTypeUpdate,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('checkpoint.manage'))
 ):
     cp = db.query(CheckpointType).filter(
         CheckpointType.id == id,
@@ -3951,7 +3952,7 @@ def delete_checkpoint(
     id: str,
     force: bool = False,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('checkpoint.manage'))
 ):
     cp = db.query(CheckpointType).filter(
         CheckpointType.id == id,
@@ -3989,7 +3990,7 @@ def delete_checkpoint(
 def clear_checkpoint_records(
     id: str,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('attendance.danger'))
 ):
     """Clear all attendance records for a specific checkpoint without deleting the checkpoint itself."""
     cp = db.query(CheckpointType).filter(
@@ -4016,7 +4017,7 @@ def clear_checkpoint_records(
 @router.get("/checkpoints/export-master-workbook")
 def export_attendance_master_workbook(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('attendance.export'))
 ):
     """
     Exports a comprehensive multi-sheet Master Excel Workbook containing:
@@ -4338,7 +4339,7 @@ def export_attendance_master_workbook(
 def export_single_checkpoint_sheet(
     id: str,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('attendance.export'))
 ):
     """
     Exports a single checkpoint sheet workbook containing participant and volunteer check-in records for that specific checkpoint.
@@ -4501,7 +4502,7 @@ def export_single_checkpoint_sheet(
 @router.get("/panels", response_model=List[PanelResponse])
 def get_panels(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('panel.view'))
 ):
     panels = db.query(Panel).filter(Panel.eventId == current_user.eventId).order_by(Panel.name).all()
     res = []
@@ -4523,7 +4524,7 @@ def get_panels(
 def create_panel(
     payload: PanelCreate,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('panel.manage'))
 ):
     if payload.problemStatementId:
         existing = db.query(Panel).filter(
@@ -4565,7 +4566,7 @@ def update_panel(
     panel_id: str,
     payload: PanelUpdate,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('panel.manage'))
 ):
     panel = db.query(Panel).filter(Panel.id == panel_id, Panel.eventId == current_user.eventId).first()
     if not panel:
@@ -4610,7 +4611,7 @@ def update_panel(
 def delete_panel(
     panel_id: str,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('panel.manage'))
 ):
     panel = db.query(Panel).filter(Panel.id == panel_id, Panel.eventId == current_user.eventId).first()
     if not panel:
@@ -4629,7 +4630,7 @@ def delete_panel(
 def export_evaluation_sheet(
     ps_id: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('round.export'))
 ):
     query = (
         db.query(Team)
@@ -4680,7 +4681,7 @@ def export_evaluation_sheet(
 @router.get("/evaluation-rounds", response_model=List[EvaluationRoundResponse])
 def get_evaluation_rounds(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('round.view'))
 ):
     rounds = db.query(EvaluationRound).filter(EvaluationRound.eventId == current_user.eventId).order_by(EvaluationRound.roundNumber).all()
     res = []
@@ -4703,7 +4704,7 @@ def get_evaluation_rounds(
 def create_evaluation_round(
     payload: EvaluationRoundCreate,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('round.manage'))
 ):
     existing = db.query(EvaluationRound).filter(
         EvaluationRound.eventId == current_user.eventId,
@@ -4744,7 +4745,7 @@ def update_evaluation_round(
     round_id: str,
     payload: EvaluationRoundUpdate,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('round.manage'))
 ):
     round_obj = db.query(EvaluationRound).filter(
         EvaluationRound.id == round_id,
@@ -4787,7 +4788,7 @@ def update_evaluation_round(
 def delete_evaluation_round(
     round_id: str,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('round.manage'))
 ):
     round_obj = db.query(EvaluationRound).filter(
         EvaluationRound.id == round_id,
@@ -4803,7 +4804,7 @@ def delete_evaluation_round(
 @router.get("/evaluation-rounds/export-master-workbook")
 def export_master_evaluation_workbook(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('round.export'))
 ):
     rounds = (
         db.query(EvaluationRound)
@@ -4925,7 +4926,7 @@ def export_master_evaluation_workbook(
 def export_round_submissions(
     round_id: str,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('round.export'))
 ):
     round_obj = db.query(EvaluationRound).filter(
         EvaluationRound.id == round_id,
@@ -5044,7 +5045,7 @@ def export_round_submissions(
 @router.get("/panels/export")
 def export_panels(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('panel.export'))
 ):
     panels = (
         db.query(Panel)
@@ -5351,7 +5352,7 @@ def export_panels(
 async def import_panels(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('panel.manage'))
 ):
     if not file.filename.endswith('.csv'):
         raise HTTPException(status_code=400, detail="Invalid file type. CSV required.")
@@ -5409,7 +5410,7 @@ async def import_panels(
 @router.get("/evaluation-rounds/export")
 def export_evaluation_rounds(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('round.export'))
 ):
     rounds = db.query(EvaluationRound).filter(EvaluationRound.eventId == current_user.eventId).order_by(EvaluationRound.roundNumber).all()
     output = io.StringIO()
@@ -5428,7 +5429,7 @@ def export_evaluation_rounds(
 async def import_evaluation_rounds(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('round.manage'))
 ):
     if not file.filename.endswith('.csv'):
         raise HTTPException(status_code=400, detail="Invalid file type. CSV required.")
@@ -5474,7 +5475,7 @@ async def import_evaluation_rounds(
 @router.get("/attendance-slots/export")
 def export_attendance_slots(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('attendance.export'))
 ):
     slots = db.query(CheckpointType).filter(CheckpointType.eventId == current_user.eventId).order_by(CheckpointType.name).all()
     output = io.StringIO()
@@ -5493,7 +5494,7 @@ def export_attendance_slots(
 async def import_attendance_slots(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.ADMIN))
+    current_user: Principal = Depends(require_permission('checkpoint.manage'))
 ):
     if not file.filename.endswith('.csv'):
         raise HTTPException(status_code=400, detail="Invalid file type. CSV required.")
