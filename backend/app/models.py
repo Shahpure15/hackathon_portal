@@ -66,6 +66,7 @@ class Event(Base):
     problemStatements = relationship("ProblemStatement", back_populates="event", cascade="all, delete-orphan")
     panels = relationship("Panel", back_populates="event", cascade="all, delete-orphan")
     evaluationRounds = relationship("EvaluationRound", back_populates="event", cascade="all, delete-orphan")
+    roles = relationship("RbacRole", back_populates="event", cascade="all, delete-orphan")
 
 class EventConfig(Base):
     __tablename__ = "event_configs"
@@ -361,3 +362,77 @@ class RefreshToken(Base):
 
     # Relationships
     user = relationship("User", back_populates="refresh_tokens")
+
+
+class RbacRole(Base):
+    __tablename__ = "roles"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    description = Column(String(500), nullable=True)
+    isSystem = Column(Boolean, default=False, nullable=False)
+    systemKey = Column(String(30), nullable=True)
+    sourceTemplateId = Column(String(36), nullable=True)
+    createdAt = Column(DateTime, default=func.now(), nullable=False)
+    updatedAt = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+
+    # Relationships
+    event = relationship("Event", back_populates="roles")
+    permissions = relationship("RolePermission", back_populates="role", cascade="all, delete-orphan")
+    assignments = relationship("UserRoleAssignment", back_populates="role", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("eventId", "name", name="uq_roles_event_name"),
+    )
+
+
+class RolePermission(Base):
+    __tablename__ = "role_permissions"
+
+    roleId = Column(String(36), ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True)
+    permissionKey = Column(String(100), primary_key=True)
+
+    # Relationships
+    role = relationship("RbacRole", back_populates="permissions")
+
+
+class RoleTemplate(Base):
+    __tablename__ = "role_templates"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    orgId = Column(String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(100), nullable=False)
+    description = Column(String(500), nullable=True)
+    permissions = Column(JSON, nullable=False, default=list)
+    createdFromRoleId = Column(String(36), nullable=True)
+    createdAt = Column(DateTime, default=func.now(), nullable=False)
+
+    # Relationships
+    organization = relationship("Organization")
+
+    __table_args__ = (
+        UniqueConstraint("orgId", "name", name="uq_role_templates_org_name"),
+    )
+
+
+class UserRoleAssignment(Base):
+    __tablename__ = "user_role_assignments"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    userId = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    roleId = Column(String(36), ForeignKey("roles.id", ondelete="CASCADE"), nullable=False)
+    scope = Column(JSON, nullable=True)
+    createdBy = Column(String(100), nullable=True)
+    createdAt = Column(DateTime, default=func.now(), nullable=False)
+
+    # Relationships
+    role = relationship("RbacRole", back_populates="assignments")
+    user = relationship("User")
+    event = relationship("Event")
+
+    __table_args__ = (
+        UniqueConstraint("userId", "roleId", name="uq_user_role_assignments_user_role"),
+    )
+

@@ -4,6 +4,7 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 ### Added
+- RBAC tables (roles, role_permissions, role_templates, user_role_assignments) with seeded Volunteer and Judge roles and backfilled volunteer assignments. [P1-C04]
 - Permission catalog (46 keys) with tiers, implications and scopable flags. [P1-C03]
 - Test factories for events, users, volunteers, teams and auth headers. [P1-C02]
 
