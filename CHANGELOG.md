@@ -17,6 +17,8 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 - log_audit accepts an optional event_id; existing callers unchanged. [P0-C04]
 
 ### Security
+- CORS: removed the blanket *.vercel.app trust; origins are an explicit allowlist plus *.mitindia.com, localhost only outside production, and an optional team-scoped preview regex (CORS_ALLOWED_ORIGIN_REGEX). [P0-C08]
+- CORS headers on 429 and 500 responses are added only for allowed origins; the wildcard fallback is gone. [P0-C08]
 - 500 responses no longer include exception text; details remain in server logs only. [P0-C02]
 
 ## [10.0.0] - 2026-10-10
