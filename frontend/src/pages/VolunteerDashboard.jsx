@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  Users, UserCheck, Search, X, CheckCircle, ChevronLeft, ChevronRight, LogOut, Info, QrCode, Menu, Layers, Download
+  Users, UserCheck, Search, X, CheckCircle, ChevronLeft, ChevronRight, LogOut, Info, QrCode, Menu, Layers, Download, Award
 } from 'lucide-react';
 import api, { getAccessToken } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,6 +12,7 @@ import Skeleton from '../components/Skeleton';
 import IconButton from '../components/IconButton';
 import QRScanner from '../components/QRScanner';
 import { STAFF_TAB_PERMISSIONS } from '../modules/registry';
+import JudgeConsole from '../modules/evaluation/JudgeConsole';
 
 const VolunteerDashboard = () => {
   const { logout, can, features } = useAuth();
@@ -21,7 +22,8 @@ const VolunteerDashboard = () => {
 
   const allNavItems = [
     { id: 'checkin', label: can('attendance.mark') ? 'Teams Check-in' : 'Teams', icon: <UserCheck size={16} /> },
-    { id: 'people', label: 'People / Faculty / Judges', icon: <Users size={16} /> }
+    { id: 'people', label: 'People / Faculty / Judges', icon: <Users size={16} /> },
+    { id: 'evaluations', label: 'Evaluate', icon: <Award size={16} /> }
   ];
   const navItems = allNavItems.filter((item) => !STAFF_TAB_PERMISSIONS[item.id] || can(STAFF_TAB_PERMISSIONS[item.id]));
 
@@ -353,17 +355,19 @@ const VolunteerDashboard = () => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '20px' }}>
           <div>
             <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>
-              {activeTab === 'checkin' ? (can('attendance.mark') ? 'Teams Check-in' : 'Teams') : 'Faculty, Judges & People'} <span className="font-accent">Desk</span>
+              {activeTab === 'evaluations' ? 'Judge Evaluation' : activeTab === 'checkin' ? (can('attendance.mark') ? 'Teams Check-in' : 'Teams') : 'Faculty, Judges & People'} <span className="font-accent">Desk</span>
             </h1>
             <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
-              {activeTab === 'checkin'
+              {activeTab === 'evaluations'
+                ? 'Evaluate participant presentations, review deliverables, and record rubric scores.'
+                : activeTab === 'checkin'
                 ? (can('attendance.mark') ? 'Verify identity credentials, mark attendance checkpoints, and allot problem statements when enabled.' : 'View team rosters, members, and details.')
                 : 'Verify attendance for Faculty, Judges, Student Volunteers, Organizers, and event staff.'}
             </p>
           </div>
 
           {/* Active Checkpoint dropdown */}
-          {can('attendance.mark') && (
+          {activeTab === 'checkin' && can('attendance.mark') && (
             <div className="glass-panel" style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
               <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
                 Active Checkpoint:
@@ -698,6 +702,13 @@ const VolunteerDashboard = () => {
                 </div>
               }
             />
+          </div>
+        )}
+
+        {/* JUDGE EVALUATION TAB CONTENT */}
+        {activeTab === 'evaluations' && (
+          <div className="fade-in-up">
+            <JudgeConsole />
           </div>
         )}
 

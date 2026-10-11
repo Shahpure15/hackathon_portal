@@ -139,6 +139,10 @@ def test_assignment_preview_and_commit_lifecycle(client, admin_eval_fixture):
         "judgeVolunteerIds": [fx["j1"].id, fx["j2"].id],
         "mode": "split",
         "judgesPerTeam": 1,
+        "groupMap": {
+            fx["t1"].id: [fx["j1"].id],
+            fx["t2"].id: [fx["j2"].id],
+        },
     }
     res_prev = client.post(f"/admin/rounds/{rid}/assignments/preview", json=preview_payload, headers=adm_h)
     assert res_prev.status_code == 200

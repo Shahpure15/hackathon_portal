@@ -13,11 +13,16 @@ import {
   Clock,
   Layers,
   HelpCircle,
+  Users,
+  Award,
 } from 'lucide-react';
 import api from '../../services/api';
 import Modal from '../../components/Modal';
 import SubmissionFieldsEditor from './SubmissionFieldsEditor';
 import RubricEditor from './RubricEditor';
+import AssignmentWizard from './AssignmentWizard';
+import JudgingProgressConsole from './JudgingProgressConsole';
+import ReviseRubricModal from './ReviseRubricModal';
 import { useToast } from '../../contexts/ToastContext';
 
 export const RoundEditor = ({
@@ -72,6 +77,9 @@ export const RoundEditor = ({
   const [isRubricPublished, setIsRubricPublished] = useState(
     Boolean(round?.rubricSummary?.published)
   );
+  const [currentRubricVersion, setCurrentRubricVersion] = useState(round?.currentRubricVersion || 1);
+  const [judgingSubTab, setJudgingSubTab] = useState('settings'); // settings | assignments | progress
+  const [showReviseRubricModal, setShowReviseRubricModal] = useState(false);
 
   const [saving, setSaving] = useState(false);
 
@@ -85,6 +93,9 @@ export const RoundEditor = ({
             setRubricFields(res.data.rubricFields || []);
             setIsRubricLocked(Boolean(res.data.locked));
             setIsRubricPublished(Boolean(res.data.published));
+            if (res.data.currentVersion) {
+              setCurrentRubricVersion(res.data.currentVersion);
+            }
           }
         } catch (err) {
           console.error('Failed to load rubric fields', err);
@@ -93,6 +104,23 @@ export const RoundEditor = ({
       fetchRubric();
     }
   }, [round?.id, isNew]);
+
+  const handleRubricRevised = async (result) => {
+    setIsRubricLocked(false);
+    if (result.newVersion) {
+      setCurrentRubricVersion(result.newVersion);
+    }
+    try {
+      const res = await api.get(`/admin/rounds/${round.id}/rubric`);
+      if (res.data) {
+        setRubricFields(res.data.rubricFields || []);
+        setIsRubricLocked(Boolean(res.data.locked));
+        setIsRubricPublished(Boolean(res.data.published));
+      }
+    } catch (err) {
+      console.error('Failed to reload rubric after revision', err);
+    }
+  };
 
   const handleSave = async (e) => {
     if (e) e.preventDefault();
@@ -174,7 +202,7 @@ export const RoundEditor = ({
       isOpen={true}
       onClose={onClose}
       title={isNew ? 'Create Unified Event Round' : `Edit Round: ${name}`}
-      maxWidth="840px"
+      maxWidth={activeTab === 'judging' && judgingSubTab !== 'settings' ? '1060px' : activeTab === 'rubric' ? '960px' : '840px'}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         {/* Navigation Tabs */}
@@ -478,7 +506,68 @@ export const RoundEditor = ({
               </button>
             </div>
 
-            {evaluationEnabled && (
+            {evaluationEnabled && !isNew && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  borderBottom: '1px solid var(--border-color)',
+                  paddingBottom: '12px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setJudgingSubTab('settings')}
+                  className={`btn ${judgingSubTab === 'settings' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ fontSize: '0.82rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Settings2 size={14} /> Judging Rules
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setJudgingSubTab('assignments')}
+                  className={`btn ${judgingSubTab === 'assignments' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ fontSize: '0.82rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Users size={14} /> Judge Assignments & Wizard
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setJudgingSubTab('progress')}
+                  className={`btn ${judgingSubTab === 'progress' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ fontSize: '0.82rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Award size={14} /> Judging Progress Console
+                </button>
+                {isRubricLocked && (
+                  <button
+                    type="button"
+                    onClick={() => setShowReviseRubricModal(true)}
+                    className="btn btn-secondary"
+                    style={{
+                      marginLeft: 'auto',
+                      fontSize: '0.8rem',
+                      color: '#ef4444',
+                      borderColor: 'rgba(239, 68, 68, 0.4)',
+                    }}
+                  >
+                    Revise Rubric
+                  </button>
+                )}
+              </div>
+            )}
+
+            {evaluationEnabled && (!isNew && judgingSubTab === 'assignments') && (
+              <AssignmentWizard roundId={round.id} features={features} />
+            )}
+
+            {evaluationEnabled && (!isNew && judgingSubTab === 'progress') && (
+              <JudgingProgressConsole roundId={round.id} roundName={name} />
+            )}
+
+            {evaluationEnabled && (isNew || judgingSubTab === 'settings') && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
                   <div>
@@ -557,6 +646,19 @@ export const RoundEditor = ({
             isPublished={isRubricPublished}
             evaluationEnabled={evaluationEnabled}
             onPublishChanged={(pub) => setIsRubricPublished(pub)}
+            onReviseRubric={() => setShowReviseRubricModal(true)}
+          />
+        )}
+
+        {/* Revise Rubric Modal */}
+        {round?.id && (
+          <ReviseRubricModal
+            roundId={round.id}
+            roundName={name}
+            currentRubricVersion={currentRubricVersion}
+            isOpen={showReviseRubricModal}
+            onClose={() => setShowReviseRubricModal(false)}
+            onRevised={handleRubricRevised}
           />
         )}
 

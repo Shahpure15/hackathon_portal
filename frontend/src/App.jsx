@@ -5,8 +5,8 @@ import { ToastProvider } from './contexts/ToastContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import ErrorBoundary from './components/ErrorBoundary';
 
-// Pages
 import Login from './pages/Login';
+import AcceptInvite from './pages/AcceptInvite';
 import EventConcluded from './pages/EventConcluded';
 
 const ADMIN_SUFFIX = import.meta.env.VITE_ADMIN_PATH_SUFFIX || 'k9v4m8q2x7p1w5r3y9z0b6c2';
@@ -99,6 +99,7 @@ const App = () => {
             <BrowserRouter>
               <Routes>
                 <Route path="/login" element={<Login />} />
+                <Route path="/accept-invite" element={<AcceptInvite />} />
                 <Route path="/event-concluded" element={<EventConcluded />} />
                 
                 {/* Dynamic Root Redirection */}

@@ -4,6 +4,7 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 ### Added
+- Accept-invite page; Email module; Judging tab with assignment wizard, progress console and rubric revise; judge console. [P3-C08]
 - Judge API: assigned rounds and teams, draft autosave, locking submit; per-user rate limits. [P3-C07]
 - SMTP account and template management, staff invitations by email, public accept-invite flow. [P3-C06]
 - Assignment planner, preview-and-commit assignment API with manual precedence, progress, trail, unlock, comment hiding and rubric revise endpoints. [P3-C05]
