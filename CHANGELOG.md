@@ -3,6 +3,8 @@
 Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.md). Every entry ends with its change ID.
 
 ## [Unreleased]
+### Added
+- Roles, templates, scoped member assignments and event feature flags (admin API). [P1b-C02]
 
 ## [10.2.0] - 2026-10-11
 ### Added
