@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import (
     Column, String, Integer, Boolean, DateTime, ForeignKey, 
-    Enum, JSON, Index, UniqueConstraint, func, Text
+    Enum, JSON, Index, UniqueConstraint, func, Text, Numeric
 )
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -291,11 +291,73 @@ class EvaluationRound(Base):
     isSubmissionOpen = Column(Boolean, default=False, nullable=False)
     createdAt = Column(DateTime, default=func.now(), nullable=False)
 
+    # Phase 2 unified round fields
+    status = Column(String(20), default="live", server_default="live", nullable=False)
+    submissionEnabled = Column(Boolean, default=True, server_default="1", nullable=False)
+    evaluationEnabled = Column(Boolean, default=False, server_default="0", nullable=False)
+    opensAt = Column(DateTime, nullable=True)
+    closesAt = Column(DateTime, nullable=True)
+    aggregation = Column(String(20), default="mean", server_default="mean", nullable=False)
+    trimCount = Column(Integer, default=1, server_default="1", nullable=False)
+    tieBreakOrder = Column(JSON, nullable=True)
+    eligibility = Column(JSON, nullable=True)
+    currentRubricVersion = Column(Integer, default=0, server_default="0", nullable=False)
+    totalScale = Column(Integer, default=100, server_default="100", nullable=False)
+    coiRule = Column(JSON, nullable=True)
+    resultsConfig = Column(JSON, nullable=True)
+
     event = relationship("Event", back_populates="evaluationRounds")
     submissions = relationship("Submission", back_populates="round", cascade="all, delete-orphan")
+    rubricVersions = relationship("RubricVersion", back_populates="round", cascade="all, delete-orphan")
 
     __table_args__ = (
         UniqueConstraint("eventId", "roundNumber", name="uq_round_event_number"),
+    )
+
+class RubricVersion(Base):
+    __tablename__ = "rubric_versions"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    roundId = Column(String(36), ForeignKey("evaluation_rounds.id", ondelete="CASCADE"), nullable=False, index=True)
+    version = Column(Integer, nullable=False)
+    reason = Column(String(30), nullable=False)  # initial | revise_archive | revise_discard
+    createdBy = Column(String(100), nullable=False)
+    createdAt = Column(DateTime, default=func.now(), nullable=False)
+    publishedAt = Column(DateTime, nullable=True)
+    lockedAt = Column(DateTime, nullable=True)
+
+    event = relationship("Event")
+    round = relationship("EvaluationRound", back_populates="rubricVersions")
+    fields = relationship("RubricField", back_populates="rubricVersion", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("roundId", "version", name="uq_rubric_round_version"),
+    )
+
+class RubricField(Base):
+    __tablename__ = "rubric_fields"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    rubricVersionId = Column(String(36), ForeignKey("rubric_versions.id", ondelete="CASCADE"), nullable=False, index=True)
+    fieldKey = Column(String(36), nullable=False)
+    type = Column(String(10), nullable=False)  # numeric | text
+    label = Column(String(150), nullable=False)
+    description = Column(Text, nullable=True)
+    sortOrder = Column(Integer, default=0, nullable=False)
+    isRequired = Column(Boolean, default=True, nullable=False)
+    maxMarks = Column(Numeric(8, 2), nullable=True)
+    weight = Column(Numeric(5, 2), nullable=True)
+    anchors = Column(JSON, nullable=True)
+    visibility = Column(String(15), nullable=True)  # staff | participant
+    maxLength = Column(Integer, nullable=True)
+
+    event = relationship("Event")
+    rubricVersion = relationship("RubricVersion", back_populates="fields")
+
+    __table_args__ = (
+        UniqueConstraint("rubricVersionId", "fieldKey", name="uq_rubric_field_key"),
     )
 
 class Submission(Base):
