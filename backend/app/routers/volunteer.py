@@ -12,13 +12,14 @@ from app.database import get_db
 from app.logger import logger
 from app.models import Role, Team, TeamMember, CheckpointType, AttendanceRecord, EventConfig, ProblemStatement, PSSelection, Volunteer, VolunteerAttendanceRecord
 from app.auth import require_role, CurrentUser
+from app.rbac import Principal, require_permission, require_principal, apply_team_scope
 
 router = APIRouter(prefix="/volunteer", tags=["volunteer"])
 
 @router.get("/config")
 def get_volunteer_config(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.VOLUNTEER))
+    current_user: Principal = Depends(require_principal(Role.VOLUNTEER))
 ):
     config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
     return {
@@ -29,7 +30,7 @@ def get_volunteer_config(
 def get_volunteer_problem_statements(
     team_id: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.VOLUNTEER))
+    current_user: Principal = Depends(require_permission('ps.view', principal_types=(Role.VOLUNTEER,)))
 ):
     config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
     if not config or not config.allowVolunteerPsSelection:
@@ -63,7 +64,7 @@ def volunteer_select_team_ps(
     team_id: str,
     payload: Dict[str, Any],
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.VOLUNTEER))
+    current_user: Principal = Depends(require_permission('ps.assist', principal_types=(Role.VOLUNTEER,)))
 ):
     config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
     if not config or not config.allowVolunteerPsSelection:
@@ -120,7 +121,7 @@ def escape_like_string(s: str) -> str:
 @router.get("/checkpoints")
 def get_checkpoints(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.VOLUNTEER))
+    current_user: Principal = Depends(require_permission('checkpoint.view', principal_types=(Role.VOLUNTEER,)))
 ):
     """Returns list of all checkpoints defined for this event."""
     checkpoints = db.query(CheckpointType).filter(
@@ -144,10 +145,11 @@ def get_volunteer_teams(
     page: int = 1,
     limit: int = 20,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.VOLUNTEER))
+    current_user: Principal = Depends(require_permission('team.view', principal_types=(Role.VOLUNTEER,)))
 ):
     """Search and paginate teams for check-in verification (read-only except for attendance)."""
     query = db.query(Team).filter(Team.eventId == current_user.eventId)
+    query = apply_team_scope(query, current_user)
     
     if search:
         escaped = escape_like_string(search)
@@ -200,7 +202,7 @@ def get_volunteer_teams(
 def get_volunteer_team_detail(
     team_id: str,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.VOLUNTEER))
+    current_user: Principal = Depends(require_permission('team.view', principal_types=(Role.VOLUNTEER,)))
 ):
     """Detailed team list for check-in including attendance status per member."""
     team = db.query(Team).options(
@@ -213,6 +215,9 @@ def get_volunteer_team_detail(
     ).first()
     
     if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+        
+    if apply_team_scope(db.query(Team).filter(Team.id == team.id), current_user).first() is None:
         raise HTTPException(status_code=404, detail="Team not found")
         
     # Get all checkpoints for this event
@@ -284,7 +289,7 @@ def mark_attendance_checkin(
     payload: Dict[str, Any],
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.VOLUNTEER))
+    current_user: Principal = Depends(require_permission('attendance.mark', principal_types=(Role.VOLUNTEER,)))
 ):
     member_id = payload.get("teamMemberId")
     checkpoint_id = payload.get("checkpointTypeId")
@@ -361,7 +366,7 @@ def get_volunteer_people(
     page: int = 1,
     limit: int = 20,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.VOLUNTEER))
+    current_user: Principal = Depends(require_permission('people.view', principal_types=(Role.VOLUNTEER,)))
 ):
     """Search and paginate hackathon people/faculty/judges for check-in verification."""
     query = db.query(Volunteer).filter(Volunteer.eventId == current_user.eventId)
@@ -436,7 +441,7 @@ def get_volunteer_people(
 def mark_volunteer_people_checkin(
     payload: Dict[str, Any],
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.VOLUNTEER))
+    current_user: Principal = Depends(require_permission('people.checkin', principal_types=(Role.VOLUNTEER,)))
 ):
     volunteer_id = payload.get("volunteerId")
     checkpoint_id = payload.get("checkpointTypeId")
@@ -509,7 +514,7 @@ def _csv_safe(value: Any) -> str:
 @router.get("/people/export")
 def export_volunteer_people(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(Role.VOLUNTEER))
+    current_user: Principal = Depends(require_permission('people.view', principal_types=(Role.VOLUNTEER,)))
 ):
     people = db.query(Volunteer).options(
         joinedload(Volunteer.pod),
