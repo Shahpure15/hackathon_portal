@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { Mail, Plus, Trash2, CheckCircle2, AlertCircle, RefreshCw, KeyRound, Server } from 'lucide-react';
+import { Mail, Plus, Trash2, CheckCircle2, AlertCircle, RefreshCw, KeyRound, Server, Send } from 'lucide-react';
 import api from '../../services/api';
 import { useToast } from '../../contexts/ToastContext';
 import ConfirmDialog from '../../components/ConfirmDialog';
@@ -12,6 +11,8 @@ export default function EmailAccounts() {
   const [testingId, setTestingId] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
   const [testResult, setTestResult] = useState(null);
+  const [sendTestModal, setSendTestModal] = useState(null); // { accountId, targetEmail: '' }
+  const [sendingTest, setSendingTest] = useState(false);
 
   const [formData, setFormData] = useState({
     label: '',
@@ -90,6 +91,27 @@ export default function EmailAccounts() {
       setTestResult({ id: account.id, ok: false, error: err.response?.data?.detail });
     } finally {
       setTestingId(null);
+    }
+  };
+
+  const handleSendTestEmail = async (e) => {
+    e.preventDefault();
+    if (!sendTestModal || !sendTestModal.targetEmail) return;
+    setSendingTest(true);
+    try {
+      const res = await api.post(`/admin/email/accounts/${sendTestModal.accountId}/test`, {
+        targetEmail: sendTestModal.targetEmail,
+      });
+      if (res.data.ok) {
+        addToast(res.data.message || 'Test email sent successfully!', 'success');
+        setSendTestModal(null);
+      } else {
+        addToast(res.data.error || 'Failed to send test email', 'error');
+      }
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to send test email', 'error');
+    } finally {
+      setSendingTest(false);
     }
   };
 
@@ -187,9 +209,19 @@ export default function EmailAccounts() {
                   style={{ fontSize: '12px', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
                   onClick={() => handleTest(acc)}
                   disabled={testingId === acc.id}
+                  title="Check connection and credentials without sending email"
                 >
                   <RefreshCw size={14} className={testingId === acc.id ? 'spin' : ''} />
                   {testingId === acc.id ? 'Testing...' : 'Test Connection'}
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ fontSize: '12px', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  onClick={() => setSendTestModal({ accountId: acc.id, targetEmail: '' })}
+                  title="Send a real test email to an inbox"
+                >
+                  <Send size={14} />
+                  Send Test Email
                 </button>
                 <button
                   className="btn btn-secondary"
@@ -343,6 +375,51 @@ export default function EmailAccounts() {
         onConfirm={handleDelete}
         onCancel={() => setDeleteId(null)}
       />
+
+      {/* Send Test Email Modal */}
+      <Modal
+        isOpen={!!sendTestModal}
+        onClose={() => setSendTestModal(null)}
+        title="Send Test Email"
+        maxWidth="440px"
+      >
+        <form onSubmit={handleSendTestEmail}>
+          <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
+            Send a live test email through this SMTP account to verify outbound mail delivery to real inboxes.
+          </p>
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '6px', color: 'var(--ink)' }}>
+              Recipient Email Address
+            </label>
+            <input
+              type="email"
+              className="form-input"
+              style={{ width: '100%' }}
+              placeholder="you@domain.com"
+              value={sendTestModal?.targetEmail || ''}
+              onChange={(e) => setSendTestModal({ ...sendTestModal, targetEmail: e.target.value })}
+              required
+              autoFocus
+            />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setSendTestModal(null)}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={sendingTest}
+            >
+              {sendingTest ? 'Sending...' : 'Send Message'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

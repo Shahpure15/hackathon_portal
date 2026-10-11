@@ -281,7 +281,7 @@ def test_smtp_account(
             return {"ok": False, "error": err or "Failed to send test email"}
         return {"ok": True, "message": f"Test message sent successfully to {payload.targetEmail}"}
     else:
-        ok, err = test_connection(account)
+        ok, code, err = test_connection(account)
         if not ok:
             return {"ok": False, "error": err or "Failed to authenticate with SMTP server"}
         return {"ok": True, "message": "SMTP connection and authentication successful"}
