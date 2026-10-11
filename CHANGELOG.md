@@ -3,6 +3,10 @@
 Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.md). Every entry ends with its change ID.
 
 ## [Unreleased]
+### Added
+- Backend pytest harness with a SQLite safety guard, route-guard, migration, error-handling and version tests. [P0-C03]
+- GitHub Actions CI: backend tests, version check, frontend build. [P0-C03]
+
 ### Security
 - 500 responses no longer include exception text; details remain in server logs only. [P0-C02]
 
