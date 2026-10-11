@@ -4,6 +4,7 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 ### Added
+- Assignment planner, preview-and-commit assignment API with manual precedence, progress, trail, unlock, comment hiding and rubric revise endpoints. [P3-C05]
 - Evaluation service: drafts, locking submit, unlock versions, rubric revise. [P3-C04]
 - Evaluation tables: assignments, evaluations, versions, scores, texts. [P3-C03]
 - Email core: encrypted SMTP accounts, sandboxed templates, durable outbox and worker, one-time auth tokens. [P3-C02]
