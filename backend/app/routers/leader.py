@@ -312,7 +312,15 @@ def get_evaluation_rounds_for_leader(
     if not team:
         raise HTTPException(status_code=400, detail="Team not found")
 
-    rounds = db.query(EvaluationRound).filter(EvaluationRound.eventId == current_user.eventId).order_by(EvaluationRound.roundNumber).all()
+    rounds = (
+        db.query(EvaluationRound)
+        .filter(
+            EvaluationRound.eventId == current_user.eventId,
+            EvaluationRound.submissionEnabled == True,
+        )
+        .order_by(EvaluationRound.roundNumber)
+        .all()
+    )
     submissions = {s.roundId: s for s in db.query(Submission).filter(Submission.teamId == team.id).all()}
 
     res = []
@@ -350,7 +358,7 @@ def submit_evaluation_round(
     if not round_obj:
         raise HTTPException(status_code=404, detail="Evaluation round not found")
 
-    if not round_obj.isSubmissionOpen:
+    if not round_obj.submissionEnabled or not round_obj.isSubmissionOpen:
         logger.warn(f"leader.submit_round Submission attempt on closed round: team={current_user.teamId} round={round_id}")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Submissions are closed for this round")
 

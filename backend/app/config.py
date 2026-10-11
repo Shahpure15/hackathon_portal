@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     CORS_ALLOWED_ORIGIN_REGEX: str = ""
     ENVIRONMENT: str = "development"
     SENTRY_DSN: str = ""
-    BACKEND_VERSION: str = "10.3.0"
+    BACKEND_VERSION: str = "10.4.0"
 
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"),

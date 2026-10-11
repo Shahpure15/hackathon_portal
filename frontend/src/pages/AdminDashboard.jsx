@@ -25,6 +25,7 @@ import VersionBadge from '../components/VersionBadge';
 import { ADMIN_NAV_PERMISSIONS } from '../modules/registry';
 
 const RolesModule = React.lazy(() => import('../modules/roles/RolesModule'));
+const RoundsModule = React.lazy(() => import('../modules/rounds/RoundsModule'));
 
 
 
@@ -112,7 +113,7 @@ const AdminDashboard = () => {
           { id: 'qrScan', label: 'QR Team Lookup', icon: <QrCode size={16} /> },
           { id: 'pods', label: 'POD Groups', icon: <Layers size={16} /> },
           { id: 'panels', label: 'Panels', icon: <Layers size={16} /> },
-          { id: 'evalRounds', label: 'Evaluation Rounds', icon: <FileText size={16} /> },
+          { id: 'evalRounds', label: 'Rounds', icon: <FileText size={16} /> },
           { id: 'volunteers', label: 'People & Organizers', icon: <UserCheck size={16} /> },
           { id: 'checkpoints', label: 'Attendance Slots', icon: <FileText size={16} /> },
           { id: 'ps', label: 'Problem Statements', icon: <Layers size={16} /> },
@@ -173,7 +174,9 @@ const AdminDashboard = () => {
           <PanelsView />
         </div>
         <div style={{ display: activeTab === 'evalRounds' ? 'block' : 'none' }} className="fade-in-up">
-          <EvalRoundsView />
+          <React.Suspense fallback={<Skeleton count={4} />}>
+            <RoundsModule />
+          </React.Suspense>
         </div>
         <div style={{ display: activeTab === 'volunteers' ? 'block' : 'none' }} className="fade-in-up">
           <VolunteersView
