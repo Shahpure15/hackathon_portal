@@ -23,10 +23,23 @@ BUILTIN_TEMPLATES: Dict[str, dict] = {
     }
 }
 
+TEMPLATE_REGISTRY = BUILTIN_TEMPLATES
+
 _sandbox_env = jinja2.sandbox.SandboxedEnvironment(
     autoescape=True,
     undefined=jinja2.StrictUndefined,
 )
+
+
+def get_template(db, event_id: str, key: str) -> Tuple[str, str]:
+    from app.models import EmailTemplate
+    custom = db.query(EmailTemplate).filter(EmailTemplate.eventId == event_id, EmailTemplate.key == key).first()
+    if custom:
+        return custom.subject, custom.body
+    spec = BUILTIN_TEMPLATES.get(key)
+    if spec:
+        return spec["default_subject"], spec["default_body"]
+    raise KeyError(f"Unknown email template key: {key}")
 
 
 def get_template_definition(key: str) -> Optional[dict]:

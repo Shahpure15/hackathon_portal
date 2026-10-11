@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from sqlalchemy.orm import Session
@@ -5,8 +6,9 @@ from sqlalchemy import func
 from pydantic import BaseModel
 
 from app.database import get_db
-from app.models import User, RefreshToken, Role, Event
+from app.models import User, RefreshToken, Role, Event, AuthToken, Volunteer
 from app.schemas import UserLogin, TokenResponse
+from app.dto.invites import AcceptInviteRequest
 from app.config import settings
 from app.auth import (
     verify_password, get_password_hash, create_access_token, 
@@ -284,4 +286,87 @@ def get_me(
         features=features_dict,
         moduleGates={}
     )
+
+
+@router.get("/invite-info")
+@limiter.limit("10/minute")
+def get_invite_info(
+    request: Request,
+    token: str,
+    db: Session = Depends(get_db)
+):
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    now = datetime.utcnow()
+    tok_row = (
+        db.query(AuthToken)
+        .filter(
+            AuthToken.tokenHash == token_hash,
+            AuthToken.kind == "invite",
+            AuthToken.usedAt.is_(None),
+            AuthToken.expiresAt > now,
+        )
+        .first()
+    )
+    if not tok_row:
+        raise HTTPException(status_code=400, detail="This invitation link is invalid or has expired.")
+
+    user = db.query(User).filter(User.id == tok_row.userId).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="This invitation link is invalid or has expired.")
+
+    volunteer = db.query(Volunteer).filter(Volunteer.id == user.volunteerId).first() if user.volunteerId else None
+    event = db.query(Event).filter(Event.id == user.eventId).first()
+
+    return {
+        "recipientName": volunteer.name if volunteer else user.username,
+        "eventName": event.name if event else "",
+        "username": user.username,
+    }
+
+
+@router.post("/accept-invite")
+@limiter.limit("10/minute")
+def accept_invite(
+    request: Request,
+    payload: AcceptInviteRequest,
+    db: Session = Depends(get_db)
+):
+    GENERIC_ERR = "This invitation link is invalid or has expired."
+    token_hash = hashlib.sha256(payload.token.encode()).hexdigest()
+    now = datetime.utcnow()
+    tok_row = (
+        db.query(AuthToken)
+        .filter(
+            AuthToken.tokenHash == token_hash,
+            AuthToken.kind == "invite",
+            AuthToken.usedAt.is_(None),
+            AuthToken.expiresAt > now,
+        )
+        .first()
+    )
+    if not tok_row:
+        raise HTTPException(status_code=400, detail=GENERIC_ERR)
+
+    user = db.query(User).filter(User.id == tok_row.userId).first()
+    if not user:
+        raise HTTPException(status_code=400, detail=GENERIC_ERR)
+
+    pw = payload.password or ""
+    if len(pw) < 8:
+        raise HTTPException(status_code=400, detail=GENERIC_ERR)
+
+    user.passwordHash = get_password_hash(pw)
+    user.status = "active"
+    tok_row.usedAt = now
+
+    # Invalidate other invite tokens for this user
+    db.query(AuthToken).filter(
+        AuthToken.userId == user.id,
+        AuthToken.kind == "invite",
+        AuthToken.id != tok_row.id,
+    ).update({"usedAt": now})
+
+    db.commit()
+    return {"ok": True}
+
 

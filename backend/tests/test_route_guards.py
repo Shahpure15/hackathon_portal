@@ -2,7 +2,14 @@ from fastapi.routing import APIRoute
 
 from app.main import app
 
-PUBLIC = {('POST', '/auth/login'), ('POST', '/auth/refresh'), ('POST', '/auth/logout'), ('GET', '/health')}
+PUBLIC = {
+    ('POST', '/auth/login'),
+    ('POST', '/auth/refresh'),
+    ('POST', '/auth/logout'),
+    ('GET', '/health'),
+    ('GET', '/auth/invite-info'),
+    ('POST', '/auth/accept-invite'),
+}
 DOC_PATHS = {'/openapi.json', '/docs', '/docs/oauth2-redirect', '/redoc'}
 
 
