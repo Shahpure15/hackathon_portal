@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from app.config import settings
+from app.cors import EXPLICIT_ORIGINS, ORIGIN_REGEX, is_origin_allowed
 from app.database import get_db, engine
-from app.routers import auth, admin, leader, volunteer
+from app.routers import auth, admin, leader, volunteer, system
 from app.limiter import limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
@@ -60,7 +61,8 @@ async def cors_rate_limit_exceeded_handler(request: Request, exc: RateLimitExcee
         content={"detail": "Rate limit exceeded. Please wait a minute before retrying."}
     )
     origin = request.headers.get("origin")
-    if origin:
+    if is_origin_allowed(origin):
+        response.headers["Vary"] = "Origin"
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Credentials"] = "true"
         response.headers["Access-Control-Allow-Headers"] = "*"
@@ -86,24 +88,26 @@ async def log_requests(request: Request, call_next):
         client_ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else "unknown").split(",")[0].strip()
         logger.error(f"{client_ip} - \"{request.method} {request.url.path}\" ERROR ({duration_ms:.1f}ms) - {exc}\n{traceback.format_exc()}")
         
-        origin = request.headers.get("origin", "*")
+        origin = request.headers.get("origin")
         response = JSONResponse(
             status_code=500,
-            content={"detail": f"Internal Server Error: {str(exc)}"}
+            content={"detail": "Internal Server Error"}
         )
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Allow-Headers"] = "*"
-        response.headers["Access-Control-Allow-Methods"] = "*"
+        if is_origin_allowed(origin):
+            response.headers["Vary"] = "Origin"
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            response.headers["Access-Control-Allow-Methods"] = "*"
         return response
 
 # Configure CORS middleware
-origins = [origin.strip() for origin in settings.CORS_ALLOWED_ORIGINS.split(",") if origin.strip()]
+# CORS origins are resolved in app/cors.py
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_origin_regex=r"^https?://([a-z0-9-]+\.vercel\.app|([a-z0-9-]+\.)*mitindia\.com|localhost(:[0-9]+)?|127\.0\.0\.1(:[0-9]+)?)$",
+    allow_origins=sorted(EXPLICIT_ORIGINS),
+    allow_origin_regex=ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -148,3 +152,4 @@ app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(leader.router)
 app.include_router(volunteer.router)
+app.include_router(system.router)

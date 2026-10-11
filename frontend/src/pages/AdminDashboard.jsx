@@ -21,6 +21,7 @@ import QRScanner from '../components/QRScanner';
 import AdminPSOverview from './AdminPSOverview';
 import AdminQRScannerView from '../components/AdminQRScannerView';
 import { useAuth } from '../contexts/AuthContext';
+import VersionBadge from '../components/VersionBadge';
 
 
 
@@ -178,6 +179,7 @@ const AdminDashboard = () => {
         <div style={{ display: activeTab === 'psLive' ? 'block' : 'none' }} className="fade-in-up">
           <AdminPSOverview eventId={user?.eventId} />
         </div>
+        <VersionBadge />
       </div>
 
 

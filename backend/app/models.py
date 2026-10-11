@@ -33,6 +33,16 @@ class Discipline(str, enum.Enum):
     DESIGN = "DESIGN"
 
 # Models
+class Organization(Base):
+    __tablename__ = "organizations"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    name = Column(String(255), nullable=False)
+    slug = Column(String(100), unique=True, nullable=False)
+    createdAt = Column(DateTime, default=func.now(), nullable=False)
+
+    events = relationship("Event", back_populates="organization")
+
 class Event(Base):
     __tablename__ = "events"
 
@@ -42,10 +52,12 @@ class Event(Base):
     endDate = Column(DateTime, nullable=False)
     isActive = Column(Boolean, default=True, nullable=False)
     status = Column(String(20), default="active", nullable=False) # 'upcoming', 'active', 'concluded'
+    orgId = Column(String(36), ForeignKey("organizations.id", name="fk_events_orgId_organizations"), nullable=True, index=True)
     createdAt = Column(DateTime, default=func.now(), nullable=False)
 
     # Relationships
     config = relationship("EventConfig", back_populates="event", uselist=False, cascade="all, delete-orphan")
+    organization = relationship("Organization", back_populates="events")
     users = relationship("User", back_populates="event", cascade="all, delete-orphan")
     teams = relationship("Team", back_populates="event", cascade="all, delete-orphan")
     pods = relationship("Pod", back_populates="event", cascade="all, delete-orphan")
@@ -64,6 +76,7 @@ class EventConfig(Base):
     psGateCheckpointTypeId = Column(String(36), ForeignKey("checkpoint_types.id", ondelete="SET NULL"), nullable=True)
     peopleRoles = Column(JSON, default=list, nullable=True)
     allowVolunteerPsSelection = Column(Boolean, default=False, nullable=False)
+    features = Column(JSON, nullable=True)
 
     # Relationships
     event = relationship("Event", back_populates="config")
@@ -80,6 +93,7 @@ class User(Base):
     role = Column(Enum(Role, native_enum=False), nullable=False)
     teamId = Column(String(36), ForeignKey("teams.id", ondelete="SET NULL"), unique=True, nullable=True)
     volunteerId = Column(String(36), ForeignKey("volunteers.id", ondelete="SET NULL"), unique=True, nullable=True)
+    status = Column(String(20), default="active", server_default="active", nullable=False) # 'active', 'invited', 'disabled'
     createdAt = Column(DateTime, default=func.now(), nullable=False)
 
     # Relationships
@@ -162,6 +176,7 @@ class Volunteer(Base):
     name = Column(String(255), nullable=False)
     type = Column(String(100), default="VOLUNTEER", nullable=False)
     contact = Column(String(100), nullable=False)
+    email = Column(String(255), nullable=True)
     remarks = Column(Text, nullable=True)
     podId = Column(String(36), ForeignKey("pods.id", ondelete="SET NULL"), nullable=True)
     panelId = Column(String(36), ForeignKey("panels.id", ondelete="SET NULL"), nullable=True)
@@ -318,6 +333,7 @@ class AuditLog(Base):
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     actorId = Column(String(100), nullable=False) # User ID or "SYSTEM"
+    eventId = Column(String(36), nullable=True, index=True)
     action = Column(String(100), nullable=False)  # e.g., "team.pod_changed"
     entityType = Column(String(100), nullable=False) # e.g., "Team"
     entityId = Column(String(100), nullable=False)
