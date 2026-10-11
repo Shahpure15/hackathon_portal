@@ -3,6 +3,8 @@
 Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.md). Every entry ends with its change ID.
 
 ## [Unreleased]
+
+## [10.2.0] - 2026-10-11
 ### Added
 - Frontend permission context (can, canAny, features) and permission-filtered navigation. [P1-C10]
 - Permission usage and role-by-route parity tests. [P1-C09]
