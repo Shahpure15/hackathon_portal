@@ -3,6 +3,8 @@
 Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.md). Every entry ends with its change ID.
 
 ## [Unreleased]
+
+## [10.3.0] - 2026-10-11
 ### Added
 - Roles & Access admin module: permission editor, member scopes, templates, event feature toggles. [P1b-C03]
 - Roles, templates, scoped member assignments and event feature flags (admin API). [P1b-C02]
