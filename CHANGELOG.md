@@ -3,6 +3,8 @@
 Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.md). Every entry ends with its change ID.
 
 ## [Unreleased]
+
+## [10.4.0] - 2026-10-11
 ### Added
 - Rounds admin module with judging toggle and rubric editor. [P2-C06]
 - Rounds API with rubric editing and publishing. [P2-C05]
