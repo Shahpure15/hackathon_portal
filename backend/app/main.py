@@ -8,7 +8,7 @@ from sqlalchemy import text
 from app.config import settings
 from app.cors import EXPLICIT_ORIGINS, ORIGIN_REGEX, is_origin_allowed
 from app.database import get_db, engine
-from app.routers import auth, admin, leader, volunteer, system, rbac_admin, event_features, rounds_admin, evaluation_admin, staff_invites, email_admin
+from app.routers import auth, admin, leader, volunteer, system, rbac_admin, event_features, rounds_admin, evaluation_admin, staff_invites, email_admin, judge
 from app.limiter import limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
@@ -165,3 +165,4 @@ app.include_router(rounds_admin.router)
 app.include_router(evaluation_admin.router)
 app.include_router(staff_invites.router)
 app.include_router(email_admin.router)
+app.include_router(judge.router)

@@ -29,6 +29,7 @@ class CurrentUser(BaseModel):
     username: str
     role: str
     teamId: Optional[str] = None
+    volunteerId: Optional[str] = None
     status: str = "active"
 
 # Password Hashing utilities
@@ -101,6 +102,7 @@ async def get_current_user(
         username=user.username,
         role=user.role,
         teamId=user.teamId,
+        volunteerId=user.volunteerId,
         status=getattr(user, 'status', 'active')
     )
 
