@@ -3,6 +3,8 @@
 Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.md). Every entry ends with its change ID.
 
 ## [Unreleased]
+### Added
+- Progression status, result release snapshot and notification tables. [P4-C02]
 
 ## [10.5.0] - 2026-10-11
 ### Added

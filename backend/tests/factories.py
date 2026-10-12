@@ -66,6 +66,7 @@ def make_user(
     password: str = 'Passw0rd!xyz',
     volunteer: Optional[Volunteer] = None,
     status: str = 'active',
+    team_id: Optional[str] = None,
 ) -> User:
     role_val = role.value if hasattr(role, 'value') else str(role)
     user = User(
@@ -75,6 +76,7 @@ def make_user(
         role=role_val,
         status=status,
         volunteerId=volunteer.id if volunteer else None,
+        teamId=team_id,
     )
     db.add(user)
     db.commit()
