@@ -12,6 +12,7 @@ import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import CredentialDialog from '../components/CredentialDialog';
 import DateTimePicker from '../components/DateTimePicker';
+import { useSearchParams } from 'react-router-dom';
 import useTableQuery from '../components/useTableQuery';
 import Navbar from '../components/Navbar';
 import Skeleton from '../components/Skeleton';
@@ -23,6 +24,7 @@ import AdminQRScannerView from '../components/AdminQRScannerView';
 import { useAuth } from '../contexts/AuthContext';
 import VersionBadge from '../components/VersionBadge';
 import { ADMIN_NAV_PERMISSIONS } from '../modules/registry';
+import AdminShell from '../components/shell/AdminShell';
 
 const RolesModule = React.lazy(() => import('../modules/roles/RolesModule'));
 const RoundsModule = React.lazy(() => import('../modules/rounds/RoundsModule'));
@@ -46,11 +48,31 @@ const formatContact = (contactStr) => {
 
 const AdminDashboard = () => {
   const { user, can, features } = useAuth();
-  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('adminActiveTab') || 'teams');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialModule = searchParams.get('module') || localStorage.getItem('adminActiveTab') || 'teams';
+  const [activeTab, setActiveTab] = useState(initialModule);
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set([initialModule]));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1000);
   const { addToast } = useToast();
+
+  useEffect(() => {
+    setVisitedTabs((prev) => {
+      if (prev.has(activeTab)) return prev;
+      const next = new Set(prev);
+      next.add(activeTab);
+      return next;
+    });
+  }, [activeTab]);
+
+  useEffect(() => {
+    const mod = searchParams.get('module');
+    if (mod && mod !== activeTab) {
+      setActiveTab(mod);
+      localStorage.setItem('adminActiveTab', mod);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -73,6 +95,7 @@ const AdminDashboard = () => {
   const handleTabClick = (tabName) => {
     setActiveTab(tabName);
     localStorage.setItem('adminActiveTab', tabName);
+    setSearchParams({ module: tabName }, { replace: true });
     setMobileMenuOpen(false);
   };
 
@@ -102,109 +125,111 @@ const AdminDashboard = () => {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-main)', position: 'relative' }}>
-      <Navbar
-        title="MIT India Hackathon"
-        user={{ username: 'Admin', role: 'Administrator' }}
-        onLogout={handleLogout}
-        activeTab={activeTab}
-        onTabChange={handleTabClick}
-        navItems={[
-          { id: 'teams', label: 'Teams', icon: <Users size={16} /> },
-          { id: 'qrScan', label: 'QR Team Lookup', icon: <QrCode size={16} /> },
-          { id: 'pods', label: 'POD Groups', icon: <Layers size={16} /> },
-          { id: 'panels', label: 'Panels', icon: <Layers size={16} /> },
-          { id: 'evalRounds', label: 'Rounds', icon: <FileText size={16} /> },
-          { id: 'volunteers', label: 'People & Organizers', icon: <UserCheck size={16} /> },
-          { id: 'checkpoints', label: 'Attendance Slots', icon: <FileText size={16} /> },
-          { id: 'ps', label: 'Problem Statements', icon: <Layers size={16} /> },
-          { id: 'psLive', label: 'Live PS View', icon: <Layers size={16} /> },
-          { id: 'roles', label: 'Roles & Access', icon: <ShieldCheck size={16} /> },
-          { id: 'email', label: 'Email', icon: <Mail size={16} /> }
-        ].filter((item) => {
-          if (item.id === 'pods' && features?.pods === false) return false;
-          if (Array.isArray(ADMIN_NAV_PERMISSIONS[item.id])) {
-            return ADMIN_NAV_PERMISSIONS[item.id].some((p) => can(p));
-          }
-          return can(ADMIN_NAV_PERMISSIONS[item.id]);
-        })}
-      />
-
+    <AdminShell
+      activeTab={activeTab}
+      onSelectTab={handleTabClick}
+      user={user || { username: 'Admin', role: 'Administrator' }}
+      onLogout={handleLogout}
+    >
       {/* Main Content Area */}
       <div 
         className="main-content" 
         style={{ 
-          padding: '80px 20px 40px 20px', 
           maxWidth: '1400px', 
           margin: '0 auto',
           width: '100%',
           boxSizing: 'border-box'
         }}
       >
-        <div style={{ display: activeTab === 'roles' ? 'block' : 'none' }} className="fade-in-up">
-          <React.Suspense fallback={<Skeleton count={4} />}>
-            <RolesModule />
-          </React.Suspense>
-        </div>
-        <div style={{ display: activeTab === 'email' ? 'block' : 'none' }} className="fade-in-up">
-          <React.Suspense fallback={<Skeleton count={4} />}>
-            <EmailModule />
-          </React.Suspense>
-        </div>
-        <div style={{ display: activeTab === 'teams' ? 'block' : 'none' }} className="fade-in-up">
-          <TeamsView 
-            pods={pods} 
-            fetchPodsPool={fetchPodsPool} 
-            onResetPassword={(teamId, teamName) => {
-              setResetPasswordState({
-                isOpen: true,
-                targetId: teamId,
-                targetName: teamName,
-                type: 'team'
-              });
-            }}
-          />
-        </div>
-        <div style={{ display: activeTab === 'qrScan' ? 'block' : 'none' }} className="fade-in-up">
-          <AdminQRScannerView 
-            onOpenEditModal={(team) => {
-              // Open full edit modal inside TeamsView tab
-              setActiveTab('teams');
-              setTimeout(() => {
-                // setSelectedTeam will be handled
-              }, 50);
-            }}
-            onResetPassword={(tId, tName) => setResetPasswordState({ isOpen: true, targetId: tId, targetName: tName, type: 'team' })} 
-          />
-        </div>
-        <div style={{ display: activeTab === 'pods' ? 'block' : 'none' }} className="fade-in-up">
-          <PodsView pods={pods} fetchPodsPool={fetchPodsPool} />
-        </div>
-        <div style={{ display: activeTab === 'panels' ? 'block' : 'none' }} className="fade-in-up">
-          <PanelsView />
-        </div>
-        <div style={{ display: activeTab === 'evalRounds' ? 'block' : 'none' }} className="fade-in-up">
-          <React.Suspense fallback={<Skeleton count={4} />}>
-            <RoundsModule />
-          </React.Suspense>
-        </div>
-        <div style={{ display: activeTab === 'volunteers' ? 'block' : 'none' }} className="fade-in-up">
-          <VolunteersView
-            pods={pods}
-            fetchPodsPool={fetchPodsPool}
-            onResetPassword={(volId, volName) => setResetPasswordState({ isOpen: true, targetId: volId, targetName: volName, type: 'volunteer' })}
-          />
-        </div>
-        <div style={{ display: activeTab === 'checkpoints' ? 'block' : 'none' }} className="fade-in-up">
-          <CheckpointsView />
-        </div>
-        <div style={{ display: activeTab === 'ps' ? 'block' : 'none' }} className="fade-in-up">
-          <PSView />
-        </div>
-        <div style={{ display: activeTab === 'psLive' ? 'block' : 'none' }} className="fade-in-up">
-          <AdminPSOverview eventId={user?.eventId} />
-        </div>
-        <VersionBadge />
+        {visitedTabs.has('overview') && (
+          <div style={{ display: activeTab === 'overview' ? 'block' : 'none' }} className="fade-in-up">
+            <PlaceholderView
+              title="Overview & Pulse"
+              description="Welcome to the Hackathon Command Center. Live event metrics, attention list, and quick actions are loading."
+            />
+          </div>
+        )}
+        {visitedTabs.has('roles') && (
+          <div style={{ display: activeTab === 'roles' ? 'block' : 'none' }} className="fade-in-up">
+            <React.Suspense fallback={<Skeleton count={4} />}>
+              <RolesModule />
+            </React.Suspense>
+          </div>
+        )}
+        {visitedTabs.has('email') && (
+          <div style={{ display: activeTab === 'email' ? 'block' : 'none' }} className="fade-in-up">
+            <React.Suspense fallback={<Skeleton count={4} />}>
+              <EmailModule />
+            </React.Suspense>
+          </div>
+        )}
+        {visitedTabs.has('teams') && (
+          <div style={{ display: activeTab === 'teams' ? 'block' : 'none' }} className="fade-in-up">
+            <TeamsView 
+              pods={pods} 
+              fetchPodsPool={fetchPodsPool} 
+              onResetPassword={(teamId, teamName) => {
+                setResetPasswordState({
+                  isOpen: true,
+                  targetId: teamId,
+                  targetName: teamName,
+                  type: 'team'
+                });
+              }}
+            />
+          </div>
+        )}
+        {visitedTabs.has('qrScan') && (
+          <div style={{ display: activeTab === 'qrScan' ? 'block' : 'none' }} className="fade-in-up">
+            <AdminQRScannerView 
+              onOpenEditModal={(team) => {
+                handleTabClick('teams');
+              }}
+              onResetPassword={(tId, tName) => setResetPasswordState({ isOpen: true, targetId: tId, targetName: tName, type: 'team' })} 
+            />
+          </div>
+        )}
+        {visitedTabs.has('pods') && (
+          <div style={{ display: activeTab === 'pods' ? 'block' : 'none' }} className="fade-in-up">
+            <PodsView pods={pods} fetchPodsPool={fetchPodsPool} />
+          </div>
+        )}
+        {visitedTabs.has('panels') && (
+          <div style={{ display: activeTab === 'panels' ? 'block' : 'none' }} className="fade-in-up">
+            <PanelsView />
+          </div>
+        )}
+        {visitedTabs.has('evalRounds') && (
+          <div style={{ display: activeTab === 'evalRounds' ? 'block' : 'none' }} className="fade-in-up">
+            <React.Suspense fallback={<Skeleton count={4} />}>
+              <RoundsModule />
+            </React.Suspense>
+          </div>
+        )}
+        {visitedTabs.has('volunteers') && (
+          <div style={{ display: activeTab === 'volunteers' ? 'block' : 'none' }} className="fade-in-up">
+            <VolunteersView
+              pods={pods}
+              fetchPodsPool={fetchPodsPool}
+              onResetPassword={(volId, volName) => setResetPasswordState({ isOpen: true, targetId: volId, targetName: volName, type: 'volunteer' })}
+            />
+          </div>
+        )}
+        {visitedTabs.has('checkpoints') && (
+          <div style={{ display: activeTab === 'checkpoints' ? 'block' : 'none' }} className="fade-in-up">
+            <CheckpointsView />
+          </div>
+        )}
+        {visitedTabs.has('ps') && (
+          <div style={{ display: activeTab === 'ps' ? 'block' : 'none' }} className="fade-in-up">
+            <PSView />
+          </div>
+        )}
+        {visitedTabs.has('psLive') && (
+          <div style={{ display: activeTab === 'psLive' ? 'block' : 'none' }} className="fade-in-up">
+            <AdminPSOverview eventId={user?.eventId} />
+          </div>
+        )}
       </div>
 
 
@@ -294,7 +319,7 @@ const AdminDashboard = () => {
           password={parentCredentialsToShow.password}
         />
       )}
-    </div>
+    </AdminShell>
   );
 };
 

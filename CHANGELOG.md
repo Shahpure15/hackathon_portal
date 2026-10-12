@@ -7,6 +7,9 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 - Grouped admin navigation model with permission and feature filtering. [XA-C05]
 - Postgres migration tests in CI; CORS test no longer depends on Starlette header details. [XA-C03]
 
+### Changed
+- Admin navigation is a grouped sidebar (bottom bar on phones) with deep-linkable modules; tab panels mount on first visit. [XA-C06]
+
 ### Fixed
 - Reconcile migration so an empty database reaches the schema the application expects. [XA-C02]
 

@@ -1,0 +1,129 @@
+import React from 'react';
+import {
+  Menu,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  Bell,
+  Sun,
+  Moon,
+  LogOut,
+} from 'lucide-react';
+import { useTheme } from '../../contexts/ThemeContext';
+import VersionBadge from '../VersionBadge';
+
+export default function TopBar({
+  eventName = 'MIT India Hackathon',
+  stage = 'Active',
+  onToggleSidebar,
+  sidebarCollapsed = false,
+  onOpenSearch,
+  unreadAlertsCount = 0,
+  onOpenAlerts,
+  user = { username: 'Admin', role: 'Administrator' },
+  onLogout,
+}) {
+  const { theme, toggleTheme } = useTheme();
+
+  return (
+    <header className="admin-topbar" role="banner">
+      {/* Left: Sidebar toggle, Event Name, Stage Chip */}
+      <div className="admin-topbar-left">
+        <button
+          type="button"
+          className="admin-sidebar-toggle"
+          onClick={onToggleSidebar}
+          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {sidebarCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+        </button>
+
+        <span className="admin-brand-title">{eventName}</span>
+
+        {stage && (
+          <span className="admin-stage-chip" title="Current Event Stage">
+            {stage}
+          </span>
+        )}
+      </div>
+
+      {/* Center: Command Palette Search Trigger */}
+      <div className="admin-topbar-center">
+        <button
+          type="button"
+          className="admin-search-trigger"
+          onClick={onOpenSearch}
+          aria-label="Search and quick actions (Ctrl+K)"
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Search size={15} />
+            <span>Search teams, staff, or actions...</span>
+          </span>
+          <kbd className="admin-search-kbd">Ctrl K</kbd>
+        </button>
+      </div>
+
+      {/* Right: Theme, Alerts, User, Logout, Version */}
+      <div className="admin-topbar-right">
+        {/* Mobile Search Button */}
+        <button
+          type="button"
+          className="admin-icon-btn admin-mobile-search-btn"
+          onClick={onOpenSearch}
+          aria-label="Search"
+          style={{ display: 'none' }}
+        >
+          <Search size={16} />
+        </button>
+
+        {/* Theme Toggle */}
+        <button
+          type="button"
+          className="admin-icon-btn"
+          onClick={toggleTheme}
+          aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+          title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+        >
+          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+        </button>
+
+        {/* Alerts Bell */}
+        <button
+          type="button"
+          className="admin-icon-btn"
+          onClick={onOpenAlerts}
+          aria-label={`Alerts (${unreadAlertsCount} pending)`}
+          title="Attention list and system alerts"
+        >
+          <Bell size={16} />
+          {unreadAlertsCount > 0 && (
+            <span className="admin-badge-count">{unreadAlertsCount}</span>
+          )}
+        </button>
+
+        {/* User Pill */}
+        <div className="admin-user-pill">
+          <div className="admin-user-avatar">
+            {(user?.username || 'A')[0].toUpperCase()}
+          </div>
+          <span>{user?.username || 'Admin'}</span>
+        </div>
+
+        {/* Logout */}
+        <button
+          type="button"
+          className="admin-icon-btn"
+          onClick={onLogout}
+          aria-label="Log out"
+          title="Log out"
+        >
+          <LogOut size={16} />
+        </button>
+
+        {/* Version Badge */}
+        <VersionBadge />
+      </div>
+    </header>
+  );
+}
