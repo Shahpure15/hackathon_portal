@@ -69,8 +69,15 @@ def update_features(
 
     new_pods = current_feats.pods if payload.pods is None else payload.pods
     new_eval = current_feats.evaluation if payload.evaluation is None else payload.evaluation
+    
+    if payload.stage is not None and payload.stage not in ('setup', 'event_day', 'judging', 'results', 'closed'):
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid stage: must be one of setup, event_day, judging, results, closed",
+        )
+    new_stage = current_feats.stage if payload.stage is None else payload.stage
 
-    diff = {"pods": new_pods, "evaluation": new_eval}
+    diff = {"pods": new_pods, "evaluation": new_eval, "stage": new_stage}
     event_config.features = diff
     db.commit()
 
@@ -85,4 +92,4 @@ def update_features(
         event_id=current_user.eventId,
     )
 
-    return FeaturesConfig(pods=new_pods, evaluation=new_eval)
+    return FeaturesConfig(pods=new_pods, evaluation=new_eval, stage=new_stage)

@@ -80,6 +80,7 @@ export const RoundResultsTab = ({ round, rubricFields = [] }) => {
   const [advanceN, setAdvanceN] = useState(10);
   const [advanceThreshold, setAdvanceThreshold] = useState(75);
   const [manualSelectedIds, setManualSelectedIds] = useState([]);
+  const [manualFilter, setManualFilter] = useState('');
   const [includeProvisional, setIncludeProvisional] = useState(false);
   const [targetRoundId, setTargetRoundId] = useState('');
   const [allRounds, setAllRounds] = useState([]);
@@ -1037,74 +1038,128 @@ export const RoundResultsTab = ({ round, rubricFields = [] }) => {
             </div>
 
             {/* Manual Mode Team List */}
-            {advanceMode === 'manual' && (
-              <div style={{ marginTop: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>
-                    Select Teams ({manualSelectedIds.length} selected)
-                  </label>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      type="button"
-                      onClick={() => setManualSelectedIds(leaderboard.rows.map((r) => r.teamId))}
-                      className="btn btn-secondary"
-                      style={{ fontSize: '0.74rem', padding: '2px 8px' }}
-                    >
-                      Select All Scored
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setManualSelectedIds([])}
-                      className="btn btn-secondary"
-                      style={{ fontSize: '0.74rem', padding: '2px 8px' }}
-                    >
-                      Clear All
-                    </button>
+            {advanceMode === 'manual' && (() => {
+              const allCandidates = [
+                ...(leaderboard.rows || []).map((r) => ({
+                  teamId: r.teamId,
+                  teamName: r.teamName,
+                  registrationId: r.registrationId,
+                  rankLabel: `#${r.rank}`,
+                  isScored: true,
+                })),
+                ...(leaderboard.unscored || []).map((u) => ({
+                  teamId: u.teamId,
+                  teamName: u.teamName,
+                  registrationId: u.registrationId,
+                  rankLabel: 'Unscored',
+                  isScored: false,
+                })),
+              ];
+              const q = (manualFilter || '').trim().toLowerCase();
+              const displayed = allCandidates.filter((c) => {
+                if (!q) return true;
+                return (
+                  (c.teamName && c.teamName.toLowerCase().includes(q)) ||
+                  (c.registrationId && c.registrationId.toLowerCase().includes(q))
+                );
+              });
+
+              return (
+                <div style={{ marginTop: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                    <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>
+                      Select Teams ({manualSelectedIds.length} of {allCandidates.length} selected)
+                    </label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setManualSelectedIds(allCandidates.map((c) => c.teamId))}
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.74rem', padding: '2px 8px' }}
+                      >
+                        Select All
+                      </button>
+                      {leaderboard.rows?.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setManualSelectedIds(leaderboard.rows.map((r) => r.teamId))}
+                          className="btn btn-secondary"
+                          style={{ fontSize: '0.74rem', padding: '2px 8px' }}
+                        >
+                          Select Scored
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setManualSelectedIds([])}
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.74rem', padding: '2px 8px' }}
+                      >
+                        Clear All
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: '10px' }}>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Search teams by name or registration ID..."
+                      value={manualFilter}
+                      onChange={(e) => setManualFilter(e.target.value)}
+                      style={{ fontSize: '0.82rem', padding: '6px 10px' }}
+                    />
+                  </div>
+
+                  <div
+                    style={{
+                      maxHeight: '220px',
+                      overflowY: 'auto',
+                      border: '1px solid var(--border-light)',
+                      borderRadius: '8px',
+                      padding: '10px',
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                      gap: '8px',
+                    }}
+                  >
+                    {displayed.length === 0 ? (
+                      <div style={{ padding: '12px', fontSize: '0.82rem', color: 'var(--text-muted)', gridColumn: '1 / -1', textAlign: 'center' }}>
+                        No teams match "{manualFilter}"
+                      </div>
+                    ) : (
+                      displayed.map((cand) => (
+                        <label
+                          key={cand.teamId}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            fontSize: '0.82rem',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={manualSelectedIds.includes(cand.teamId)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setManualSelectedIds([...manualSelectedIds, cand.teamId]);
+                              } else {
+                                setManualSelectedIds(manualSelectedIds.filter((id) => id !== cand.teamId));
+                              }
+                            }}
+                          />
+                          <span>
+                            <strong>[{cand.rankLabel}]</strong> {cand.teamName} <small style={{ color: 'var(--text-muted)' }}>({cand.registrationId})</small>
+                          </span>
+                        </label>
+                      ))
+                    )}
                   </div>
                 </div>
-
-                <div
-                  style={{
-                    maxHeight: '200px',
-                    overflowY: 'auto',
-                    border: '1px solid var(--border-light)',
-                    borderRadius: '8px',
-                    padding: '10px',
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                    gap: '8px',
-                  }}
-                >
-                  {leaderboard.rows.map((row) => (
-                    <label
-                      key={row.teamId}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        fontSize: '0.82rem',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={manualSelectedIds.includes(row.teamId)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setManualSelectedIds([...manualSelectedIds, row.teamId]);
-                          } else {
-                            setManualSelectedIds(manualSelectedIds.filter((id) => id !== row.teamId));
-                          }
-                        }}
-                      />
-                      <span>
-                        <strong>#{row.rank}</strong> {row.teamName}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Provisional Scores Toggle */}
             <div style={{ marginTop: '16px' }}>

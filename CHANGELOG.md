@@ -4,6 +4,7 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 ### Added
+- Event stage guidance and administrative round manual advancement. [XA-C09]
 - Overview page and attention list with real-time health metrics. [XA-C08]
 - Command palette with navigation, actions, and team and staff search. [XA-C07]
 - Grouped admin navigation model with permission and feature filtering. [XA-C05]

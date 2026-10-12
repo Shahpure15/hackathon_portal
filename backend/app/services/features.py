@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 from sqlalchemy.orm import Session
@@ -10,6 +10,7 @@ class FeaturesConfig(BaseModel):
     model_config = ConfigDict(extra='ignore')
     pods: bool = True
     evaluation: bool = True
+    stage: Literal['setup', 'event_day', 'judging', 'results', 'closed'] = 'setup'
 
 
 def features_from_raw(raw: Optional[dict]) -> FeaturesConfig:

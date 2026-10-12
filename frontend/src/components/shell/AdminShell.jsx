@@ -53,13 +53,31 @@ export default function AdminShell({
     return visibleGroups(can, canAny, features);
   }, [can, canAny, features]);
 
+  const stageLabel = useMemo(() => {
+    const raw = stage || features?.stage || 'setup';
+    switch (raw) {
+      case 'setup':
+        return 'Setup & Reg';
+      case 'event_day':
+        return 'Event Day';
+      case 'judging':
+        return 'Judging';
+      case 'results':
+        return 'Results';
+      case 'closed':
+        return 'Concluded';
+      default:
+        return raw;
+    }
+  }, [stage, features?.stage]);
+
   const handleOpenSearch = onOpenSearch || (() => setPaletteOpen(true));
 
   return (
     <div className={`admin-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
       <TopBar
         eventName={eventName}
-        stage={stage}
+        stage={stageLabel}
         sidebarCollapsed={collapsed}
         onToggleSidebar={toggleSidebar}
         onOpenSearch={handleOpenSearch}
