@@ -4,6 +4,7 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 ### Added
+- Shared UI kit (PageHeader, FilterBar, StatusChip, EmptyState, DetailDrawer) and non-destructive demo data seeder. [XA-C10]
 - Event stage guidance and administrative round manual advancement. [XA-C09]
 - Overview page and attention list with real-time health metrics. [XA-C08]
 - Command palette with navigation, actions, and team and staff search. [XA-C07]
