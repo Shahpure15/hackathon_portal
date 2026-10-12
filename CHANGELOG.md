@@ -3,6 +3,9 @@
 Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.md). Every entry ends with its change ID.
 
 ## [Unreleased]
+### Fixed
+- Reconcile migration so an empty database reaches the schema the application expects. [XA-C02]
+
 ### Security
 - Dependencies pinned to exact versions; database URL driver normalised so dependency drift cannot break the connection. [XA-C01]
 
