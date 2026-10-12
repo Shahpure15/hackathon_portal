@@ -103,11 +103,18 @@ export default function TopBar({
         </button>
 
         {/* User Pill */}
-        <div className="admin-user-pill">
+        <div className="admin-user-pill" title={`Logged in as ${user?.username || 'User'} (${user?.role || 'Staff'})`}>
           <div className="admin-user-avatar">
             {(user?.username || 'A')[0].toUpperCase()}
           </div>
-          <span>{user?.username || 'Admin'}</span>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.2 }}>
+            <span style={{ fontWeight: 600 }}>{user?.username || 'Admin'}</span>
+            {user?.role && (
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                {user.role}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Logout */}

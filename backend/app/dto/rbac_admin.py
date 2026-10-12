@@ -98,3 +98,6 @@ class FeaturesUpdateRequest(BaseModel):
     pods: Optional[bool] = None
     evaluation: Optional[bool] = None
     stage: Optional[str] = None
+    staff_admin_portal: Optional[bool] = None
+    volunteer_portal: Optional[bool] = None
+    leader_portal: Optional[bool] = None

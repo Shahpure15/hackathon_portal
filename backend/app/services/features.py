@@ -11,6 +11,9 @@ class FeaturesConfig(BaseModel):
     pods: bool = True
     evaluation: bool = True
     stage: Literal['setup', 'event_day', 'judging', 'results', 'closed'] = 'setup'
+    staff_admin_portal: bool = True
+    volunteer_portal: bool = True
+    leader_portal: bool = True
 
 
 def features_from_raw(raw: Optional[dict]) -> FeaturesConfig:

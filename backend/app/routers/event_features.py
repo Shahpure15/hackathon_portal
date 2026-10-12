@@ -77,7 +77,18 @@ def update_features(
         )
     new_stage = current_feats.stage if payload.stage is None else payload.stage
 
-    diff = {"pods": new_pods, "evaluation": new_eval, "stage": new_stage}
+    new_staff_admin_portal = current_feats.staff_admin_portal if payload.staff_admin_portal is None else payload.staff_admin_portal
+    new_volunteer_portal = current_feats.volunteer_portal if payload.volunteer_portal is None else payload.volunteer_portal
+    new_leader_portal = current_feats.leader_portal if payload.leader_portal is None else payload.leader_portal
+
+    diff = {
+        "pods": new_pods,
+        "evaluation": new_eval,
+        "stage": new_stage,
+        "staff_admin_portal": new_staff_admin_portal,
+        "volunteer_portal": new_volunteer_portal,
+        "leader_portal": new_leader_portal,
+    }
     event_config.features = diff
     db.commit()
 
@@ -92,4 +103,11 @@ def update_features(
         event_id=current_user.eventId,
     )
 
-    return FeaturesConfig(pods=new_pods, evaluation=new_eval, stage=new_stage)
+    return FeaturesConfig(
+        pods=new_pods,
+        evaluation=new_eval,
+        stage=new_stage,
+        staff_admin_portal=new_staff_admin_portal,
+        volunteer_portal=new_volunteer_portal,
+        leader_portal=new_leader_portal,
+    )

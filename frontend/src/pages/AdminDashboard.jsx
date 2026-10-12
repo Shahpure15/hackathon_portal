@@ -23,7 +23,7 @@ import AdminPSOverview from './AdminPSOverview';
 import AdminQRScannerView from '../components/AdminQRScannerView';
 import { useAuth } from '../contexts/AuthContext';
 import VersionBadge from '../components/VersionBadge';
-import { ADMIN_NAV_PERMISSIONS } from '../modules/registry';
+import { ADMIN_NAV_PERMISSIONS, visibleGroups } from '../modules/registry';
 import AdminShell from '../components/shell/AdminShell';
 
 const OverviewModule = React.lazy(() => import('../modules/overview/OverviewModule'));
@@ -48,13 +48,22 @@ const formatContact = (contactStr) => {
 };
 
 const AdminDashboard = () => {
-  const { user, can, features } = useAuth();
+  const { user, access, can, canAny, features } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialModule = searchParams.get('module') || localStorage.getItem('adminActiveTab') || 'overview';
   const [activeTab, setActiveTab] = useState(initialModule);
   const [visitedTabs, setVisitedTabs] = useState(() => new Set([initialModule]));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [alertsCount, setAlertsCount] = useState(0);
+
+  // Auto-redirect to first permitted tab if activeTab is not permitted
+  useEffect(() => {
+    const groups = visibleGroups(can, canAny, features);
+    const validIds = groups.flatMap((g) => g.items.map((i) => i.id));
+    if (validIds.length > 0 && !validIds.includes(activeTab)) {
+      setActiveTab(validIds[0]);
+    }
+  }, [can, canAny, features, activeTab]);
 
   useEffect(() => {
     let timer = null;
@@ -168,7 +177,10 @@ const AdminDashboard = () => {
     <AdminShell
       activeTab={activeTab}
       onSelectTab={handleTabClick}
-      user={user || { username: 'Admin', role: 'Administrator' }}
+      user={{
+        username: user?.username || 'Admin',
+        role: access?.roleNames?.[0] || (user?.role === 'ADMIN' ? 'Administrator' : user?.role || 'Staff'),
+      }}
       onLogout={handleLogout}
       unreadAlertsCount={alertsCount}
       onOpenAlerts={() => handleTabClick('overview')}
