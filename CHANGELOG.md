@@ -3,6 +3,9 @@
 Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.md). Every entry ends with its change ID.
 
 ## [Unreleased]
+### Added
+- Postgres migration tests in CI; CORS test no longer depends on Starlette header details. [XA-C03]
+
 ### Fixed
 - Reconcile migration so an empty database reaches the schema the application expects. [XA-C02]
 

@@ -92,7 +92,6 @@ def test_http_500_cors_headers(client, fresh_db, boom_route):
     res_evil = client.get("/__test_boom_cors", headers={"Origin": "https://evil.vercel.app"})
     assert res_evil.status_code == 500
     assert "access-control-allow-origin" not in res_evil.headers
-    assert "vary" not in res_evil.headers
 
 
 def test_cors_rate_limit_exceeded_handler_direct():
