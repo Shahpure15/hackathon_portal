@@ -123,12 +123,90 @@ export const FeaturesCard = ({ features, onUpdateFeatures }) => {
             {features?.evaluation ? 'Enabled' : 'Disabled'}
           </button>
         </div>
+
+        {/* Staff Admin Shell Access Toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderRadius: '10px', background: 'var(--bg-card, rgba(255,255,255,0.03))', border: '1px solid var(--border-color, rgba(255,255,255,0.06))' }}>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>Staff Access to Admin Shell</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+              Allow non-admin staff with RBAC roles to access permitted admin tabs
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => handleToggleClick('staff_admin_portal', features?.staff_admin_portal === false ? true : false)}
+            style={{
+              padding: '6px 14px',
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              color: features?.staff_admin_portal !== false ? '#10b981' : 'var(--text-muted)'
+            }}
+          >
+            {features?.staff_admin_portal !== false ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
+            {features?.staff_admin_portal !== false ? 'Enabled' : 'Disabled'}
+          </button>
+        </div>
+
+        {/* Volunteer Check-in Portal Toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderRadius: '10px', background: 'var(--bg-card, rgba(255,255,255,0.03))', border: '1px solid var(--border-color, rgba(255,255,255,0.06))' }}>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>Volunteer Check-in Portal</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+              Volunteer scanner and checkpoint attendance portal (/volunteer)
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => handleToggleClick('volunteer_portal', features?.volunteer_portal === false ? true : false)}
+            style={{
+              padding: '6px 14px',
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              color: features?.volunteer_portal !== false ? '#10b981' : 'var(--text-muted)'
+            }}
+          >
+            {features?.volunteer_portal !== false ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
+            {features?.volunteer_portal !== false ? 'Enabled' : 'Disabled'}
+          </button>
+        </div>
+
+        {/* Participant Leader Portal Toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderRadius: '10px', background: 'var(--bg-card, rgba(255,255,255,0.03))', border: '1px solid var(--border-color, rgba(255,255,255,0.06))' }}>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>Participant Leader Portal</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+              Team leader submissions, team management, and results (/leader)
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => handleToggleClick('leader_portal', features?.leader_portal === false ? true : false)}
+            style={{
+              padding: '6px 14px',
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              color: features?.leader_portal !== false ? '#10b981' : 'var(--text-muted)'
+            }}
+          >
+            {features?.leader_portal !== false ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
+            {features?.leader_portal !== false ? 'Enabled' : 'Disabled'}
+          </button>
+        </div>
       </div>
 
       <ConfirmDialog
         isOpen={confirmOpen}
-        title={`Toggle ${pendingFeature?.featureName ? pendingFeature.featureName.toUpperCase() : ''}`}
-        message={`Are you sure you want to ${pendingFeature?.nextValue ? 'enable' : 'disable'} ${pendingFeature?.featureName}? ${pendingFeature?.nextValue === false ? 'Any scoped assignments dependent on this module may block disabling.' : ''}`}
+        title={`Toggle ${pendingFeature?.featureName ? pendingFeature.featureName.toUpperCase().replace(/_/g, ' ') : ''}`}
+        message={`Are you sure you want to ${pendingFeature?.nextValue ? 'enable' : 'disable'} ${pendingFeature?.featureName ? pendingFeature.featureName.replace(/_/g, ' ') : ''}? ${pendingFeature?.nextValue === false ? 'Non-admin users will immediately lose access to this portal/feature.' : ''}`}
         onConfirm={handleConfirm}
         onCancel={() => {
           setConfirmOpen(false);

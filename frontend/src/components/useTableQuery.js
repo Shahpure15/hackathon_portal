@@ -13,7 +13,7 @@ export const useTableQuery = (defaultSortKey = '', defaultSortDir = 'asc', syncU
     }
     const params = new URLSearchParams(window.location.search);
     const pageVal = parseInt(params.get(`${syncUrlKey}_page`)) || 1;
-    const searchVal = params.get(`${syncUrlKey}_search`) || '';
+    const searchVal = params.get(`${syncUrlKey}_search`) || params.get('q') || '';
     const sortKeyVal = params.get(`${syncUrlKey}_sortKey`) || defaultSortKey;
     const sortDirVal = params.get(`${syncUrlKey}_sortDir`) || defaultSortDir;
     

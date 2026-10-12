@@ -6,13 +6,18 @@ from datetime import datetime
 def test_features_from_raw():
     assert features_from_raw(None).pods is True
     assert features_from_raw(None).evaluation is True
+    assert features_from_raw(None).staff_admin_portal is True
+    assert features_from_raw(None).volunteer_portal is True
+    assert features_from_raw(None).leader_portal is True
 
     assert features_from_raw({}).pods is True
     assert features_from_raw({}).evaluation is True
 
-    f_pods_false = features_from_raw({'pods': False})
+    f_pods_false = features_from_raw({'pods': False, 'staff_admin_portal': False})
     assert f_pods_false.pods is False
     assert f_pods_false.evaluation is True
+    assert f_pods_false.staff_admin_portal is False
+    assert f_pods_false.volunteer_portal is True
 
     f_unknown = features_from_raw({'unknown_flag': 123, 'pods': True})
     assert f_unknown.pods is True
