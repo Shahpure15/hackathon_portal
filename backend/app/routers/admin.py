@@ -39,6 +39,7 @@ from app.schemas import (
     EvaluationRoundCreate, EvaluationRoundUpdate, EvaluationRoundResponse,
     ProblemStatementCreate, ProblemStatementUpdate
 )
+from app.services.export_utils import safe_cell, set_cell_safe, sanitize_workbook
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -52,11 +53,8 @@ def normalize_header(h: Any) -> str:
     return re.sub(r'[\s_]+', ' ', s)
 
 # Helper: CSV formula injection prevention
-def csv_safe(value: Any) -> str:
-    s = str(value) if value is not None else ""
-    if s and s[0] in ('=', '+', '-', '@'):
-        return "'" + s
-    return s
+def csv_safe(value: Any) -> Any:
+    return safe_cell(value)
 
 # Helper: Natural numeric sorting for strings (e.g. Panel 1, Panel 2, Panel 10)
 def natural_sort_key(s: Any) -> list:
@@ -1660,6 +1658,7 @@ def export_pods(
                     max_len = min(len(val_str), 40)
             ws.column_dimensions[col_letter].width = min(max(max_len + 4, 14), 50)
 
+    sanitize_workbook(wb)
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
@@ -2160,6 +2159,7 @@ def export_volunteers(
                     max_len = min(len(val_str), 40)
             ws.column_dimensions[col_letter].width = min(max(max_len + 4, 14), 50)
 
+    sanitize_workbook(wb)
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
@@ -3500,6 +3500,7 @@ def export_problem_statements(
                     max_len = min(len(val_str), 40)
             ws.column_dimensions[col_letter].width = min(max(max_len + 4, 14), 50)
 
+    sanitize_workbook(wb)
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
@@ -4320,6 +4321,7 @@ def export_attendance_master_workbook(
                 col_letter = get_column_letter(col[0].column)
                 ws_cp.column_dimensions[col_letter].width = max(max_len + 3, 14)
 
+        sanitize_workbook(wb)
         output = io.BytesIO()
         wb.save(output)
         output.seek(0)
@@ -4478,6 +4480,7 @@ def export_single_checkpoint_sheet(
             col_letter = get_column_letter(col[0].column)
             ws_v.column_dimensions[col_letter].width = max(max_len + 3, 14)
 
+        sanitize_workbook(wb)
         output = io.BytesIO()
         wb.save(output)
         output.seek(0)
@@ -4911,6 +4914,7 @@ def export_master_evaluation_workbook(
                     max_len = len(val_str)
             ws.column_dimensions[col_letter].width = min(max(max_len + 4, 14), 60)
 
+    sanitize_workbook(wb)
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
@@ -5025,6 +5029,7 @@ def export_round_submissions(
                 max_len = len(val_str)
         ws.column_dimensions[col_letter].width = min(max(max_len + 4, 14), 60)
 
+    sanitize_workbook(wb)
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
@@ -5337,6 +5342,7 @@ def export_panels(
                     max_len = min(len(val_str), 40)
             ws.column_dimensions[col_letter].width = min(max(max_len + 4, 14), 50)
 
+    sanitize_workbook(wb)
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)

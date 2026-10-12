@@ -10,6 +10,7 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 - Reconcile migration so an empty database reaches the schema the application expects. [XA-C02]
 
 ### Security
+- Formula injection neutralised across all CSV and Excel exports; gitignored scratch database files removed. [XA-C04]
 - Dependencies pinned to exact versions; database URL driver normalised so dependency drift cannot break the connection. [XA-C01]
 
 ## [10.6.0] - 2026-10-12
