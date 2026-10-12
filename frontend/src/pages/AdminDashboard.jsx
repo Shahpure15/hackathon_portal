@@ -26,6 +26,7 @@ import VersionBadge from '../components/VersionBadge';
 import { ADMIN_NAV_PERMISSIONS } from '../modules/registry';
 import AdminShell from '../components/shell/AdminShell';
 
+const OverviewModule = React.lazy(() => import('../modules/overview/OverviewModule'));
 const RolesModule = React.lazy(() => import('../modules/roles/RolesModule'));
 const RoundsModule = React.lazy(() => import('../modules/rounds/RoundsModule'));
 const EmailModule = React.lazy(() => import('../modules/email/EmailModule'));
@@ -49,10 +50,41 @@ const formatContact = (contactStr) => {
 const AdminDashboard = () => {
   const { user, can, features } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialModule = searchParams.get('module') || localStorage.getItem('adminActiveTab') || 'teams';
+  const initialModule = searchParams.get('module') || localStorage.getItem('adminActiveTab') || 'overview';
   const [activeTab, setActiveTab] = useState(initialModule);
   const [visitedTabs, setVisitedTabs] = useState(() => new Set([initialModule]));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [alertsCount, setAlertsCount] = useState(0);
+
+  useEffect(() => {
+    let timer = null;
+    const fetchAlerts = async () => {
+      if (document.hidden) return;
+      try {
+        const res = await api.get('/admin/overview');
+        if (res.data?.attention) {
+          setAlertsCount(res.data.attention.length);
+        }
+      } catch {
+        // silent fallback
+      }
+    };
+
+    fetchAlerts();
+    timer = setInterval(fetchAlerts, 60000);
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchAlerts();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1000);
   const { addToast } = useToast();
@@ -138,6 +170,8 @@ const AdminDashboard = () => {
       onSelectTab={handleTabClick}
       user={user || { username: 'Admin', role: 'Administrator' }}
       onLogout={handleLogout}
+      unreadAlertsCount={alertsCount}
+      onOpenAlerts={() => handleTabClick('overview')}
     >
       {/* Main Content Area */}
       <div 
@@ -151,10 +185,9 @@ const AdminDashboard = () => {
       >
         {visitedTabs.has('overview') && (
           <div style={{ display: activeTab === 'overview' ? 'block' : 'none' }} className="fade-in-up">
-            <PlaceholderView
-              title="Overview & Pulse"
-              description="Welcome to the Hackathon Command Center. Live event metrics, attention list, and quick actions are loading."
-            />
+            <React.Suspense fallback={<Skeleton count={4} />}>
+              <OverviewModule onSelectTab={handleTabClick} />
+            </React.Suspense>
           </div>
         )}
         {visitedTabs.has('roles') && (

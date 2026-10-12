@@ -4,6 +4,7 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 ### Added
+- Overview page and attention list with real-time health metrics. [XA-C08]
 - Command palette with navigation, actions, and team and staff search. [XA-C07]
 - Grouped admin navigation model with permission and feature filtering. [XA-C05]
 - Postgres migration tests in CI; CORS test no longer depends on Starlette header details. [XA-C03]
