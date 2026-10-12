@@ -92,10 +92,18 @@ const AdminDashboard = () => {
   const [isSavingReset, setIsSavingReset] = useState(false);
   const [parentCredentialsToShow, setParentCredentialsToShow] = useState(null);
 
-  const handleTabClick = (tabName) => {
+  const handleTabClick = (tabName, extraParams) => {
     setActiveTab(tabName);
     localStorage.setItem('adminActiveTab', tabName);
-    setSearchParams({ module: tabName }, { replace: true });
+    const newParams = { module: tabName };
+    if (extraParams && typeof extraParams === 'object') {
+      Object.entries(extraParams).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') {
+          newParams[k] = v;
+        }
+      });
+    }
+    setSearchParams(newParams, { replace: true });
     setMobileMenuOpen(false);
   };
 
