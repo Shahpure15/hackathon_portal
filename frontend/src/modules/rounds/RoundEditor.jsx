@@ -15,6 +15,7 @@ import {
   HelpCircle,
   Users,
   Award,
+  Trophy,
 } from 'lucide-react';
 import api from '../../services/api';
 import Modal from '../../components/Modal';
@@ -23,6 +24,7 @@ import RubricEditor from './RubricEditor';
 import AssignmentWizard from './AssignmentWizard';
 import JudgingProgressConsole from './JudgingProgressConsole';
 import ReviseRubricModal from './ReviseRubricModal';
+import RoundResultsTab from './RoundResultsTab';
 import { useToast } from '../../contexts/ToastContext';
 
 export const RoundEditor = ({
@@ -67,7 +69,9 @@ export const RoundEditor = ({
   const [trimCount, setTrimCount] = useState(round?.trimCount || 1);
   const [totalScale, setTotalScale] = useState(round?.totalScale || 100);
   const [tieBreakOrder, setTieBreakOrder] = useState(round?.tieBreakOrder || []);
-  const [eligibility, setEligibility] = useState('all');
+  const [eligibilityMode, setEligibilityMode] = useState(round?.eligibility?.mode || 'all');
+  const [fromRoundId, setFromRoundId] = useState(round?.eligibility?.fromRoundId || '');
+  const [availablePreviousRounds, setAvailablePreviousRounds] = useState([]);
 
   // Rubric state
   const [rubricFields, setRubricFields] = useState(round?.rubricFields || []);
@@ -82,6 +86,25 @@ export const RoundEditor = ({
   const [showReviseRubricModal, setShowReviseRubricModal] = useState(false);
 
   const [saving, setSaving] = useState(false);
+
+  // Load available previous rounds for progression eligibility
+  useEffect(() => {
+    const fetchPreviousRounds = async () => {
+      try {
+        const res = await api.get('/admin/rounds');
+        const list = res.data || [];
+        const currentNum = parseInt(number, 10) || round?.number || round?.roundNumber || 1;
+        const prev = list.filter((r) => r.id !== round?.id && (r.number || r.roundNumber || 0) < currentNum);
+        setAvailablePreviousRounds(prev);
+        if (prev.length > 0 && !fromRoundId) {
+          setFromRoundId(prev[0].id);
+        }
+      } catch (err) {
+        console.error('Failed to load previous rounds for eligibility', err);
+      }
+    };
+    fetchPreviousRounds();
+  }, [round?.id, number]);
 
   // Load rubric detail if editing existing round
   useEffect(() => {
@@ -150,7 +173,9 @@ export const RoundEditor = ({
         trimCount: parseInt(trimCount) || 1,
         totalScale: parseInt(totalScale) || 100,
         tieBreakOrder,
-        eligibility: { mode: eligibility },
+        eligibility: eligibilityMode === 'advanced_from'
+          ? { mode: 'advanced_from', fromRoundId }
+          : { mode: eligibilityMode },
         submissionFields: submissionFields.map((f) => ({
           id: f.id || `field_${Date.now()}`,
           name: (f.name || '').trim(),
@@ -202,7 +227,7 @@ export const RoundEditor = ({
       isOpen={true}
       onClose={onClose}
       title={isNew ? 'Create Unified Event Round' : `Edit Round: ${name}`}
-      maxWidth={activeTab === 'judging' && judgingSubTab !== 'settings' ? '1060px' : activeTab === 'rubric' ? '960px' : '840px'}
+      maxWidth={activeTab === 'results' ? '1080px' : activeTab === 'judging' && judgingSubTab !== 'settings' ? '1060px' : activeTab === 'rubric' ? '960px' : '840px'}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         {/* Navigation Tabs */}
@@ -315,6 +340,28 @@ export const RoundEditor = ({
               }}
             >
               <Scale size={16} /> Scoring Rubric
+            </button>
+          )}
+
+          {features?.evaluation !== false && !isNew && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('results')}
+              style={{
+                padding: '10px 16px',
+                border: 'none',
+                background: 'transparent',
+                fontSize: '0.88rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                borderBottom: activeTab === 'results' ? '2px solid var(--primary)' : '2px solid transparent',
+                color: activeTab === 'results' ? 'var(--primary)' : 'var(--text-secondary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <Trophy size={16} /> Results
             </button>
           )}
         </div>
@@ -622,14 +669,37 @@ export const RoundEditor = ({
                   </label>
                   <select
                     className="form-input"
-                    value={eligibility}
-                    onChange={(e) => setEligibility(e.target.value)}
+                    value={eligibilityMode}
+                    onChange={(e) => setEligibilityMode(e.target.value)}
                   >
                     <option value="all">All registered & active teams</option>
-                    <option value="advanced" disabled title="Available after results release">
-                      Advanced from previous round (Available after results release)
-                    </option>
+                    <option value="advanced_from">Advanced from a previous round</option>
                   </select>
+
+                  {eligibilityMode === 'advanced_from' && (
+                    <div style={{ marginTop: '10px' }}>
+                      <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                        Qualify teams who advanced from:
+                      </label>
+                      {availablePreviousRounds.length === 0 ? (
+                        <span style={{ fontSize: '0.8rem', color: '#eab308' }}>
+                          No earlier rounds exist. Create a lower-numbered round first or select 'All'.
+                        </span>
+                      ) : (
+                        <select
+                          className="form-input"
+                          value={fromRoundId}
+                          onChange={(e) => setFromRoundId(e.target.value)}
+                        >
+                          {availablePreviousRounds.map((pr) => (
+                            <option key={pr.id} value={pr.id}>
+                              {pr.name} (Round #{pr.number || pr.roundNumber})
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -648,6 +718,11 @@ export const RoundEditor = ({
             onPublishChanged={(pub) => setIsRubricPublished(pub)}
             onReviseRubric={() => setShowReviseRubricModal(true)}
           />
+        )}
+
+        {/* Tab 5: Results */}
+        {activeTab === 'results' && !isNew && (
+          <RoundResultsTab round={round} rubricFields={rubricFields} />
         )}
 
         {/* Revise Rubric Modal */}
