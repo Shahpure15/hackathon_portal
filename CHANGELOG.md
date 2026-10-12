@@ -3,6 +3,8 @@
 Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.md). Every entry ends with its change ID.
 
 ## [Unreleased]
+
+## [10.6.0] - 2026-10-12
 ### Added
 - Results tab (leaderboard, release panel with diff updates, advance wizard); participant results card; notification bell. [P4-C06]
 - Participant rounds, results and notifications API; eligibility enforcement. [P4-C05]
