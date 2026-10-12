@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from app.config import settings
+from app.db_url import normalize_db_url
 
 # For SQLite, we need connect_args={"check_same_thread": False}
 connect_args = {}
@@ -18,7 +19,7 @@ else:
     })
 
 engine = create_engine(
-    settings.DATABASE_URL,
+    normalize_db_url(settings.DATABASE_URL),
     connect_args=connect_args,
     **engine_kwargs
 )

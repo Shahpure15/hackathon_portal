@@ -97,3 +97,4 @@ class RoleMemberUpdateScopeRequest(BaseModel):
 class FeaturesUpdateRequest(BaseModel):
     pods: Optional[bool] = None
     evaluation: Optional[bool] = None
+    stage: Optional[str] = None

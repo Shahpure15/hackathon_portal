@@ -303,11 +303,12 @@ def test_leaderboard_export_neutralises_formula_injection(client: TestClient, ad
 
     # Find row with REG-MAL-01
     found_malicious_cell = False
-    for row in ws.iter_rows(values_only=True):
-        if row[1] == "REG-MAL-01":
-            team_name = row[2]
-            # Must start with single quote "'"
-            assert team_name.startswith("'="), f"Formula injection not neutralised: {team_name}"
+    for row in ws.iter_rows():
+        if row[1].value == "REG-MAL-01":
+            team_cell = row[2]
+            # In openpyxl, formula injection is neutralised via data_type = 's' without modifying text
+            assert team_cell.data_type == "s", f"Expected cell data_type 's', got {team_cell.data_type}"
+            assert team_cell.value == "=cmd|' /C calc'!A0"
             found_malicious_cell = True
             break
     assert found_malicious_cell, "Malicious team not found in export"

@@ -4,6 +4,25 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 
+## [10.7.0] - 2026-10-12
+### Added
+- Shared UI kit (PageHeader, FilterBar, StatusChip, EmptyState, DetailDrawer) and non-destructive demo data seeder. [XA-C10]
+- Event stage guidance and administrative round manual advancement. [XA-C09]
+- Overview page and attention list with real-time health metrics. [XA-C08]
+- Command palette with navigation, actions, and team and staff search. [XA-C07]
+- Grouped admin navigation model with permission and feature filtering. [XA-C05]
+- Postgres migration tests in CI; CORS test no longer depends on Starlette header details. [XA-C03]
+
+### Changed
+- Admin navigation is a grouped sidebar (bottom bar on phones) with deep-linkable modules; tab panels mount on first visit. [XA-C06]
+
+### Fixed
+- Reconcile migration so an empty database reaches the schema the application expects. [XA-C02]
+
+### Security
+- Formula injection neutralised across all CSV and Excel exports; gitignored scratch database files removed. [XA-C04]
+- Dependencies pinned to exact versions; database URL driver normalised so dependency drift cannot break the connection. [XA-C01]
+
 ## [10.6.0] - 2026-10-12
 ### Added
 - Results tab (leaderboard, release panel with diff updates, advance wizard); participant results card; notification bell. [P4-C06]

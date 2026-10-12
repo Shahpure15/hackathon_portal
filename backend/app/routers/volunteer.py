@@ -13,6 +13,7 @@ from app.logger import logger
 from app.models import Role, Team, TeamMember, CheckpointType, AttendanceRecord, EventConfig, ProblemStatement, PSSelection, Volunteer, VolunteerAttendanceRecord
 from app.auth import require_role, CurrentUser
 from app.rbac import Principal, require_permission, require_principal, apply_team_scope
+from app.services.export_utils import safe_cell
 
 router = APIRouter(prefix="/volunteer", tags=["volunteer"])
 
@@ -504,11 +505,8 @@ def mark_volunteer_people_checkin(
     }
 
 
-def _csv_safe(value: Any) -> str:
-    s = str(value) if value is not None else ""
-    if s and s[0] in ('=', '+', '-', '@'):
-        return "'" + s
-    return s
+def _csv_safe(value: Any) -> Any:
+    return safe_cell(value)
 
 
 @router.get("/people/export")

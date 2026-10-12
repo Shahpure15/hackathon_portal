@@ -31,7 +31,7 @@ from app.models import (
 )
 from app.rbac import Principal, require_permission
 from app.routers.admin import log_audit
-from app.services.export_utils import safe_cell
+from app.services.export_utils import safe_cell, set_cell_safe, sanitize_workbook
 from app.services.progression import select_top_n, select_threshold
 from app.services.ranking import build_leaderboard
 from app.services.results import (
@@ -520,8 +520,8 @@ def export_leaderboard(
     for r in rows:
         ws.append([
             r["rank"],
-            safe_cell(r["registrationId"]),
-            safe_cell(r["name"]),
+            r["registrationId"],
+            r["name"],
             float(r["score"]),
             float(r["displayScore"]),
             r["judgesCount"],
@@ -538,8 +538,8 @@ def export_leaderboard(
     for u in unscored:
         ws.append([
             "-",
-            safe_cell(u["registrationId"]),
-            safe_cell(u["name"]),
+            u["registrationId"],
+            u["name"],
             "-",
             "-",
             0,
@@ -559,6 +559,7 @@ def export_leaderboard(
         col_letter = get_column_letter(col[0].column)
         ws.column_dimensions[col_letter].width = max(max_len + 3, 12)
 
+    sanitize_workbook(wb)
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
