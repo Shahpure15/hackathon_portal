@@ -146,7 +146,8 @@ def test_notifications_crud_and_read(db, results_setup):
 
 
 def test_migration_indexes_exist(db):
-    insp = sa.inspect(db.get_bind())
+    conn = db.connection()
+    insp = sa.inspect(conn)
     
     # Check index on notifications
     notif_indexes = [idx["name"] for idx in insp.get_indexes("notifications")]

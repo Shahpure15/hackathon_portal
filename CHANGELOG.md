@@ -4,6 +4,7 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 ### Added
+- Participant rounds, results and notifications API; eligibility enforcement. [P4-C05]
 - Leaderboard, results release, progression and leaderboard export endpoints. [P4-C04]
 - Ranking, progression and results release services with snapshot and diff semantics. [P4-C03]
 - Progression status, result release snapshot and notification tables. [P4-C02]

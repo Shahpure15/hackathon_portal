@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import text, or_
@@ -9,10 +9,13 @@ from app.database import get_db
 from app.logger import logger
 from app.models import (
     Role, Team, TeamMember, ProblemStatement, PSSelection, 
-    EventConfig, Volunteer, AttendanceRecord, EvaluationRound, Submission
+    EventConfig, Volunteer, AttendanceRecord, EvaluationRound, Submission,
+    ResultRelease, ResultReleaseItem, Notification, TeamRoundStatus
 )
 from app.auth import require_role, CurrentUser
 from app.schemas import ProblemStatementResponse, SubmissionCreate
+from app.dto.participant import ParticipantResultDTO, ParticipantNotificationDTO
+from app.services.eligibility import is_team_eligible
 from app.limiter import limiter, team_key_func
 
 router = APIRouter(prefix="/leader", tags=["leader"])
@@ -321,10 +324,12 @@ def get_evaluation_rounds_for_leader(
         .order_by(EvaluationRound.roundNumber)
         .all()
     )
+    # Filter to eligible rounds
+    eligible_rounds = [r for r in rounds if is_team_eligible(db, r, team.id)]
     submissions = {s.roundId: s for s in db.query(Submission).filter(Submission.teamId == team.id).all()}
 
     res = []
-    for r in rounds:
+    for r in eligible_rounds:
         sub = submissions.get(r.id)
         res.append({
             "id": r.id,
@@ -358,8 +363,11 @@ def submit_evaluation_round(
     if not round_obj:
         raise HTTPException(status_code=404, detail="Evaluation round not found")
 
+    if not is_team_eligible(db, round_obj, current_user.teamId):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Team is not eligible for this round")
+
     if not round_obj.submissionEnabled or not round_obj.isSubmissionOpen:
-        logger.warn(f"leader.submit_round Submission attempt on closed round: team={current_user.teamId} round={round_id}")
+        logger.warning(f"leader.submit_round Submission attempt on closed round: team={current_user.teamId} round={round_id}")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Submissions are closed for this round")
 
     team_id = current_user.teamId
@@ -384,3 +392,199 @@ def submit_evaluation_round(
 
     db.commit()
     return {"success": True}
+
+
+# ==========================================
+# PARTICIPANT ROUNDS & RESULTS API
+# ==========================================
+
+@router.get("/rounds")
+def get_leader_rounds(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.LEADER)),
+):
+    team = db.query(Team).filter(Team.id == current_user.teamId).first()
+    if not team:
+        raise HTTPException(status_code=400, detail="Team not found")
+
+    rounds = (
+        db.query(EvaluationRound)
+        .filter(EvaluationRound.eventId == current_user.eventId)
+        .order_by(EvaluationRound.roundNumber)
+        .all()
+    )
+    eligible_rounds = [r for r in rounds if is_team_eligible(db, r, team.id)]
+    submissions = {s.roundId: s for s in db.query(Submission).filter(Submission.teamId == team.id).all()}
+
+    round_ids = [r.id for r in eligible_rounds]
+    releases = (
+        db.query(ResultRelease)
+        .filter(ResultRelease.roundId.in_(round_ids), ResultRelease.retractedAt == None)
+        .order_by(ResultRelease.releaseNo.desc())
+        .all()
+    )
+    latest_release_by_round = {}
+    for rel in releases:
+        if rel.roundId not in latest_release_by_round:
+            latest_release_by_round[rel.roundId] = rel
+
+    status_rows = (
+        db.query(TeamRoundStatus)
+        .filter(TeamRoundStatus.roundId.in_(round_ids), TeamRoundStatus.teamId == team.id)
+        .all()
+    )
+    status_by_round = {s.roundId: s.state for s in status_rows}
+
+    res = []
+    for r in eligible_rounds:
+        sub = submissions.get(r.id)
+        latest_rel = latest_release_by_round.get(r.id)
+        is_released = latest_rel is not None
+        results_info = {
+            "released": is_released,
+            "releaseNo": latest_rel.releaseNo if is_released else None,
+            "releasedAt": latest_rel.releasedAt.isoformat() if is_released and latest_rel.releasedAt else None,
+        }
+
+        advancement_val = None
+        if is_released and latest_rel.config.get("showAdvancement"):
+            adv_state = status_by_round.get(r.id, "not_advanced")
+            advancement_val = "advanced" if adv_state == "advanced" else "not_advanced"
+
+        res.append({
+            "id": r.id,
+            "name": r.name,
+            "roundNumber": r.roundNumber,
+            "description": r.description,
+            "fields": r.fields or [],
+            "isOpen": r.isSubmissionOpen,
+            "submissionEnabled": r.submissionEnabled,
+            "results": results_info,
+            "advancement": advancement_val,
+            "submission": {
+                "id": sub.id,
+                "driveLink": sub.driveLink if sub else None,
+                "githubLink": sub.githubLink if sub else None,
+                "answers": sub.answers or {} if sub else {},
+                "submittedAt": sub.submittedAt.isoformat() if sub and sub.submittedAt else None,
+                "updatedAt": sub.updatedAt.isoformat() if sub and sub.updatedAt else None,
+            } if sub else None,
+        })
+    return res
+
+
+@router.get("/rounds/{round_id}/result", response_model=ParticipantResultDTO)
+def get_leader_round_result(
+    round_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.LEADER)),
+):
+    team = db.query(Team).filter(Team.id == current_user.teamId).first()
+    if not team:
+        raise HTTPException(status_code=400, detail="Team not found")
+
+    round_obj = (
+        db.query(EvaluationRound)
+        .filter(EvaluationRound.id == round_id, EvaluationRound.eventId == current_user.eventId)
+        .first()
+    )
+    if not round_obj:
+        raise HTTPException(status_code=404, detail="Round not found")
+
+    if not is_team_eligible(db, round_obj, team.id):
+        raise HTTPException(status_code=404, detail="Results are not available yet.")
+
+    latest_rel = (
+        db.query(ResultRelease)
+        .filter(ResultRelease.roundId == round_id, ResultRelease.retractedAt == None)
+        .order_by(ResultRelease.releaseNo.desc())
+        .first()
+    )
+    if not latest_rel:
+        raise HTTPException(status_code=404, detail="Results are not available yet.")
+
+    item = (
+        db.query(ResultReleaseItem)
+        .filter(ResultReleaseItem.releaseId == latest_rel.id, ResultReleaseItem.teamId == team.id)
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Results are not available yet.")
+
+    payload = dict(item.payload or {})
+    payload["releaseNo"] = latest_rel.releaseNo
+    payload["releasedAt"] = latest_rel.releasedAt.isoformat() if latest_rel.releasedAt else None
+
+    return ParticipantResultDTO(**payload)
+
+
+# ==========================================
+# IN-APP NOTIFICATIONS API
+# ==========================================
+
+@router.get("/notifications")
+def get_leader_notifications(
+    unread: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.LEADER)),
+):
+    q = (
+        db.query(Notification)
+        .filter(
+            Notification.recipientUserId == current_user.id,
+            Notification.eventId == current_user.eventId,
+        )
+    )
+    if unread == 1:
+        q = q.filter(Notification.readAt == None)
+    notifs = q.order_by(Notification.createdAt.desc()).all()
+
+    return [
+        {
+            "id": n.id,
+            "type": n.type,
+            "title": n.title,
+            "body": n.body,
+            "link": n.link,
+            "payload": n.payload,
+            "readAt": n.readAt.isoformat() if n.readAt else None,
+            "createdAt": n.createdAt.isoformat() if n.createdAt else None,
+        }
+        for n in notifs
+    ]
+
+
+@router.post("/notifications/{notif_id}/read")
+def mark_notification_read(
+    notif_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.LEADER)),
+):
+    notif = (
+        db.query(Notification)
+        .filter(
+            Notification.id == notif_id,
+            Notification.recipientUserId == current_user.id,
+        )
+        .first()
+    )
+    if not notif:
+        raise HTTPException(status_code=404, detail="Notification not found.")
+
+    notif.readAt = datetime.now(timezone.utc)
+    db.commit()
+    return {"success": True}
+
+
+@router.post("/notifications/read-all")
+def mark_all_notifications_read(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role(Role.LEADER)),
+):
+    db.query(Notification).filter(
+        Notification.recipientUserId == current_user.id,
+        Notification.readAt == None,
+    ).update({"readAt": datetime.now(timezone.utc)}, synchronize_session=False)
+    db.commit()
+    return {"success": True}
+
