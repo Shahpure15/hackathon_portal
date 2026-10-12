@@ -29,6 +29,7 @@ jobs:
       - run: npx vite build
         working-directory: frontend
       - run: node scripts/check_scoring_vectors.mjs
+      - run: node scripts/check_registry.mjs
   migrations-postgres:
     runs-on: ubuntu-latest
     services:

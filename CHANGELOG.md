@@ -4,6 +4,7 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 ### Added
+- Grouped admin navigation model with permission and feature filtering. [XA-C05]
 - Postgres migration tests in CI; CORS test no longer depends on Starlette header details. [XA-C03]
 
 ### Fixed
