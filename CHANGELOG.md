@@ -3,6 +3,8 @@
 Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.md). Every entry ends with its change ID.
 
 ## [Unreleased]
+
+## [10.7.0] - 2026-10-12
 ### Added
 - Shared UI kit (PageHeader, FilterBar, StatusChip, EmptyState, DetailDrawer) and non-destructive demo data seeder. [XA-C10]
 - Event stage guidance and administrative round manual advancement. [XA-C09]
