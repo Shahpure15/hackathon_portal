@@ -726,4 +726,83 @@ class EvaluationText(Base):
     field = relationship("RubricField")
 
 
+class TeamRoundStatus(Base):
+    __tablename__ = "team_round_status"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    roundId = Column(String(36), ForeignKey("evaluation_rounds.id", ondelete="CASCADE"), nullable=False)
+    teamId = Column(String(36), ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
+    state = Column(String(20), default="eligible", nullable=False)  # eligible | advanced | not_advanced | withdrawn
+    via = Column(String(20), default="initial", nullable=False)  # initial | auto_top_n | auto_threshold | manual
+    rankSnapshot = Column(Integer, nullable=True)
+    scoreSnapshot = Column(Numeric(6, 3), nullable=True)
+    decidedBy = Column(String(100), nullable=True)
+    decidedAt = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("roundId", "teamId", name="uq_team_round_status_round_team"),
+    )
+
+    event = relationship("Event")
+    round = relationship("EvaluationRound")
+    team = relationship("Team")
+
+
+class ResultRelease(Base):
+    __tablename__ = "result_releases"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    roundId = Column(String(36), ForeignKey("evaluation_rounds.id", ondelete="CASCADE"), nullable=False)
+    releaseNo = Column(Integer, nullable=False)
+    config = Column(JSON, nullable=False, default=dict)
+    releasedBy = Column(String(100), nullable=False)
+    releasedAt = Column(DateTime, default=func.now(), nullable=False)
+    supersedesReleaseId = Column(String(36), nullable=True)
+    retractedAt = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("roundId", "releaseNo", name="uq_result_releases_round_release_no"),
+    )
+
+    event = relationship("Event")
+    round = relationship("EvaluationRound")
+    items = relationship("ResultReleaseItem", back_populates="release", cascade="all, delete-orphan")
+
+
+class ResultReleaseItem(Base):
+    __tablename__ = "result_release_items"
+
+    releaseId = Column(String(36), ForeignKey("result_releases.id", ondelete="CASCADE"), primary_key=True)
+    teamId = Column(String(36), ForeignKey("teams.id", ondelete="CASCADE"), primary_key=True)
+    payload = Column(JSON, nullable=False, default=dict)
+
+    release = relationship("ResultRelease", back_populates="items")
+    team = relationship("Team")
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    recipientUserId = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    type = Column(String(40), nullable=False)
+    title = Column(String(200), nullable=False)
+    body = Column(Text, nullable=False)
+    link = Column(String(255), nullable=True)
+    payload = Column(JSON, nullable=True)
+    readAt = Column(DateTime, nullable=True)
+    createdAt = Column(DateTime, default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_notifications_recipient_read", "recipientUserId", "readAt"),
+    )
+
+    event = relationship("Event")
+    recipient = relationship("User")
+
+
+
 

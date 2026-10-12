@@ -4,6 +4,14 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 
+## [10.6.0] - 2026-10-12
+### Added
+- Results tab (leaderboard, release panel with diff updates, advance wizard); participant results card; notification bell. [P4-C06]
+- Participant rounds, results and notifications API; eligibility enforcement. [P4-C05]
+- Leaderboard, results release, progression and leaderboard export endpoints. [P4-C04]
+- Ranking, progression and results release services with snapshot and diff semantics. [P4-C03]
+- Progression status, result release snapshot and notification tables. [P4-C02]
+
 ## [10.5.0] - 2026-10-11
 ### Added
 - Shared scoring vectors checked on both backend and frontend in CI. [P3-C09]

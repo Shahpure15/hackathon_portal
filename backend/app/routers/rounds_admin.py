@@ -15,7 +15,7 @@ from app.dto.rounds import (
     RubricSaveRequest,
     RubricSummaryDTO,
 )
-from app.models import EvaluationRound, RubricField, RubricVersion, Submission
+from app.models import EvaluationRound, RubricField, RubricVersion, Submission, Team
 from app.rbac import Principal, require_permission
 from app.routers.admin import log_audit
 from app.services.features import get_event_features
@@ -318,6 +318,33 @@ def update_round(
     if payload.tieBreakOrder is not None:
         round_obj.tieBreakOrder = payload.tieBreakOrder
     if payload.eligibility is not None:
+        mode = payload.eligibility.get("mode")
+        if mode == "advanced_from":
+            from_rid = payload.eligibility.get("fromRoundId")
+            if not from_rid:
+                raise HTTPException(status_code=422, detail="fromRoundId is required when eligibility mode is advanced_from.")
+            from_round = (
+                db.query(EvaluationRound)
+                .filter(
+                    EvaluationRound.id == from_rid,
+                    EvaluationRound.eventId == current_user.eventId,
+                )
+                .first()
+            )
+            if not from_round:
+                raise HTTPException(status_code=422, detail="fromRoundId must belong to the same event.")
+            if from_round.roundNumber >= round_obj.roundNumber:
+                raise HTTPException(status_code=422, detail="fromRoundId must have a lower roundNumber than the current round.")
+        elif mode == "manual":
+            team_ids = payload.eligibility.get("teamIds") or []
+            if team_ids:
+                event_team_count = (
+                    db.query(Team)
+                    .filter(Team.id.in_(team_ids), Team.eventId == current_user.eventId)
+                    .count()
+                )
+                if event_team_count != len(set(team_ids)):
+                    raise HTTPException(status_code=422, detail="All manual eligibility team IDs must belong to the event.")
         round_obj.eligibility = payload.eligibility
     if payload.coiRule is not None:
         round_obj.coiRule = payload.coiRule
