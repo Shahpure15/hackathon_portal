@@ -4,6 +4,7 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 ### Added
+- Ranking, progression and results release services with snapshot and diff semantics. [P4-C03]
 - Progression status, result release snapshot and notification tables. [P4-C02]
 
 ## [10.5.0] - 2026-10-11
