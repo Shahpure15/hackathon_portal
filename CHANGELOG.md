@@ -3,6 +3,8 @@
 Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.md). Every entry ends with its change ID.
 
 ## [Unreleased]
+### Security
+- Dependencies pinned to exact versions; database URL driver normalised so dependency drift cannot break the connection. [XA-C01]
 
 ## [10.6.0] - 2026-10-12
 ### Added
