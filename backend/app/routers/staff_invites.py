@@ -130,6 +130,7 @@ def _send_invite_for_volunteer(
     current_user: Principal,
     role_id: Optional[str] = None,
     scope: Optional[dict] = None,
+    force: bool = False,
 ) -> dict:
     if not v.email or not v.email.strip():
         raise HTTPException(status_code=400, detail="Staff member does not have an email address configured.")
@@ -175,7 +176,7 @@ def _send_invite_for_volunteer(
     target_username = v.email.strip().lower()
 
     if user:
-        if getattr(user, "status", "active") == "active":
+        if getattr(user, "status", "active") == "active" and not force:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="User account is already active. Use password reset if needed."
@@ -296,6 +297,7 @@ def invite_staff_member(
         current_user=current_user,
         role_id=payload.roleId,
         scope=payload.scope,
+        force=payload.force,
     )
 
 

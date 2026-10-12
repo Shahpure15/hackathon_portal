@@ -12,6 +12,7 @@ class StaffInviteRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
     roleId: Optional[str] = None
     scope: Optional[dict] = None
+    force: bool = False
 
 
 class StaffAccessItemDTO(BaseModel):
