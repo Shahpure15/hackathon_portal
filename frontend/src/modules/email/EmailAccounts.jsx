@@ -1,3 +1,4 @@
+import React, { useState, useEffect } from 'react';
 import { Mail, Plus, Trash2, CheckCircle2, AlertCircle, RefreshCw, KeyRound, Server, Send } from 'lucide-react';
 import api from '../../services/api';
 import { useToast } from '../../contexts/ToastContext';
