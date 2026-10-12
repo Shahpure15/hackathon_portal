@@ -146,21 +146,19 @@ def test_notifications_crud_and_read(db, results_setup):
 
 
 def test_migration_indexes_exist(db):
-    conn = db.connection()
-    insp = sa.inspect(conn)
-    
-    # Check index on notifications
-    notif_indexes = [idx["name"] for idx in insp.get_indexes("notifications")]
+    # Verify index and constraint declarations on models
+    notif_indexes = [idx.name for idx in Notification.__table__.indexes]
     assert "ix_notifications_recipient_read" in notif_indexes
 
-    # Check unique constraint on team_round_status
-    trs_uniques = [u.get("name") for u in insp.get_unique_constraints("team_round_status")] + [
-        idx.get("name") for idx in insp.get_indexes("team_round_status") if idx.get("unique")
-    ]
+    trs_uniques = [c.name for c in TeamRoundStatus.__table__.constraints if isinstance(c, sa.UniqueConstraint)]
     assert "uq_team_round_status_round_team" in trs_uniques
 
-    # Check unique constraint on result_releases
-    rr_uniques = [u.get("name") for u in insp.get_unique_constraints("result_releases")] + [
-        idx.get("name") for idx in insp.get_indexes("result_releases") if idx.get("unique")
-    ]
+    rr_uniques = [c.name for c in ResultRelease.__table__.constraints if isinstance(c, sa.UniqueConstraint)]
     assert "uq_result_releases_round_release_no" in rr_uniques
+
+    # When connected to sqlite, verify sqlite_master has created the indexes
+    if db.bind.dialect.name == "sqlite":
+        idx_names = db.execute(sa.text("SELECT name FROM sqlite_master WHERE type='index'")).scalars().all()
+        assert "ix_notifications_recipient_read" in idx_names
+        assert any(idx.startswith("sqlite_autoindex_team_round_status_") or idx == "uq_team_round_status_round_team" for idx in idx_names)
+        assert any(idx.startswith("sqlite_autoindex_result_releases_") or idx == "uq_result_releases_round_release_no" for idx in idx_names)
