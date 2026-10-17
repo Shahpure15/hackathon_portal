@@ -27,10 +27,10 @@ from app.models import (
     VolunteerType, ProblemStatement, PSSelection, AuditLog, 
     PendingImport, EventConfig, CheckpointType, AttendanceRecord,
     VolunteerAttendanceRecord, Panel, EvaluationRound, Submission,
-    Discipline, RefreshToken
+    Discipline, RefreshToken, Event
 )
 from app.auth import require_role, CurrentUser, get_password_hash
-from app.rbac import Principal, require_permission
+from app.rbac import Principal, require_permission, invalidate_all
 from app.schemas import (
     TeamResponse, TeamDetailResponse, AuditLogResponse, 
     PodResponse, VolunteerResponse, ProblemStatementResponse,
@@ -3789,6 +3789,7 @@ def get_event_config(
     db: Session = Depends(get_db),
     current_user: Principal = Depends(require_permission('config.view'))
 ):
+    event = db.query(Event).filter(Event.id == current_user.eventId).first()
     config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
     if not config:
         # Auto-create if not existing
@@ -3797,7 +3798,155 @@ def get_event_config(
         db.commit()
         db.refresh(config)
         
+    feats = config.features or {}
     return {
+        "eventId": event.id if event else current_user.eventId,
+        "eventName": event.name if event else "MIT India Hackathon",
+        "startDate": event.startDate.isoformat() if event and event.startDate else None,
+        "endDate": event.endDate.isoformat() if event and event.endDate else None,
+        "status": getattr(event, "status", "active") if event else "active",
+        "isActive": bool(event.isActive) if event else True,
+        "stage": feats.get("stage", "setup"),
+        "features": feats,
+        "psReleaseAt": _format_dt_utc(config.psReleaseAt),
+        "psGateCheckpointTypeId": config.psGateCheckpointTypeId,
+        "allowVolunteerPsSelection": bool(config.allowVolunteerPsSelection)
+    }
+
+@router.patch("/config")
+@router.put("/config")
+def update_event_config(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: Principal = Depends(require_permission('config.manage'))
+):
+    event = db.query(Event).filter(Event.id == current_user.eventId).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
+    if not config:
+        config = EventConfig(eventId=current_user.eventId)
+        db.add(config)
+        db.flush()
+
+    diff = {}
+
+    # 1. Event Status ('upcoming', 'active', 'concluded')
+    if "status" in payload and payload["status"] is not None:
+        new_status = str(payload.get("status")).strip().lower()
+        if new_status not in ("upcoming", "active", "concluded"):
+            raise HTTPException(
+                status_code=422,
+                detail="Invalid event status. Allowed values: 'upcoming', 'active', 'concluded'"
+            )
+        old_status = getattr(event, "status", "active")
+        if old_status != new_status:
+            diff["event.status"] = {"from": old_status, "to": new_status}
+            event.status = new_status
+            if new_status == "active" and not event.isActive:
+                diff["event.isActive"] = {"from": event.isActive, "to": True}
+                event.isActive = True
+
+    # 2. Event isActive
+    if "isActive" in payload and payload["isActive"] is not None:
+        new_active = bool(payload.get("isActive"))
+        if event.isActive != new_active:
+            diff["event.isActive"] = {"from": event.isActive, "to": new_active}
+            event.isActive = new_active
+
+    # 3. Event Name
+    if "name" in payload or "eventName" in payload:
+        new_name = str(payload.get("name") or payload.get("eventName")).strip()
+        if new_name and event.name != new_name:
+            diff["event.name"] = {"from": event.name, "to": new_name}
+            event.name = new_name
+
+    # 4. Start & End Dates
+    if "startDate" in payload:
+        raw_sd = payload.get("startDate")
+        if raw_sd:
+            try:
+                sd = datetime.fromisoformat(str(raw_sd).replace("Z", "+00:00"))
+                if sd.tzinfo:
+                    sd = sd.astimezone(timezone.utc).replace(tzinfo=None)
+                diff["event.startDate"] = {"from": str(event.startDate), "to": str(sd)}
+                event.startDate = sd
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid startDate ISO format")
+    if "endDate" in payload:
+        raw_ed = payload.get("endDate")
+        if raw_ed:
+            try:
+                ed = datetime.fromisoformat(str(raw_ed).replace("Z", "+00:00"))
+                if ed.tzinfo:
+                    ed = ed.astimezone(timezone.utc).replace(tzinfo=None)
+                diff["event.endDate"] = {"from": str(event.endDate), "to": str(ed)}
+                event.endDate = ed
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid endDate ISO format")
+
+    # 5. Allow volunteer PS selection
+    if "allowVolunteerPsSelection" in payload:
+        new_val = bool(payload.get("allowVolunteerPsSelection"))
+        if config.allowVolunteerPsSelection != new_val:
+            diff["allowVolunteerPsSelection"] = {"from": config.allowVolunteerPsSelection, "to": new_val}
+            config.allowVolunteerPsSelection = new_val
+
+    # 6. PS Gate Checkpoint
+    if "psGateCheckpointTypeId" in payload:
+        new_gate = payload.get("psGateCheckpointTypeId")
+        if config.psGateCheckpointTypeId != new_gate:
+            diff["psGateCheckpointTypeId"] = {"from": config.psGateCheckpointTypeId, "to": new_gate}
+            config.psGateCheckpointTypeId = new_gate
+
+    # 7. PS Release time
+    if "psReleaseAt" in payload:
+        release_at_raw = payload.get("psReleaseAt")
+        if release_at_raw:
+            try:
+                clean_str = str(release_at_raw).replace("Z", "+00:00")
+                release_at = datetime.fromisoformat(clean_str)
+                if release_at.tzinfo:
+                    release_at = release_at.astimezone(timezone.utc).replace(tzinfo=None)
+                diff["psReleaseAt"] = {"from": str(config.psReleaseAt), "to": str(release_at)}
+                config.psReleaseAt = release_at
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid psReleaseAt date format.")
+        else:
+            diff["psReleaseAt"] = {"from": str(config.psReleaseAt), "to": None}
+            config.psReleaseAt = None
+
+    # 8. Features & Stage sync
+    feats = dict(config.features or {})
+    feats_changed = False
+    if "stage" in payload and payload["stage"] is not None:
+        new_stage = str(payload.get("stage")).strip()
+        if new_stage in ('setup', 'event_day', 'judging', 'results', 'closed'):
+            feats["stage"] = new_stage
+            feats_changed = True
+    if "features" in payload and isinstance(payload.get("features"), dict):
+        feats.update(payload.get("features"))
+        feats_changed = True
+    if feats_changed:
+        config.features = feats
+        diff["features"] = feats
+
+    log_audit(db, current_user.id, "config.update", "EventConfig", config.id, diff, event_id=current_user.eventId)
+    db.commit()
+
+    invalidate_all()
+
+    return {
+        "message": "Event configuration updated successfully!",
+        "eventId": event.id,
+        "eventName": event.name,
+        "startDate": event.startDate.isoformat() if event.startDate else None,
+        "endDate": event.endDate.isoformat() if event.endDate else None,
+        "status": getattr(event, "status", "active"),
+        "isActive": bool(event.isActive),
+        "stage": feats.get("stage", "setup"),
+        "features": config.features or {},
         "psReleaseAt": _format_dt_utc(config.psReleaseAt),
         "psGateCheckpointTypeId": config.psGateCheckpointTypeId,
         "allowVolunteerPsSelection": bool(config.allowVolunteerPsSelection)

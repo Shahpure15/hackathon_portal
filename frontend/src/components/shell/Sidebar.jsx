@@ -12,6 +12,7 @@ import {
   ClipboardCheck,
   Mail,
   ShieldCheck,
+  Settings,
   Circle,
 } from 'lucide-react';
 
@@ -28,6 +29,7 @@ const ICON_MAP = {
   ClipboardCheck,
   Mail,
   ShieldCheck,
+  Settings,
 };
 
 export default function Sidebar({

@@ -14,6 +14,7 @@ export const ADMIN_NAV_PERMISSIONS = {
   psLive: ['ps.view'],
   roles: ['role.manage'],
   email: ['email.manage', 'staff.invite'],
+  eventConfig: ['config.view'],
 };
 
 export const STAFF_TAB_PERMISSIONS = {
@@ -68,6 +69,7 @@ export const ADMIN_GROUPS = [
     id: 'settings',
     label: 'Settings',
     items: [
+      { id: 'eventConfig', label: 'Event configuration', icon: 'Settings', requires: ['config.view'] },
       { id: 'roles', label: 'Roles & access', icon: 'ShieldCheck', requires: ['role.manage'] },
     ],
   },

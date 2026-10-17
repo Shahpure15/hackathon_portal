@@ -30,6 +30,7 @@ const OverviewModule = React.lazy(() => import('../modules/overview/OverviewModu
 const RolesModule = React.lazy(() => import('../modules/roles/RolesModule'));
 const RoundsModule = React.lazy(() => import('../modules/rounds/RoundsModule'));
 const EmailModule = React.lazy(() => import('../modules/email/EmailModule'));
+const EventConfigModule = React.lazy(() => import('../modules/config/EventConfigModule'));
 
 
 
@@ -206,6 +207,13 @@ const AdminDashboard = () => {
           <div style={{ display: activeTab === 'roles' ? 'block' : 'none' }} className="fade-in-up">
             <React.Suspense fallback={<Skeleton count={4} />}>
               <RolesModule />
+            </React.Suspense>
+          </div>
+        )}
+        {visitedTabs.has('eventConfig') && (
+          <div style={{ display: activeTab === 'eventConfig' ? 'block' : 'none' }} className="fade-in-up">
+            <React.Suspense fallback={<Skeleton count={4} />}>
+              <EventConfigModule />
             </React.Suspense>
           </div>
         )}
