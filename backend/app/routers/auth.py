@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from typing import Optional
 from pydantic import BaseModel
 
 from app.database import get_db
@@ -18,7 +19,7 @@ from app.auth import (
 from app.limiter import limiter, login_key_func
 from app.dto.rbac import AuthMeResponse
 from app.permissions import CATALOG
-from app.rbac import resolve_access
+from app.rbac import resolve_access, compute_landing
 from app.services.features import get_event_features, FeaturesConfig
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -208,7 +209,8 @@ def logout(
 
 
 class ChangePasswordRequest(BaseModel):
-    oldPassword: str
+    oldPassword: Optional[str] = None
+    currentPassword: Optional[str] = None
     newPassword: str
 
 @router.post("/change-password")
@@ -217,22 +219,30 @@ def change_password(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user)
 ):
+    new_pw = (data.newPassword or "").strip()
+    if len(new_pw) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters long.")
+
     user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-        
-    if not verify_password(data.oldPassword, user.passwordHash):
-        raise HTTPException(status_code=400, detail="Incorrect old password")
-        
-    if data.newPassword == data.oldPassword:
-        raise HTTPException(status_code=400, detail="New password cannot be the same as your current password")
-        
-    user.passwordHash = get_password_hash(data.newPassword)
-    
+
+    old_pw = data.currentPassword or data.oldPassword
+    if old_pw:
+        if not verify_password(old_pw, user.passwordHash):
+            raise HTTPException(status_code=400, detail="Current password is incorrect.")
+        if new_pw == old_pw:
+            raise HTTPException(status_code=400, detail="New password cannot be the same as your current password.")
+    else:
+        if user.passwordHash:
+            raise HTTPException(status_code=400, detail="Current password is required.")
+
+    user.passwordHash = get_password_hash(new_pw)
+
     # Revoke all refresh tokens for this user
     db.query(RefreshToken).filter(RefreshToken.userId == user.id).update({"revoked": True})
     db.commit()
-    
+
     return {"message": "Password changed successfully"}
 
 
@@ -248,9 +258,10 @@ def get_me(
         role_names = ['Admin']
         permissions = sorted(list(CATALOG.keys()))
         scope = {'teams': {'mode': 'all', 'ids': []}}
+        landing = compute_landing(role_val, set(permissions), True)
     elif (current_user.role == Role.VOLUNTEER) or (role_val.upper() == Role.VOLUNTEER.value.upper()):
         access = resolve_access(db, current_user)
-        role_names = access.role_names
+        role_names = list(access.role_names or [])
         permissions = sorted(list(access.permissions))
         if access.team_scope_all:
             scope = {'teams': {'mode': 'all', 'ids': []}}
@@ -262,10 +273,25 @@ def get_me(
             scope = {'teams': {'mode': 'mixed', 'ids': sorted(list(access.pod_ids | access.panel_ids))}}
         else:
             scope = {'teams': {'mode': 'all', 'ids': []}}
+        landing = compute_landing(role_val, access.permissions, False)
+
+        # Dynamic fallback if no explicit RBAC role name was assigned
+        if not role_names:
+            vol = getattr(current_user, 'volunteer', None)
+            if not vol and getattr(current_user, 'volunteerId', None):
+                vol = db.query(Volunteer).filter(Volunteer.id == current_user.volunteerId).first()
+            if vol and getattr(vol, 'type', None):
+                type_val = getattr(vol.type, 'value', str(vol.type))
+                role_names = [type_val.capitalize()]
+            elif landing == 'judge' or 'evaluation.score' in access.permissions:
+                role_names = ['Judge']
+            else:
+                role_names = ['Volunteer']
     else:
         role_names = []
         permissions = []
         scope = {'teams': {'mode': 'all', 'ids': []}}
+        landing = compute_landing(role_val, set(), False)
 
     if current_user.eventId:
         features_config = get_event_features(db, current_user.eventId)
@@ -284,7 +310,8 @@ def get_me(
         permissions=permissions,
         scope=scope,
         features=features_dict,
-        moduleGates={}
+        moduleGates={},
+        landing=landing
     )
 
 
@@ -368,5 +395,3 @@ def accept_invite(
 
     db.commit()
     return {"ok": True}
-
-

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Users, Layers, FileText, CheckCircle, Clock, AlertTriangle, LogOut, Info, ShieldAlert, Lock, Menu, Eye, EyeOff, ChevronLeft, ChevronRight, Award
+  Users, Layers, FileText, CheckCircle, CheckCircle2, Clock, AlertTriangle, LogOut, Info, ShieldAlert, Lock, Menu, Eye, EyeOff, ChevronLeft, ChevronRight, Award, Calendar
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -30,6 +30,100 @@ const formatContact = (contactStr) => {
   }
   return { email: '', phone: contactStr };
 };
+
+function RoundCountdown({ targetDate, label = 'Starts In', onComplete, compact = false }) {
+  const [timeLeft, setTimeLeft] = useState(() => {
+    if (!targetDate) return null;
+    return Math.max(0, new Date(targetDate).getTime() - Date.now());
+  });
+
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+  const firedRef = useRef(false);
+
+  useEffect(() => {
+    if (!targetDate) return;
+    firedRef.current = false;
+    const update = () => {
+      const diff = new Date(targetDate).getTime() - Date.now();
+      const rem = Math.max(0, diff);
+      setTimeLeft(rem);
+      if (rem <= 0 && !firedRef.current) {
+        firedRef.current = true;
+        if (onCompleteRef.current) {
+          onCompleteRef.current();
+        }
+      }
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [targetDate]);
+
+  if (timeLeft === null || timeLeft <= 0) {
+    return (
+      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#22c55e' }}>
+        Starting now...
+      </span>
+    );
+  }
+
+  const days = Math.floor(timeLeft / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((timeLeft / (1000 * 60 * 60)) % 24);
+  const minutes = Math.floor((timeLeft / (1000 * 60)) % 60);
+  const seconds = Math.floor((timeLeft / 1000) % 60);
+  const pad = (n) => String(n).padStart(2, '0');
+
+  if (compact) {
+    return (
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', fontWeight: 700, color: '#d97706', background: 'rgba(217, 119, 6, 0.1)', padding: '3px 8px', borderRadius: '6px', border: '1px solid rgba(217, 119, 6, 0.25)' }}>
+        <Clock size={13} />
+        <span>{label}: </span>
+        <span style={{ fontFamily: 'monospace', letterSpacing: '0.04em' }}>
+          {days > 0 ? `${days}d ` : ''}{pad(hours)}:{pad(minutes)}:{pad(seconds)}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: '#b45309', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        <Clock size={15} />
+        <span>{label}</span>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        {days > 0 && (
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '6px 10px', borderRadius: '8px', background: 'rgba(217, 119, 6, 0.12)', border: '1px solid rgba(217, 119, 6, 0.3)', minWidth: '46px' }}>
+              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#d97706', fontFamily: 'monospace' }}>{pad(days)}</span>
+              <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Days</span>
+            </div>
+            <span style={{ fontWeight: 800, color: '#d97706', fontSize: '1.1rem' }}>:</span>
+          </>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '6px 10px', borderRadius: '8px', background: 'rgba(217, 119, 6, 0.12)', border: '1px solid rgba(217, 119, 6, 0.3)', minWidth: '46px' }}>
+          <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#d97706', fontFamily: 'monospace' }}>{pad(hours)}</span>
+          <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Hours</span>
+        </div>
+        <span style={{ fontWeight: 800, color: '#d97706', fontSize: '1.1rem' }}>:</span>
+
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '6px 10px', borderRadius: '8px', background: 'rgba(217, 119, 6, 0.12)', border: '1px solid rgba(217, 119, 6, 0.3)', minWidth: '46px' }}>
+          <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#d97706', fontFamily: 'monospace' }}>{pad(minutes)}</span>
+          <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Mins</span>
+        </div>
+        <span style={{ fontWeight: 800, color: '#d97706', fontSize: '1.1rem' }}>:</span>
+
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '6px 10px', borderRadius: '8px', background: 'rgba(217, 119, 6, 0.12)', border: '1px solid rgba(217, 119, 6, 0.3)', minWidth: '46px' }}>
+          <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#d97706', fontFamily: 'monospace' }}>{pad(seconds)}</span>
+          <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Secs</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const LeaderDashboard = () => {
   const { logout } = useAuth();
@@ -339,7 +433,7 @@ const LeaderDashboard = () => {
       <div 
         className="main-content" 
         style={{ 
-          padding: '76px 24px 40px 24px', 
+          padding: '96px 20px 88px 20px', 
           maxWidth: '1600px', 
           margin: '0 auto',
           width: '100%',
@@ -464,163 +558,6 @@ const LeaderDashboard = () => {
               </div>
             </div>
 
-            {/* Evaluation Submissions Section */}
-            {evalRounds.length > 0 && (
-              <div className="glass-card" style={{ padding: '24px', marginBottom: '24px' }}>
-                <h3 style={{ fontSize: '1.15rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-                  <FileText size={20} style={{ color: 'var(--primary)' }} />
-                  Evaluation Submissions
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  {evalRounds.map((r) => {
-                    const inputs = roundInputs[r.id] || { driveLink: '', githubLink: '', answers: {} };
-                    return (
-                      <div key={r.id} style={{ padding: '20px', borderRadius: '12px', background: 'rgba(0,0,0,0.01)', border: '1px solid var(--border-light)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
-                          <div style={{ fontWeight: 700, fontSize: '1.05rem' }}>
-                            {r.name} <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 400 }}>(Round #{r.roundNumber})</span>
-                          </div>
-                          <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '6px', fontWeight: 700, background: r.isOpen ? 'var(--success-glow)' : 'rgba(255,255,255,0.05)', color: r.isOpen ? 'var(--success)' : 'var(--text-muted)' }}>
-                            {r.isOpen ? '● SUBMISSION OPEN' : '🔒 SUBMISSIONS CLOSED'}
-                          </span>
-                        </div>
-
-                        {r.description && (
-                          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: '1.5' }}>
-                            {r.description}
-                          </p>
-                        )}
-
-                        {r.isOpen ? (
-                          <form onSubmit={(e) => { e.preventDefault(); handleRoundSubmit(r.id); }} style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '12px' }}>
-                            {r.fields && r.fields.length > 0 ? (
-                              r.fields.map((f, idx) => {
-                                const fname = f.name || `Field ${idx + 1}`;
-                                const fid = f.id || fname;
-                                const currentVal = inputs.answers?.[fname] ?? inputs.answers?.[fid] ?? '';
-
-                                return (
-                                  <div key={idx}>
-                                    <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: 600 }}>
-                                      {fname} {f.required && <span style={{ color: 'var(--danger)' }}>*</span>}
-                                    </label>
-                                    {f.description && (
-                                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '-2px 0 6px 0' }}>
-                                        {f.description}
-                                      </p>
-                                    )}
-                                    <input
-                                      type="text"
-                                      className="form-input touch-target"
-                                      placeholder={`Enter ${fname}...`}
-                                      value={currentVal}
-                                      onChange={(e) => {
-                                        const val = e.target.value;
-                                        setRoundInputs(prev => ({
-                                          ...prev,
-                                          [r.id]: {
-                                            ...prev[r.id],
-                                            answers: {
-                                              ...(prev[r.id]?.answers || {}),
-                                              [fname]: val,
-                                              [fid]: val
-                                            }
-                                          }
-                                        }));
-                                      }}
-                                      required={f.required}
-                                    />
-                                  </div>
-                                );
-                              })
-                            ) : (
-                              <>
-                                <div>
-                                  <label className="form-label" style={{ fontSize: '0.8rem' }}>Google Drive / OneDrive Link</label>
-                                  <input
-                                    type="url"
-                                    className="form-input touch-target"
-                                    placeholder="https://drive.google.com/..."
-                                    value={inputs.driveLink}
-                                    onChange={(e) => setRoundInputs(prev => ({
-                                      ...prev,
-                                      [r.id]: { ...prev[r.id], driveLink: e.target.value }
-                                    }))}
-                                  />
-                                </div>
-                                <div>
-                                  <label className="form-label" style={{ fontSize: '0.8rem' }}>GitHub Repository Link</label>
-                                  <input
-                                    type="url"
-                                    className="form-input touch-target"
-                                    placeholder="https://github.com/..."
-                                    value={inputs.githubLink}
-                                    onChange={(e) => setRoundInputs(prev => ({
-                                      ...prev,
-                                      [r.id]: { ...prev[r.id], githubLink: e.target.value }
-                                    }))}
-                                  />
-                                </div>
-                              </>
-                            )}
-
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
-                              <button
-                                type="submit"
-                                className="btn btn-primary touch-target"
-                                style={{ padding: '8px 24px', fontSize: '0.85rem' }}
-                                disabled={submittingRoundId === r.id}
-                              >
-                                {submittingRoundId === r.id ? 'Saving Submission...' : 'Save & Submit Round'}
-                              </button>
-                            </div>
-                          </form>
-                        ) : (
-                          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
-                            {r.fields && r.fields.length > 0 ? (
-                              r.fields.map((f, idx) => {
-                                const fname = f.name || `Field ${idx + 1}`;
-                                const fid = f.id || fname;
-                                const val = r.submission?.answers?.[fname] || r.submission?.answers?.[fid] || '';
-
-                                return (
-                                  <div key={idx} style={{ background: 'rgba(0,0,0,0.02)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
-                                    <strong style={{ color: 'var(--text-primary)', display: 'block', fontSize: '0.8rem' }}>{fname}:</strong>
-                                    {val ? (
-                                      val.startsWith('http') ? (
-                                        <a href={val} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', wordBreak: 'break-all' }}>{val}</a>
-                                      ) : (
-                                        <span style={{ color: 'var(--text-primary)' }}>{val}</span>
-                                      )
-                                    ) : (
-                                      <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Not submitted</span>
-                                    )}
-                                  </div>
-                                );
-                              })
-                            ) : (
-                              <>
-                                <div style={{ marginBottom: '6px' }}><strong>Drive Link:</strong> {r.submission?.driveLink ? <a href={r.submission.driveLink} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', marginLeft: '6px' }}>{r.submission.driveLink}</a> : <span style={{ color: 'var(--text-muted)', marginLeft: '6px' }}>None provided</span>}</div>
-                                <div><strong>GitHub Link:</strong> {r.submission?.githubLink ? <a href={r.submission.githubLink} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', marginLeft: '6px' }}>{r.submission.githubLink}</a> : <span style={{ color: 'var(--text-muted)', marginLeft: '6px' }}>None provided</span>}</div>
-                              </>
-                            )}
-
-                            {r.submission?.submittedAt && (
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px', textAlign: 'right' }}>
-                                Submitted: {new Date(r.submission.submittedAt).toLocaleString()}
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        <ParticipantRoundResult round={r} />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
             {/* Note on Verification */}
             <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '16px 20px', borderRadius: '12px', border: '1px solid var(--border-light)', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
               <Info size={20} style={{ color: 'var(--primary)', flexShrink: 0, marginTop: '2px' }} />
@@ -649,6 +586,11 @@ const LeaderDashboard = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 {evalRounds.map((r) => {
                   const inputs = roundInputs[r.id] || { driveLink: '', githubLink: '', answers: {} };
+                  const opensAtTime = r.opensAt ? new Date(r.opensAt).getTime() : null;
+                  const closesAtTime = r.closesAt ? new Date(r.closesAt).getTime() : null;
+                  const now = Date.now();
+                  const isUpcoming = Boolean(opensAtTime && opensAtTime > now);
+
                   return (
                     <div
                       key={r.id}
@@ -659,8 +601,68 @@ const LeaderDashboard = () => {
                         <div style={{ fontWeight: 700, fontSize: '1.05rem' }}>
                           {r.name} <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 400 }}>(Round #{r.roundNumber})</span>
                         </div>
-                        <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '6px', fontWeight: 700, background: r.isOpen ? 'var(--success-glow)' : 'rgba(255,255,255,0.05)', color: r.isOpen ? 'var(--success)' : 'var(--text-muted)' }}>
-                          {r.isOpen ? '● SUBMISSION OPEN' : '🔒 SUBMISSIONS CLOSED'}
+                        <span
+                          style={{
+                            fontSize: '0.75rem',
+                            padding: '3px 10px',
+                            borderRadius: '6px',
+                            fontWeight: 700,
+                            background: !r.isEligible
+                              ? 'rgba(255, 255, 255, 0.05)'
+                              : isUpcoming
+                              ? 'rgba(217, 119, 6, 0.15)'
+                              : !r.submissionEnabled
+                              ? 'rgba(59, 130, 246, 0.15)'
+                              : r.isOpen
+                              ? 'var(--success-glow)'
+                              : r.advancement === 'advanced'
+                              ? 'rgba(34, 197, 94, 0.15)'
+                              : r.advancement === 'not_advanced'
+                              ? 'rgba(255, 255, 255, 0.05)'
+                              : r.results?.released
+                              ? 'rgba(59, 130, 246, 0.15)'
+                              : 'rgba(255, 255, 255, 0.05)',
+                            color: !r.isEligible
+                              ? 'var(--text-muted)'
+                              : isUpcoming
+                              ? '#d97706'
+                              : !r.submissionEnabled
+                              ? 'var(--primary)'
+                              : r.isOpen
+                              ? 'var(--success)'
+                              : r.advancement === 'advanced'
+                              ? '#22c55e'
+                              : r.advancement === 'not_advanced'
+                              ? 'var(--text-muted)'
+                              : r.results?.released
+                              ? '#3b82f6'
+                              : 'var(--text-muted)',
+                            border: isUpcoming
+                              ? '1px solid rgba(217, 119, 6, 0.35)'
+                              : !r.submissionEnabled
+                              ? '1px solid rgba(59, 130, 246, 0.3)'
+                              : r.advancement === 'advanced'
+                              ? '1px solid rgba(34, 197, 94, 0.3)'
+                              : r.results?.released
+                              ? '1px solid rgba(59, 130, 246, 0.3)'
+                              : 'none',
+                          }}
+                        >
+                          {!r.isEligible
+                            ? 'NOT PARTICIPATING'
+                            : isUpcoming
+                            ? '⏳ UPCOMING ROUND'
+                            : !r.submissionEnabled
+                            ? 'IN-PERSON JUDGING'
+                            : r.isOpen
+                            ? '● SUBMISSION OPEN'
+                            : r.advancement === 'advanced'
+                            ? '✓ QUALIFIED & ADVANCED'
+                            : r.advancement === 'not_advanced'
+                            ? 'ROUND CONCLUDED'
+                            : r.results?.released
+                            ? 'RESULTS PUBLISHED'
+                            : '🔒 SUBMISSIONS CLOSED'}
                         </span>
                       </div>
 
@@ -670,8 +672,69 @@ const LeaderDashboard = () => {
                         </p>
                       )}
 
-                      {r.isOpen ? (
+                      {!r.isEligible ? (
+                        <div style={{ padding: '14px 18px', borderRadius: '10px', background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--text-muted)', fontSize: '0.86rem' }}>
+                          <Info size={18} style={{ flexShrink: 0 }} />
+                          <span>Your team is not participating in this round (View-only).</span>
+                        </div>
+                      ) : isUpcoming ? (
+                        <div
+                          style={{
+                            marginTop: '12px',
+                            padding: '24px 20px',
+                            borderRadius: '12px',
+                            background: 'rgba(217, 119, 6, 0.05)',
+                            border: '1px solid rgba(217, 119, 6, 0.25)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '16px',
+                            textAlign: 'center',
+                          }}
+                        >
+                          <RoundCountdown
+                            targetDate={r.opensAt}
+                            label={r.submissionEnabled ? "Submissions Open In" : "Round Starts In"}
+                            onComplete={fetchEvalRounds}
+                          />
+
+                          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '16px', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <Calendar size={14} style={{ color: '#d97706' }} />
+                              <span><strong>Scheduled Start:</strong> {new Date(r.opensAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                            </div>
+                            {r.closesAt && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Clock size={14} style={{ color: '#d97706' }} />
+                                <span><strong>Scheduled End:</strong> {new Date(r.closesAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)', maxWidth: '520px', lineHeight: 1.5 }}>
+                            {r.submissionEnabled
+                              ? 'This round is scheduled for a future time. Digital project submission fields will unlock automatically once the round officially commences.'
+                              : 'This in-person round is scheduled for a future time. Judging and presentation will begin according to the schedule above.'}
+                          </p>
+                        </div>
+                      ) : !r.submissionEnabled ? (
+                        <div style={{ padding: '16px 20px', borderRadius: '10px', background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.86rem', color: 'var(--text-secondary)' }}>
+                          <Info size={20} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                          <div>
+                            <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '2px' }}>In-Person Judging Round</strong>
+                            Digital project submissions are not required for this round. Your team will present directly to the judges and will be evaluated on-site according to the round rubric.
+                          </div>
+                        </div>
+                      ) : r.isOpen ? (
                         <form onSubmit={(e) => { e.preventDefault(); handleRoundSubmit(r.id); }} style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '12px' }}>
+                          {r.closesAt && (
+                            <div style={{ padding: '10px 14px', borderRadius: '8px', background: 'rgba(34, 197, 94, 0.08)', border: '1px solid rgba(34, 197, 94, 0.25)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                              <div style={{ fontSize: '0.82rem', color: '#16a34a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Clock size={14} /> Submission Window is Open
+                              </div>
+                              <RoundCountdown targetDate={r.closesAt} label="Submissions Close In" onComplete={fetchEvalRounds} compact={true} />
+                            </div>
+                          )}
                           {r.fields && r.fields.length > 0 ? (
                             r.fields.map((f, idx) => {
                               const fname = f.name || `Field ${idx + 1}`;
@@ -755,7 +818,8 @@ const LeaderDashboard = () => {
                           </div>
                         </form>
                       ) : (
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
+                        <>
+                          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
                           {r.fields && r.fields.length > 0 ? (
                             r.fields.map((f, idx) => {
                               const fname = f.name || `Field ${idx + 1}`;
@@ -790,10 +854,95 @@ const LeaderDashboard = () => {
                             </div>
                           )}
                         </div>
+
+                        <div
+                            style={{
+                              marginTop: '14px',
+                              padding: '14px 18px',
+                              borderRadius: '10px',
+                              background: r.advancement === 'advanced'
+                                ? 'rgba(34, 197, 94, 0.08)'
+                                : r.advancement === 'not_advanced'
+                                ? 'rgba(255, 255, 255, 0.02)'
+                                : r.results?.released
+                                ? 'rgba(59, 130, 246, 0.08)'
+                                : 'rgba(234, 179, 8, 0.08)',
+                              border: `1px solid ${
+                                r.advancement === 'advanced'
+                                  ? 'rgba(34, 197, 94, 0.3)'
+                                  : r.advancement === 'not_advanced'
+                                  ? 'var(--border-light)'
+                                  : r.results?.released
+                                  ? 'rgba(59, 130, 246, 0.3)'
+                                  : 'rgba(234, 179, 8, 0.25)'
+                              }`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                            }}
+                          >
+                            {r.advancement === 'advanced' ? (
+                              <>
+                                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(34, 197, 94, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                  <CheckCircle2 size={18} style={{ color: '#16a34a' }} />
+                                </div>
+                                <div>
+                                  <strong style={{ color: '#16a34a', fontSize: '0.92rem', display: 'block' }}>
+                                    🎉 Qualified & Advanced to Next Round
+                                  </strong>
+                                  <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                                    Congratulations! Your team successfully passed {r.name} and has progressed to subsequent rounds.
+                                  </span>
+                                </div>
+                              </>
+                            ) : r.advancement === 'not_advanced' ? (
+                              <>
+                                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255, 255, 255, 0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                  <Info size={18} style={{ color: 'var(--text-muted)' }} />
+                                </div>
+                                <div>
+                                  <strong style={{ color: 'var(--text-primary)', fontSize: '0.92rem', display: 'block' }}>
+                                    Round Evaluation Concluded
+                                  </strong>
+                                  <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                                    Evaluation decisions for {r.name} are finalized. Your team did not advance to the next round.
+                                  </span>
+                                </div>
+                              </>
+                            ) : r.results?.released ? (
+                              <>
+                                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(59, 130, 246, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                  <Award size={18} style={{ color: '#3b82f6' }} />
+                                </div>
+                                <div>
+                                  <strong style={{ color: '#3b82f6', fontSize: '0.92rem', display: 'block' }}>
+                                    Official Results Published
+                                  </strong>
+                                  <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                                    Scores and rankings have been published. See your team scorecard details below.
+                                  </span>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(234, 179, 8, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                  <Clock size={18} style={{ color: '#eab308' }} />
+                                </div>
+                                <div>
+                                  <strong style={{ color: '#eab308', fontSize: '0.92rem', display: 'block' }}>
+                                    Round Closed & Under Review
+                                  </strong>
+                                  <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                                    Submissions are locked. Organizers and judges are reviewing submissions. Results and qualifications will appear here once released.
+                                  </span>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </>
                       )}
 
-                      {/* Participant Round Result Card */}
-                      <ParticipantRoundResult round={r} />
+                        <ParticipantRoundResult round={r} />
                     </div>
                   );
                 })}
@@ -1453,6 +1602,42 @@ const LeaderDashboard = () => {
           onCancel={() => setDemoConfirmState(null)}
         />
       )}
+
+      {/* Mobile Bottom Navigation Bar */}
+      <nav className="mobile-bottom-nav" aria-label="Team Mobile Navigation">
+        <button
+          type="button"
+          className={`mobile-bottom-tab ${activeTab === 'team' ? 'active' : ''}`}
+          onClick={() => handleTabClick('team')}
+        >
+          <Users size={18} />
+          <span>Roster</span>
+        </button>
+        <button
+          type="button"
+          className={`mobile-bottom-tab ${activeTab === 'rounds' ? 'active' : ''}`}
+          onClick={() => handleTabClick('rounds')}
+        >
+          <Award size={18} />
+          <span>Rounds</span>
+        </button>
+        <button
+          type="button"
+          className={`mobile-bottom-tab ${activeTab === 'ps' ? 'active' : ''}`}
+          onClick={() => handleTabClick('ps')}
+        >
+          <Layers size={18} />
+          <span>Topic</span>
+        </button>
+        <button
+          type="button"
+          className={`mobile-bottom-tab ${activeTab === 'settings' ? 'active' : ''}`}
+          onClick={() => handleTabClick('settings')}
+        >
+          <Lock size={18} />
+          <span>Password</span>
+        </button>
+      </nav>
     </div>
   );
 };

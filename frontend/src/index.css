@@ -22,6 +22,9 @@
   --bg-surface: var(--white);
   --bg-surface-elevated: var(--card);
   --bg-surface-active: var(--card-2);
+  --card-bg: rgba(253, 251, 247, 0.78);
+  --bg-card: rgba(253, 251, 247, 0.78);
+  --border-color: rgba(43, 33, 24, 0.12);
 
   --primary: var(--hero-deep);
   --primary-hover: var(--hero);
@@ -1102,6 +1105,10 @@ a:focus-visible {
     display: none !important;
   }
 
+  .navbar-btn-text {
+    display: none !important;
+  }
+
   .mobile-navbar-toggle {
     background: transparent !important;
     border: none !important;
@@ -1349,6 +1356,9 @@ input[type="checkbox"]:checked::after {
   --bg-surface: #181410;
   --bg-surface-elevated: #221c16;
   --bg-surface-active: #2c241c;
+  --card-bg: rgba(24, 20, 16, 0.65);
+  --bg-card: rgba(24, 20, 16, 0.65);
+  --border-color: rgba(255, 255, 255, 0.1);
 
   --primary: #e08c4e;
   --primary-hover: #f09e5e;
@@ -1549,3 +1559,64 @@ input[type="checkbox"]:checked::after {
   color: #e08c4e !important;
   font-weight: 600;
 }
+
+/* ----------------------------------------------------
+   Mobile Bottom Navigation Dock (Leader, Judge, etc.)
+   ---------------------------------------------------- */
+.mobile-bottom-nav {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-bottom-nav {
+    display: flex !important;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: rgba(20, 16, 12, 0.94);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    z-index: 990;
+    align-items: center;
+    justify-content: space-around;
+    padding: 0 8px;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.35);
+  }
+
+  [data-theme="light"] .mobile-bottom-nav {
+    background: rgba(253, 251, 247, 0.94);
+    border-top: 1px solid var(--border-light);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+  }
+
+  .mobile-bottom-tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 8px 0;
+    transition: all 0.15s ease;
+    border-radius: 8px;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-bottom-tab.active {
+    color: var(--primary);
+    font-weight: 700;
+  }
+
+  .mobile-bottom-tab:active {
+    transform: scale(0.95);
+  }
+}

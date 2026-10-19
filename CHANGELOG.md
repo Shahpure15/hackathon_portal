@@ -4,6 +4,15 @@ Format: Keep a Changelog. Versioning: Semantic Versioning (see docs/VERSIONING.m
 
 ## [Unreleased]
 
+## [10.7.1] - 2026-10-18
+### Fixed
+- Fixed judge logins receiving volunteer role by implementing explicit default role assignment at login creation and reconcile script. [XA-C11]
+- Eliminated database writes on read paths in resolve_access by enforcing deny-by-default access resolution. [XA-C11]
+- Resolved landing redirect loop for mixed roles by computing landing destination on the server and embedding JudgeConsole in admin shell. [XA-C11]
+- Removed stale frontend permission hardcoding and added automatic access refresh on window focus and visibility change. [XA-C11]
+- Fixed 403 error on Overview tab by restricting it to administrators and falling back to the first visible module for staff. [XA-C11]
+- Allowed removing a user's last role, gracefully directing users with zero roles to the No Access page. [XA-C11]
+
 ## [10.7.0] - 2026-10-12
 ### Added
 - Shared UI kit (PageHeader, FilterBar, StatusChip, EmptyState, DetailDrawer) and non-destructive demo data seeder. [XA-C10]

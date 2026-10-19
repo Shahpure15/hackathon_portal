@@ -5,9 +5,57 @@ from typing import Any, List, Optional, Sequence
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.models import EvaluationRound, RubricField, RubricVersion
+from app.models import EvaluationRound, RubricField, RubricVersion, RubricPSGuidance, PSSelection
 from app.routers.admin import log_audit
 from app.services.scoring import validate_rubric
+
+
+def applicable_fields(
+    db: Session,
+    rubric_version: Optional[RubricVersion],
+    team_id: Optional[str] = None,
+    require_ps: bool = False,
+) -> List[RubricField]:
+    """Returns general fields (problemStatementId IS NULL) plus fields matching the team's PS.
+
+    If team_id is provided, looks up team's PS via PSSelection.
+    If require_ps is True and the rubric has PS-specific fields but the team has no PS,
+    raises HTTPException(409).
+    Preserves sortOrder.
+    """
+    if not rubric_version:
+        return []
+
+    team_ps_id = None
+    if team_id:
+        selection = db.query(PSSelection).filter(PSSelection.teamId == team_id).first()
+        if selection:
+            team_ps_id = selection.psId
+
+    all_fields = (
+        db.query(RubricField)
+        .filter(RubricField.rubricVersionId == rubric_version.id)
+        .order_by(RubricField.sortOrder.asc(), RubricField.id.asc())
+        .all()
+    )
+
+    has_ps_fields = any(f.problemStatementId is not None for f in all_fields)
+    if not has_ps_fields:
+        return all_fields
+
+    if require_ps and team_id and not team_ps_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Team has no problem statement selection assigned. Cannot evaluate without an assigned problem statement.",
+        )
+
+    if team_ps_id:
+        return [
+            f for f in all_fields
+            if f.problemStatementId is None or f.problemStatementId == team_ps_id
+        ]
+    else:
+        return [f for f in all_fields if f.problemStatementId is None]
 
 
 def is_locked(version: Optional[RubricVersion]) -> bool:
@@ -64,6 +112,7 @@ def save_draft_rubric(
     round_obj: EvaluationRound,
     fields_payload: Sequence[dict],
     actor_id: str,
+    guidance_payload: Optional[Sequence[dict]] = None,
 ) -> RubricVersion:
     """Saves a draft rubric. Creates version 1 if absent, handles field key stability and lock rules."""
     rubric_ver = None
@@ -114,6 +163,8 @@ def save_draft_rubric(
             # Structural / scoring immutability checks
             if orig.type != fp.get('type'):
                 raise HTTPException(status_code=409, detail="The rubric is locked. Use Revise to change it.")
+            if orig.problemStatementId != fp.get('problemStatementId'):
+                raise HTTPException(status_code=409, detail="The rubric is locked. Use Revise to change it.")
             if orig.label != fp.get('label'):
                 raise HTTPException(status_code=409, detail="The rubric is locked. Use Revise to change it.")
             if orig.sortOrder != fp.get('sortOrder', idx):
@@ -163,6 +214,7 @@ def save_draft_rubric(
             rf = RubricField(
                 eventId=round_obj.eventId,
                 rubricVersionId=rubric_ver.id,
+                problemStatementId=fp.get('problemStatementId'),
                 fieldKey=fk,
                 type=fp.get('type', 'numeric'),
                 label=fp.get('label', ''),
@@ -176,6 +228,32 @@ def save_draft_rubric(
                 maxLength=fp.get('maxLength'),
             )
             db.add(rf)
+
+    # Upsert PS guidance if provided
+    if guidance_payload is not None:
+        for g in guidance_payload:
+            ps_id = g.get('problemStatementId')
+            if not ps_id:
+                continue
+            row = (
+                db.query(RubricPSGuidance)
+                .filter(
+                    RubricPSGuidance.rubricVersionId == rubric_ver.id,
+                    RubricPSGuidance.problemStatementId == ps_id,
+                )
+                .first()
+            )
+            if row:
+                row.decisiveTest = g.get('decisiveTest')
+                row.notes = g.get('notes')
+            else:
+                row = RubricPSGuidance(
+                    rubricVersionId=rubric_ver.id,
+                    problemStatementId=ps_id,
+                    decisiveTest=g.get('decisiveTest'),
+                    notes=g.get('notes'),
+                )
+                db.add(row)
 
     log_audit(
         db,
@@ -212,6 +290,7 @@ def publish_rubric(db: Session, round_obj: EvaluationRound, actor_id: str) -> Ru
             'maxMarks': f.maxMarks,
             'weight': f.weight,
             'visibility': f.visibility,
+            'problemStatementId': f.problemStatementId,
         }
         for f in rubric_ver.fields
     ]

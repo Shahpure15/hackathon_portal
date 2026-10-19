@@ -66,3 +66,9 @@ class ReviseRubricRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
     mode: str
     confirmText: Optional[str] = None
+
+
+class ClearEvaluationRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    reason: Optional[str] = "Admin cleared evaluation for re-evaluation"
+

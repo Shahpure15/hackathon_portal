@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 class RubricFieldItemDTO(BaseModel):
     id: Optional[str] = None
+    problemStatementId: Optional[str] = None
     fieldKey: Optional[str] = None
     type: str = "numeric"  # numeric | text
     label: str
@@ -17,6 +18,16 @@ class RubricFieldItemDTO(BaseModel):
     anchors: Optional[List[Dict[str, Any]]] = None
     visibility: Optional[str] = None  # staff | participant
     maxLength: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class RubricPSGuidanceDTO(BaseModel):
+    id: Optional[str] = None
+    problemStatementId: str
+    decisiveTest: Optional[str] = None
+    notes: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -66,6 +77,7 @@ class RoundDetailDTO(BaseModel):
     submissionCount: int = 0
     rubricSummary: RubricSummaryDTO
     rubricFields: List[RubricFieldItemDTO] = []
+    guidance: List[RubricPSGuidanceDTO] = []
 
 
 class RoundCreateRequest(BaseModel):
@@ -110,12 +122,15 @@ class RoundUpdateRequest(BaseModel):
 
 class RubricSaveRequest(BaseModel):
     rubricFields: List[RubricFieldItemDTO]
+    guidance: Optional[List[RubricPSGuidanceDTO]] = None
 
 
 class RubricResponse(BaseModel):
     rubricFields: List[RubricFieldItemDTO]
+    guidance: List[RubricPSGuidanceDTO] = []
     errors: List[str] = []
     warnings: List[str] = []
     version: int = 0
     published: bool = False
     locked: bool = False
+

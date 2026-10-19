@@ -1,21 +1,31 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { LogOut, Menu, X, Sun, Moon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LogOut, Menu, X, Sun, Moon, ChevronLeft, ChevronRight, KeyRound } from 'lucide-react';
 import IconButton from './IconButton';
 import AmbientCursorGlow from './AmbientCursorGlow';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
+import ChangePasswordModal from './ChangePasswordModal';
 
 export function Navbar({
   title = 'MIT India Hackathon',
-  user,
+  user: userProp,
+  role: roleProp,
   onLogout,
   navItems = [],
   activeTab,
   onTabChange
 }) {
+  const { user: authUser, access } = useAuth?.() || {};
+  const user = userProp || authUser;
+
+  // Dynamically resolve role
+  const displayRole = roleProp || user?.displayRole || (access?.roleNames?.length ? access.roleNames.join(' / ') : access?.isAdmin ? 'ADMIN' : access?.landing === 'judge' ? 'JUDGE' : user?.role);
+
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
   const { theme, toggleTheme } = useTheme();
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
   const tabsRef = useRef(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -98,7 +108,7 @@ export function Navbar({
           <span style={{ fontWeight: 800, fontSize: '0.85rem', letterSpacing: '0.3px', whiteSpace: 'nowrap' }} className="text-gradient">
             {title}
           </span>
-          {user?.role && (
+          {displayRole && (
             <span style={{
               fontSize: '0.6rem',
               background: 'var(--primary-glow)',
@@ -110,7 +120,7 @@ export function Navbar({
               letterSpacing: '0.3px',
               whiteSpace: 'nowrap'
             }}>
-              {user.role}
+              {displayRole}
             </span>
           )}
         </div>
@@ -237,6 +247,17 @@ export function Navbar({
               </IconButton>
               <button
                 type="button"
+                onClick={() => setChangePasswordOpen(true)}
+                className="btn btn-secondary"
+                title="Change Password"
+                aria-label="Change Password"
+                style={{ padding: '5px 12px', minHeight: 'auto', height: '34px', borderRadius: '999px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '5px' }}
+              >
+                <KeyRound size={14} />
+                <span>Password</span>
+              </button>
+              <button
+                type="button"
                 onClick={onLogout}
                 className="btn btn-secondary"
                 style={{ padding: '5px 14px', minHeight: 'auto', height: '34px', borderRadius: '999px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '5px' }}
@@ -246,15 +267,57 @@ export function Navbar({
               </button>
             </>
           ) : (
-            <button
-              type="button"
-              onClick={() => setMobileOpen(!mobileOpen)}
-              title="Toggle Menu"
-              className="mobile-navbar-toggle"
-            >
-              {mobileOpen ? <X size={20} /> : <Menu size={20} />}
-              <span className="mobile-navbar-toggle-label">Menu</span>
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <IconButton
+                size="32px"
+                onClick={toggleTheme}
+                title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                aria-label="Toggle Theme"
+                style={{ borderRadius: '999px', background: 'transparent' }}
+              >
+                {theme === 'dark' ? <Sun size={14} color="var(--primary)" /> : <Moon size={14} color="var(--text-secondary)" />}
+              </IconButton>
+              <button
+                type="button"
+                onClick={() => setChangePasswordOpen(true)}
+                className="btn btn-secondary touch-target"
+                title="Change Password"
+                aria-label="Change Password"
+                style={{
+                  padding: '4px 10px',
+                  minHeight: 'auto',
+                  height: '32px',
+                  borderRadius: '999px',
+                  fontSize: '0.78rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                <KeyRound size={14} />
+                <span className="navbar-btn-text">Password</span>
+              </button>
+              <button
+                type="button"
+                onClick={onLogout}
+                className="btn btn-secondary touch-target"
+                title="Logout"
+                aria-label="Logout"
+                style={{
+                  padding: '4px 10px',
+                  minHeight: 'auto',
+                  height: '32px',
+                  borderRadius: '999px',
+                  fontSize: '0.78rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                <LogOut size={14} />
+                <span className="navbar-btn-text">Logout</span>
+              </button>
+            </div>
           )}
         </div>
       </nav>
@@ -277,8 +340,8 @@ export function Navbar({
             {user && (
               <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>{user.username || 'User'}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{user.role}</div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>{user?.username || 'User'}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{displayRole || user?.role}</div>
                 </div>
               </div>
             )}
@@ -341,9 +404,31 @@ export function Navbar({
                   {theme.toUpperCase()}
                 </span>
               </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setMobileOpen(false);
+                setChangePasswordOpen(true);
+              }}
+              className="btn btn-secondary"
+              style={{
+                justifyContent: 'flex-start',
+                padding: '12px 16px',
+                borderRadius: '12px',
+                fontSize: '0.9rem',
+                border: '1px solid var(--border-light)',
+                marginTop: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px'
+              }}
+            >
+              <KeyRound size={16} />
+              <span>Change Password</span>
+            </button>
+          </div>
 
-            {onLogout && (
+          {onLogout && (
               <button
                 type="button"
                 onClick={() => {
@@ -368,6 +453,11 @@ export function Navbar({
           </div>
         </>
       )}
+
+      <ChangePasswordModal
+        isOpen={changePasswordOpen}
+        onClose={() => setChangePasswordOpen(false)}
+      />
     </>
   );
 }

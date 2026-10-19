@@ -205,14 +205,17 @@ class VolunteerResponse(VolunteerBase):
 class CheckpointTypeCreate(BaseModel):
     name: str
     description: Optional[str] = None
+    isDefault: Optional[bool] = False
 
 class CheckpointTypeUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    isDefault: Optional[bool] = None
 
 class CheckpointTypeResponse(CheckpointTypeCreate):
     id: str
     eventId: str
+    isDefault: bool = False
 
     class Config:
         from_attributes = True

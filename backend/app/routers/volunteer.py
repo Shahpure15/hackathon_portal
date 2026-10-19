@@ -135,7 +135,8 @@ def get_checkpoints(
             {
                 "id": cp.id,
                 "name": cp.name,
-                "description": cp.description
+                "description": cp.description,
+                "isDefault": bool(getattr(cp, "isDefault", False))
             } for cp in checkpoints
         ]
     }

@@ -27,10 +27,10 @@ from app.models import (
     VolunteerType, ProblemStatement, PSSelection, AuditLog, 
     PendingImport, EventConfig, CheckpointType, AttendanceRecord,
     VolunteerAttendanceRecord, Panel, EvaluationRound, Submission,
-    Discipline, RefreshToken
+    Discipline, RefreshToken, Event, RbacRole, UserRoleAssignment
 )
 from app.auth import require_role, CurrentUser, get_password_hash
-from app.rbac import Principal, require_permission
+from app.rbac import Principal, require_permission, invalidate_all, assign_default_role, default_system_key_for, ensure_system_roles, invalidate_user
 from app.schemas import (
     TeamResponse, TeamDetailResponse, AuditLogResponse, 
     PodResponse, VolunteerResponse, ProblemStatementResponse,
@@ -2499,6 +2499,7 @@ def create_volunteer(
         )
         db.add(volunteer_user)
         db.commit()
+        assign_default_role(db, volunteer_user, volunteer)
         db.refresh(volunteer)
     
     pod_name = volunteer.pod.name if volunteer.pod else None
@@ -2552,8 +2553,55 @@ def update_volunteer(
     if "type" in payload:
         new_type = str(payload["type"]).strip()
         if volunteer.type != new_type:
-            diff["type"] = {"from": volunteer.type, "to": new_type}
+            old_type = volunteer.type
+            diff["type"] = {"from": old_type, "to": new_type}
             volunteer.type = new_type
+            if volunteer.user:
+                vol_user = volunteer.user
+                new_key = default_system_key_for(new_type)
+                old_key = default_system_key_for(old_type)
+                if new_key != old_key:
+                    ensure_system_roles(db, current_user.eventId)
+                    target_role = (
+                        db.query(RbacRole)
+                        .filter(RbacRole.eventId == current_user.eventId, RbacRole.systemKey == new_key)
+                        .first()
+                    )
+                    old_role = (
+                        db.query(RbacRole)
+                        .filter(RbacRole.eventId == current_user.eventId, RbacRole.systemKey == old_key)
+                        .first()
+                    )
+                    if target_role:
+                        user_asgns = (
+                            db.query(UserRoleAssignment)
+                            .filter(UserRoleAssignment.userId == vol_user.id, UserRoleAssignment.eventId == current_user.eventId)
+                            .all()
+                        )
+                        # System role IDs for this event
+                        system_roles = (
+                            db.query(RbacRole)
+                            .filter(RbacRole.eventId == current_user.eventId, RbacRole.systemKey.isnot(None))
+                            .all()
+                        )
+                        sys_role_ids = {r.id for r in system_roles}
+                        
+                        has_target = False
+                        for a in user_asgns:
+                            if a.roleId == target_role.id:
+                                has_target = True
+                            elif a.roleId in sys_role_ids:
+                                db.delete(a)
+                        
+                        if not has_target:
+                            db.add(UserRoleAssignment(
+                                eventId=current_user.eventId,
+                                userId=vol_user.id,
+                                roleId=target_role.id,
+                                scope={'teams': {'mode': 'all', 'ids': []}},
+                                createdBy='AUTO_DEFAULT',
+                            ))
+                        invalidate_user(vol_user.id)
             
     if "contact" in payload:
         contact = str(payload["contact"]).strip()
@@ -2605,6 +2653,7 @@ def update_volunteer(
     ps_code = volunteer.problemStatement.code if volunteer.problemStatement else (volunteer.panel.problemStatement.code if volunteer.panel and volunteer.panel.problemStatement else None)
     ps_title = volunteer.problemStatement.title if volunteer.problemStatement else (volunteer.panel.problemStatement.title if volunteer.panel and volunteer.panel.problemStatement else None)
     team_name = volunteer.team.name if volunteer.team else None
+    user_rec = volunteer.user
 
     return VolunteerResponse(
         id=volunteer.id,
@@ -2621,7 +2670,9 @@ def update_volunteer(
         problemStatementCode=ps_code,
         problemStatementTitle=ps_title,
         teamId=volunteer.teamId,
-        teamName=team_name
+        teamName=team_name,
+        username=user_rec.username if user_rec else None,
+        hasLogin=user_rec is not None
     )
 
 @router.delete("/volunteers/{volunteer_id}")
@@ -2651,7 +2702,26 @@ def create_volunteer_login(
         raise HTTPException(status_code=404, detail="Volunteer not found")
     
     if v.user:
-        raise HTTPException(status_code=400, detail="Volunteer already has a login account")
+        # Volunteer already has a user account; re-provision credentials cleanly
+        password = generate_random_password()
+        v.user.passwordHash = get_password_hash(password)
+        revoke_all_sessions(db, v.user.id)
+        assign_default_role(db, v.user, v)
+        db.commit()
+        db.refresh(v)
+        pod_name = v.pod.name if v.pod else None
+        return VolunteerResponse(
+            id=v.id,
+            eventId=v.eventId,
+            name=v.name,
+            type=v.type,
+            contact=v.contact,
+            podId=v.podId,
+            podName=pod_name,
+            username=v.user.username,
+            hasLogin=True,
+            generatedPassword=password
+        )
         
     username = generate_unique_volunteer_username(db, v.name)
     password = generate_random_password()
@@ -2665,6 +2735,7 @@ def create_volunteer_login(
     )
     db.add(vol_user)
     db.commit()
+    assign_default_role(db, vol_user, v)
     db.refresh(v)
     
     pod_name = v.pod.name if v.pod else None
@@ -2969,6 +3040,8 @@ def import_volunteers_confirm(
                     volunteerId=v.id
                 )
                 db.add(vol_user)
+                db.flush()
+                assign_default_role(db, vol_user, v)
             else:
                 gen_username = vol_user.username
                 vol_user.passwordHash = get_password_hash(gen_password)
@@ -3012,6 +3085,8 @@ def import_volunteers_confirm(
                             volunteerId=vol.id
                         )
                         db.add(vol_user)
+                        db.flush()
+                        assign_default_role(db, vol_user, vol)
                     else:
                         gen_username = vol_user.username
                         vol_user.passwordHash = get_password_hash(gen_password)
@@ -3789,6 +3864,7 @@ def get_event_config(
     db: Session = Depends(get_db),
     current_user: Principal = Depends(require_permission('config.view'))
 ):
+    event = db.query(Event).filter(Event.id == current_user.eventId).first()
     config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
     if not config:
         # Auto-create if not existing
@@ -3797,7 +3873,155 @@ def get_event_config(
         db.commit()
         db.refresh(config)
         
+    feats = config.features or {}
     return {
+        "eventId": event.id if event else current_user.eventId,
+        "eventName": event.name if event else "MIT India Hackathon",
+        "startDate": event.startDate.isoformat() if event and event.startDate else None,
+        "endDate": event.endDate.isoformat() if event and event.endDate else None,
+        "status": getattr(event, "status", "active") if event else "active",
+        "isActive": bool(event.isActive) if event else True,
+        "stage": feats.get("stage", "setup"),
+        "features": feats,
+        "psReleaseAt": _format_dt_utc(config.psReleaseAt),
+        "psGateCheckpointTypeId": config.psGateCheckpointTypeId,
+        "allowVolunteerPsSelection": bool(config.allowVolunteerPsSelection)
+    }
+
+@router.patch("/config")
+@router.put("/config")
+def update_event_config(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: Principal = Depends(require_permission('config.manage'))
+):
+    event = db.query(Event).filter(Event.id == current_user.eventId).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    config = db.query(EventConfig).filter(EventConfig.eventId == current_user.eventId).first()
+    if not config:
+        config = EventConfig(eventId=current_user.eventId)
+        db.add(config)
+        db.flush()
+
+    diff = {}
+
+    # 1. Event Status ('upcoming', 'active', 'concluded')
+    if "status" in payload and payload["status"] is not None:
+        new_status = str(payload.get("status")).strip().lower()
+        if new_status not in ("upcoming", "active", "concluded"):
+            raise HTTPException(
+                status_code=422,
+                detail="Invalid event status. Allowed values: 'upcoming', 'active', 'concluded'"
+            )
+        old_status = getattr(event, "status", "active")
+        if old_status != new_status:
+            diff["event.status"] = {"from": old_status, "to": new_status}
+            event.status = new_status
+            if new_status == "active" and not event.isActive:
+                diff["event.isActive"] = {"from": event.isActive, "to": True}
+                event.isActive = True
+
+    # 2. Event isActive
+    if "isActive" in payload and payload["isActive"] is not None:
+        new_active = bool(payload.get("isActive"))
+        if event.isActive != new_active:
+            diff["event.isActive"] = {"from": event.isActive, "to": new_active}
+            event.isActive = new_active
+
+    # 3. Event Name
+    if "name" in payload or "eventName" in payload:
+        new_name = str(payload.get("name") or payload.get("eventName")).strip()
+        if new_name and event.name != new_name:
+            diff["event.name"] = {"from": event.name, "to": new_name}
+            event.name = new_name
+
+    # 4. Start & End Dates
+    if "startDate" in payload:
+        raw_sd = payload.get("startDate")
+        if raw_sd:
+            try:
+                sd = datetime.fromisoformat(str(raw_sd).replace("Z", "+00:00"))
+                if sd.tzinfo:
+                    sd = sd.astimezone(timezone.utc).replace(tzinfo=None)
+                diff["event.startDate"] = {"from": str(event.startDate), "to": str(sd)}
+                event.startDate = sd
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid startDate ISO format")
+    if "endDate" in payload:
+        raw_ed = payload.get("endDate")
+        if raw_ed:
+            try:
+                ed = datetime.fromisoformat(str(raw_ed).replace("Z", "+00:00"))
+                if ed.tzinfo:
+                    ed = ed.astimezone(timezone.utc).replace(tzinfo=None)
+                diff["event.endDate"] = {"from": str(event.endDate), "to": str(ed)}
+                event.endDate = ed
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid endDate ISO format")
+
+    # 5. Allow volunteer PS selection
+    if "allowVolunteerPsSelection" in payload:
+        new_val = bool(payload.get("allowVolunteerPsSelection"))
+        if config.allowVolunteerPsSelection != new_val:
+            diff["allowVolunteerPsSelection"] = {"from": config.allowVolunteerPsSelection, "to": new_val}
+            config.allowVolunteerPsSelection = new_val
+
+    # 6. PS Gate Checkpoint
+    if "psGateCheckpointTypeId" in payload:
+        new_gate = payload.get("psGateCheckpointTypeId")
+        if config.psGateCheckpointTypeId != new_gate:
+            diff["psGateCheckpointTypeId"] = {"from": config.psGateCheckpointTypeId, "to": new_gate}
+            config.psGateCheckpointTypeId = new_gate
+
+    # 7. PS Release time
+    if "psReleaseAt" in payload:
+        release_at_raw = payload.get("psReleaseAt")
+        if release_at_raw:
+            try:
+                clean_str = str(release_at_raw).replace("Z", "+00:00")
+                release_at = datetime.fromisoformat(clean_str)
+                if release_at.tzinfo:
+                    release_at = release_at.astimezone(timezone.utc).replace(tzinfo=None)
+                diff["psReleaseAt"] = {"from": str(config.psReleaseAt), "to": str(release_at)}
+                config.psReleaseAt = release_at
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid psReleaseAt date format.")
+        else:
+            diff["psReleaseAt"] = {"from": str(config.psReleaseAt), "to": None}
+            config.psReleaseAt = None
+
+    # 8. Features & Stage sync
+    feats = dict(config.features or {})
+    feats_changed = False
+    if "stage" in payload and payload["stage"] is not None:
+        new_stage = str(payload.get("stage")).strip()
+        if new_stage in ('setup', 'event_day', 'judging', 'results', 'closed'):
+            feats["stage"] = new_stage
+            feats_changed = True
+    if "features" in payload and isinstance(payload.get("features"), dict):
+        feats.update(payload.get("features"))
+        feats_changed = True
+    if feats_changed:
+        config.features = feats
+        diff["features"] = feats
+
+    log_audit(db, current_user.id, "config.update", "EventConfig", config.id, diff, event_id=current_user.eventId)
+    db.commit()
+
+    invalidate_all()
+
+    return {
+        "message": "Event configuration updated successfully!",
+        "eventId": event.id,
+        "eventName": event.name,
+        "startDate": event.startDate.isoformat() if event.startDate else None,
+        "endDate": event.endDate.isoformat() if event.endDate else None,
+        "status": getattr(event, "status", "active"),
+        "isActive": bool(event.isActive),
+        "stage": feats.get("stage", "setup"),
+        "features": config.features or {},
         "psReleaseAt": _format_dt_utc(config.psReleaseAt),
         "psGateCheckpointTypeId": config.psGateCheckpointTypeId,
         "allowVolunteerPsSelection": bool(config.allowVolunteerPsSelection)
@@ -3888,10 +4112,18 @@ def create_checkpoint(
     if existing:
         raise HTTPException(status_code=400, detail="A checkpoint with this name already exists")
 
+    is_def = bool(payload.isDefault)
+    if is_def:
+        db.query(CheckpointType).filter(
+            CheckpointType.eventId == current_user.eventId,
+            CheckpointType.isDefault == True
+        ).update({"isDefault": False})
+
     cp = CheckpointType(
         eventId=current_user.eventId,
         name=payload.name.strip(),
-        description=payload.description.strip() if payload.description else None
+        description=payload.description.strip() if payload.description else None,
+        isDefault=is_def
     )
     db.add(cp)
     db.commit()
@@ -3899,7 +4131,8 @@ def create_checkpoint(
 
     log_audit(db, current_user.id, "checkpoint.create", "CheckpointType", cp.id, {
         "name": cp.name,
-        "description": cp.description
+        "description": cp.description,
+        "isDefault": cp.isDefault
     })
     db.commit()
     return cp
@@ -3940,6 +4173,18 @@ def update_checkpoint(
         desc_clean = payload.description.strip() or None
         diff["description"] = {"from": cp.description, "to": desc_clean}
         cp.description = desc_clean
+
+    if payload.isDefault is not None:
+        new_is_def = bool(payload.isDefault)
+        if new_is_def != cp.isDefault:
+            if new_is_def:
+                db.query(CheckpointType).filter(
+                    CheckpointType.eventId == current_user.eventId,
+                    CheckpointType.id != cp.id,
+                    CheckpointType.isDefault == True
+                ).update({"isDefault": False})
+            diff["isDefault"] = {"from": cp.isDefault, "to": new_is_def}
+            cp.isDefault = new_is_def
 
     if diff:
         log_audit(db, current_user.id, "checkpoint.update", "CheckpointType", cp.id, diff)

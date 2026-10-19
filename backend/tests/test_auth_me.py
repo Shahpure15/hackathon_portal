@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.main import app
 from app.models import Role, RbacRole, RolePermission, UserRoleAssignment
 from app.permissions import CATALOG
+from app.rbac import assign_default_role
 from tests.factories import make_org_event, make_user, make_volunteer, auth_header
 
 client = TestClient(app)
@@ -35,10 +36,31 @@ def test_auth_me_admin(db: Session):
     assert data["moduleGates"] == {}
 
 
+def test_auth_me_volunteer_no_role(db: Session):
+    event = make_org_event(db)
+    vol_rec = make_volunteer(db, event, "norole_vol")
+    vol_user = make_user(db, event, Role.VOLUNTEER, "norole_vol", volunteer=vol_rec)
+
+    count_before = db.query(UserRoleAssignment).filter(UserRoleAssignment.userId == vol_user.id).count()
+    assert count_before == 0
+
+    res = client.get("/auth/me", headers=auth_header(vol_user))
+    assert res.status_code == 200
+    data = res.json()
+    assert data["username"] == "norole_vol"
+    assert data["role"] == "VOLUNTEER"
+    assert data["roleNames"] == []
+    assert data["permissions"] == []
+
+    count_after = db.query(UserRoleAssignment).filter(UserRoleAssignment.userId == vol_user.id).count()
+    assert count_after == 0
+
+
 def test_auth_me_seeded_volunteer(db: Session):
     event = make_org_event(db)
     vol_rec = make_volunteer(db, event, "seeded_vol")
     vol_user = make_user(db, event, Role.VOLUNTEER, "seeded_vol", volunteer=vol_rec)
+    assign_default_role(db, vol_user, vol_rec)
 
     res = client.get("/auth/me", headers=auth_header(vol_user))
     assert res.status_code == 200

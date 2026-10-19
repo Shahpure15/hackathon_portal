@@ -29,6 +29,7 @@ class AdvancePreviewRequest(BaseModel):
     n: Optional[int] = None
     minScore: Optional[Decimal] = None
     teamIds: Optional[List[str]] = None
+    manualTeamIds: Optional[List[str]] = None
     includeProvisional: bool = False
     tieDecision: Optional[str] = None
 
@@ -37,7 +38,9 @@ class AdvanceCommitRequest(BaseModel):
     mode: str = "top_n"
     teamIds: List[str]
     token: str
+    targetRoundId: Optional[str] = None
     tieDecision: Optional[str] = None
+    customRanks: Optional[Dict[str, int]] = None
 
 
 class ProgressionItemDTO(BaseModel):

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Trophy,
   Download,
@@ -19,6 +19,8 @@ import {
   XCircle,
   HelpCircle,
   RefreshCw,
+  GripVertical,
+  FileSpreadsheet,
 } from 'lucide-react';
 import api from '../../services/api';
 import Modal from '../../components/Modal';
@@ -38,6 +40,7 @@ export const RoundResultsTab = ({ round, rubricFields = [] }) => {
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingDetailed, setExportingDetailed] = useState(false);
 
   // Leaderboard data
   const [leaderboard, setLeaderboard] = useState({ rows: [], unscored: [] });
@@ -74,6 +77,8 @@ export const RoundResultsTab = ({ round, rubricFields = [] }) => {
 
   // Releasing first time
   const [releasing, setReleasing] = useState(false);
+  const [publishConfirmModalOpen, setPublishConfirmModalOpen] = useState(false);
+  const [publishFilter, setPublishFilter] = useState('all'); // 'all', 'advanced', 'not_advanced'
 
   // Advancement Wizard State
   const [advanceMode, setAdvanceMode] = useState('top_n'); // top_n | threshold | manual
@@ -89,6 +94,68 @@ export const RoundResultsTab = ({ round, rubricFields = [] }) => {
   const [tieDecision, setTieDecision] = useState('break_by_score_raw'); // break_by_score_raw | advance_all | keep_top
   const [committingAdvance, setCommittingAdvance] = useState(false);
   const [progressionStatusList, setProgressionStatusList] = useState([]);
+
+  // Final teams compiled for publishing verification
+  const finalTeamsToPublish = useMemo(() => {
+    const result = [];
+    const seen = new Set();
+
+    // 1. Teams with progression status recorded
+    (progressionStatusList || []).forEach((s) => {
+      seen.add(s.teamId);
+      const lbRow = (leaderboard.rows || []).find((r) => r.teamId === s.teamId);
+      result.push({
+        teamId: s.teamId,
+        name: s.name,
+        registrationId: s.registrationId,
+        state: s.state,
+        rank: s.rankSnapshot || lbRow?.rank || null,
+        score: s.scoreSnapshot || lbRow?.displayScore || lbRow?.score || null,
+      });
+    });
+
+    // 2. Remaining leaderboard rows
+    (leaderboard.rows || []).forEach((r) => {
+      if (!seen.has(r.teamId)) {
+        seen.add(r.teamId);
+        result.push({
+          teamId: r.teamId,
+          name: r.teamName,
+          registrationId: r.registrationId,
+          state: 'not_advanced',
+          rank: r.rank,
+          score: r.displayScore || r.score,
+        });
+      }
+    });
+
+    // 3. Remaining unscored teams
+    (leaderboard.unscored || []).forEach((u) => {
+      if (!seen.has(u.teamId)) {
+        seen.add(u.teamId);
+        result.push({
+          teamId: u.teamId,
+          name: u.name,
+          registrationId: u.registrationId,
+          state: 'not_advanced',
+          rank: null,
+          score: null,
+        });
+      }
+    });
+
+    // Sort: advanced teams first (ordered by rank ascending), then not_advanced
+    result.sort((a, b) => {
+      if (a.state === 'advanced' && b.state !== 'advanced') return -1;
+      if (a.state !== 'advanced' && b.state === 'advanced') return 1;
+      if (a.rank && b.rank) return a.rank - b.rank;
+      if (a.rank) return -1;
+      if (b.rank) return 1;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+
+    return result;
+  }, [progressionStatusList, leaderboard]);
 
   // Load Leaderboard
   const fetchLeaderboard = async () => {
@@ -149,7 +216,7 @@ export const RoundResultsTab = ({ round, rubricFields = [] }) => {
     if (!roundId) return;
     try {
       const res = await api.get(`/admin/rounds/${roundId}/progression`);
-      setProgressionStatusList(res.data?.statuses || []);
+      setProgressionStatusList(Array.isArray(res.data) ? res.data : (res.data?.statuses || []));
     } catch (err) {
       console.error('Failed to load progression statuses', err);
     }
@@ -188,6 +255,33 @@ export const RoundResultsTab = ({ round, rubricFields = [] }) => {
       addToast('Failed to export leaderboard', 'error');
     } finally {
       setExporting(false);
+    }
+  };
+
+  // Export Detailed Print-Ready Multi-Sheet Workbook
+  const handleExportDetailed = async () => {
+    setExportingDetailed(true);
+    try {
+      const res = await api.get(`/admin/rounds/${roundId}/export/detailed-sheets`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([res.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Round_${round?.name || roundId}_Detailed_Evaluation_Sheets.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      addToast('Detailed evaluation sheets exported successfully!', 'success');
+    } catch (err) {
+      console.error('Failed to export detailed sheets', err);
+      addToast('Failed to export detailed evaluation sheets', 'error');
+    } finally {
+      setExportingDetailed(false);
     }
   };
 
@@ -240,10 +334,14 @@ export const RoundResultsTab = ({ round, rubricFields = [] }) => {
   const handleRelease = async () => {
     setReleasing(true);
     try {
-      const res = await api.post(`/admin/rounds/${roundId}/results/release`, {
-        holdbackTeamIds,
-      });
-      addToast(`Results released successfully! (${res.data.count} teams notified)`, 'success');
+      const payload = {
+        ...resultsConfig,
+        holdTeamIds: holdbackTeamIds,
+      };
+      const res = await api.post(`/admin/rounds/${roundId}/results/release`, payload);
+      const notifiedCount = res.data?.count || res.data?.totalItems || 0;
+      addToast(`Results released successfully! (${notifiedCount} teams notified)`, 'success');
+      setPublishConfirmModalOpen(false);
       fetchReleaseStatusAndConfig();
       fetchProgressionStatus();
     } catch (err) {
@@ -305,6 +403,10 @@ export const RoundResultsTab = ({ round, rubricFields = [] }) => {
     }
   };
 
+  // Editable Rank Preview State
+  const [previewTeams, setPreviewTeams] = useState([]);
+  const [draggedIdx, setDraggedIdx] = useState(null);
+
   // Preview Advancement
   const handleAdvancePreview = async () => {
     if (!targetRoundId) {
@@ -325,6 +427,11 @@ export const RoundResultsTab = ({ round, rubricFields = [] }) => {
 
       const res = await api.post(`/admin/rounds/${roundId}/advance/preview`, payload);
       setAdvancePreviewResult(res.data);
+      const incomingTeams = (res.data.teams || []).map((t, idx) => ({
+        ...t,
+        rank: t.rank || idx + 1,
+      }));
+      setPreviewTeams(incomingTeams);
       if (res.data.hasCutoffTie) {
         addToast('Cutoff tie detected! Please select a tie-breaking rule below.', 'info');
       }
@@ -336,6 +443,47 @@ export const RoundResultsTab = ({ round, rubricFields = [] }) => {
     }
   };
 
+  // Reorder ranks when manually entering rank N
+  const handleRankInputChange = (teamId, newRankVal) => {
+    const targetRank = parseInt(newRankVal, 10);
+    if (isNaN(targetRank) || targetRank < 1) return;
+
+    setPreviewTeams((prev) => {
+      const currentIndex = prev.findIndex((t) => t.id === teamId);
+      if (currentIndex === -1) return prev;
+
+      const updated = [...prev];
+      const [movedTeam] = updated.splice(currentIndex, 1);
+      const destIndex = Math.min(Math.max(0, targetRank - 1), updated.length);
+      updated.splice(destIndex, 0, movedTeam);
+
+      // Renumber sequentially 1..N
+      return updated.map((t, idx) => ({ ...t, rank: idx + 1 }));
+    });
+  };
+
+  // Drag and drop reordering
+  const handleDragStart = (e, index) => {
+    setDraggedIdx(index);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e, index) => {
+    e.preventDefault();
+    if (draggedIdx === null || draggedIdx === index) return;
+    setPreviewTeams((prev) => {
+      const copy = [...prev];
+      const [item] = copy.splice(draggedIdx, 1);
+      copy.splice(index, 0, item);
+      return copy.map((t, idx) => ({ ...t, rank: idx + 1 }));
+    });
+    setDraggedIdx(index);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIdx(null);
+  };
+
   // Commit Advancement
   const handleAdvanceCommit = async () => {
     if (!advancePreviewResult?.token) {
@@ -345,15 +493,23 @@ export const RoundResultsTab = ({ round, rubricFields = [] }) => {
 
     setCommittingAdvance(true);
     try {
+      const customRanks = {};
+      previewTeams.forEach((t) => {
+        if (t.id && t.rank) customRanks[t.id] = t.rank;
+      });
+
       const payload = {
         token: advancePreviewResult.token,
+        teamIds: advancePreviewResult.selectedTeamIds || previewTeams.map((t) => t.id),
         targetRoundId,
         mode: advanceMode,
         tieDecision: advancePreviewResult.hasCutoffTie ? tieDecision : null,
+        customRanks,
       };
       const res = await api.post(`/admin/rounds/${roundId}/advance/commit`, payload);
-      addToast(`Successfully advanced ${res.data.advancedCount} teams!`, 'success');
+      addToast(`Successfully advanced ${res.data.advancedCount} teams to the next round!`, 'success');
       setAdvancePreviewResult(null);
+      setPreviewTeams([]);
       fetchProgressionStatus();
       fetchLeaderboard();
     } catch (err) {
@@ -472,6 +628,17 @@ export const RoundResultsTab = ({ round, rubricFields = [] }) => {
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               >
                 <Download size={14} /> {exporting ? 'Exporting...' : 'Export Leaderboard (XLSX)'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExportDetailed}
+                className="btn btn-secondary"
+                disabled={exportingDetailed || leaderboard.rows.length === 0}
+                title="Export print-ready multi-sheet workbook with one tab per team"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                <FileSpreadsheet size={14} /> {exportingDetailed ? 'Exporting Sheets...' : 'Export Detailed Sheets (XLSX)'}
               </button>
             </div>
           </div>
@@ -697,12 +864,12 @@ export const RoundResultsTab = ({ round, rubricFields = [] }) => {
               {!releaseStatus?.released ? (
                 <button
                   type="button"
-                  onClick={handleRelease}
+                  onClick={() => setPublishConfirmModalOpen(true)}
                   className="btn btn-primary"
                   disabled={releasing}
                   style={{ fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                 >
-                  <Share2 size={15} /> {releasing ? 'Releasing...' : 'Publish & Release Results'}
+                  <Share2 size={15} /> Publish & Release Results
                 </button>
               ) : (
                 <button
@@ -1266,10 +1433,19 @@ export const RoundResultsTab = ({ round, rubricFields = [] }) => {
                 </div>
               )}
 
-              {/* Teams Preview Grid */}
+              {/* Teams Preview Grid with Drag-and-Drop & Manual Rank Inputs */}
+              <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                  Drag cards using <GripVertical size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> or edit rank numbers directly to reorder. Ranks automatically cascade down.
+                </span>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--primary)' }}>
+                  {previewTeams.length} Teams
+                </span>
+              </div>
+
               <div
                 style={{
-                  maxHeight: '240px',
+                  maxHeight: '280px',
                   overflowY: 'auto',
                   border: '1px solid var(--border-light)',
                   borderRadius: '8px',
@@ -1280,29 +1456,70 @@ export const RoundResultsTab = ({ round, rubricFields = [] }) => {
                   marginBottom: '16px',
                 }}
               >
-                {advancePreviewResult.teams.map((t, idx) => (
+                {previewTeams.map((t, idx) => (
                   <div
                     key={t.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, idx)}
+                    onDragOver={(e) => handleDragOver(e, idx)}
+                    onDragEnd={handleDragEnd}
                     style={{
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      padding: '6px 10px',
+                      padding: '8px 10px',
                       borderRadius: '6px',
-                      background: 'rgba(255, 255, 255, 0.02)',
+                      background: draggedIdx === idx ? 'rgba(59, 130, 246, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                      border: draggedIdx === idx ? '1px dashed var(--primary)' : '1px solid var(--border-light)',
                       fontSize: '0.84rem',
+                      cursor: 'grab',
+                      userSelect: 'none',
                     }}
                   >
-                    <div>
-                      <strong style={{ color: 'var(--primary)', marginRight: '8px' }}>#{t.rank || idx + 1}</strong>
-                      <span>{t.name}</span>
-                      <span style={{ color: 'var(--text-muted)', marginLeft: '6px' }}>({t.registrationId})</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                      <GripVertical size={16} style={{ color: 'var(--text-muted)', cursor: 'grab' }} />
+                      
+                      {/* Rank editable input */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Rank</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max={previewTeams.length}
+                          value={t.rank || idx + 1}
+                          onChange={(e) => handleRankInputChange(t.id, e.target.value)}
+                          className="form-input"
+                          style={{
+                            width: '54px',
+                            padding: '2px 6px',
+                            fontSize: '0.82rem',
+                            fontWeight: 700,
+                            textAlign: 'center',
+                            borderRadius: '4px',
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <strong style={{ color: 'var(--text-primary)' }}>{t.name}</strong>
+                        <span style={{ color: 'var(--text-muted)', marginLeft: '6px', fontSize: '0.76rem' }}>
+                          ({t.registrationId})
+                        </span>
+                      </div>
                     </div>
-                    <span style={{ fontWeight: 700 }}>
-                      Score: {t.displayScore || t.score || '-'}
-                    </span>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                        Score: <strong>{t.displayScore || t.score || '-'}</strong>
+                      </span>
+                    </div>
                   </div>
                 ))}
+                {previewTeams.length === 0 && (
+                  <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.84rem' }}>
+                    No teams selected to advance.
+                  </div>
+                )}
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
@@ -1502,7 +1719,327 @@ export const RoundResultsTab = ({ round, rubricFields = [] }) => {
           roundId={roundId}
           team={trailModalTeam}
           onClose={() => setTrailModalTeam(null)}
+          onEvaluationCleared={fetchLeaderboard}
         />
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 5: PUBLISH RESULTS CONFIRMATION MODAL */}
+      {/* ========================================================================= */}
+      {publishConfirmModalOpen && (
+        <Modal
+          isOpen={true}
+          onClose={() => !releasing && setPublishConfirmModalOpen(false)}
+          title="Review Final Teams & Publish Results"
+          maxWidth="800px"
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <p style={{ margin: 0, fontSize: '0.86rem', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+              Review the finalized teams below before releasing official results for <strong>{round?.name}</strong>.
+              Once confirmed, these qualification decisions and standings will be published directly to team dashboards.
+            </p>
+
+            {/* Quick Stats Banner */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: '12px',
+              }}
+            >
+              <div
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: '10px',
+                  background: 'rgba(34, 197, 94, 0.08)',
+                  border: '1px solid rgba(34, 197, 94, 0.25)',
+                }}
+              >
+                <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#16a34a', fontWeight: 700, letterSpacing: '0.5px' }}>
+                  Advancing / Qualified
+                </div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#16a34a', marginTop: '2px' }}>
+                  {finalTeamsToPublish.filter((t) => t.state === 'advanced').length} Teams
+                </div>
+              </div>
+
+              <div
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: '10px',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid var(--border-light)',
+                }}
+              >
+                <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.5px' }}>
+                  Not Advancing / Concluded
+                </div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: '2px' }}>
+                  {finalTeamsToPublish.filter((t) => t.state !== 'advanced').length} Teams
+                </div>
+              </div>
+
+              {holdbackTeamIds.length > 0 && (
+                <div
+                  style={{
+                    padding: '12px 16px',
+                    borderRadius: '10px',
+                    background: 'rgba(234, 179, 8, 0.08)',
+                    border: '1px solid rgba(234, 179, 8, 0.25)',
+                  }}
+                >
+                  <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#eab308', fontWeight: 700, letterSpacing: '0.5px' }}>
+                    Held-Back Teams
+                  </div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#eab308', marginTop: '2px' }}>
+                    {holdbackTeamIds.length} Teams
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Visibility Settings Summary */}
+            <div
+              style={{
+                padding: '10px 14px',
+                borderRadius: '8px',
+                background: 'rgba(59, 130, 246, 0.06)',
+                border: '1px solid rgba(59, 130, 246, 0.2)',
+                fontSize: '0.78rem',
+                color: 'var(--text-secondary)',
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '12px',
+                alignItems: 'center',
+              }}
+            >
+              <span style={{ fontWeight: 700, color: '#3b82f6' }}>Participant Visibility:</span>
+              <span>{resultsConfig.showAdvancement ? '✓ Advancement Badge' : '✗ Advancement Hidden'}</span>
+              <span>•</span>
+              <span>{resultsConfig.showRank ? '✓ Standings Rank' : '✗ Rank Hidden'}</span>
+              <span>•</span>
+              <span>{resultsConfig.showScore ? '✓ Overall Score' : '✗ Score Hidden'}</span>
+              <span>•</span>
+              <span>{resultsConfig.showCriteria ? '✓ Criteria Breakdown' : '✗ Criteria Hidden'}</span>
+            </div>
+
+            {/* Filter Tabs for Teams */}
+            <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-light)', paddingBottom: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setPublishFilter('all')}
+                style={{
+                  padding: '4px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  background: publishFilter === 'all' ? 'var(--primary)' : 'transparent',
+                  color: publishFilter === 'all' ? '#fff' : 'var(--text-secondary)',
+                }}
+              >
+                All Teams ({finalTeamsToPublish.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setPublishFilter('advanced')}
+                style={{
+                  padding: '4px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  background: publishFilter === 'advanced' ? '#16a34a' : 'transparent',
+                  color: publishFilter === 'advanced' ? '#fff' : 'var(--text-secondary)',
+                }}
+              >
+                Qualifying Only ({finalTeamsToPublish.filter((t) => t.state === 'advanced').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setPublishFilter('not_advanced')}
+                style={{
+                  padding: '4px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  background: publishFilter === 'not_advanced' ? 'rgba(255,255,255,0.1)' : 'transparent',
+                  color: publishFilter === 'not_advanced' ? '#fff' : 'var(--text-secondary)',
+                }}
+              >
+                Not Advancing ({finalTeamsToPublish.filter((t) => t.state !== 'advanced').length})
+              </button>
+            </div>
+
+            {/* Final Teams List */}
+            <div
+              style={{
+                maxHeight: '340px',
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+                paddingRight: '4px',
+              }}
+            >
+              {finalTeamsToPublish
+                .filter((t) => {
+                  if (publishFilter === 'advanced') return t.state === 'advanced';
+                  if (publishFilter === 'not_advanced') return t.state !== 'advanced';
+                  return true;
+                })
+                .map((t) => {
+                  const isHeld = holdbackTeamIds.includes(t.teamId);
+                  const isAdv = t.state === 'advanced';
+
+                  return (
+                    <div
+                      key={t.teamId}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '10px 14px',
+                        borderRadius: '8px',
+                        background: isAdv ? 'rgba(34, 197, 94, 0.05)' : 'rgba(255, 255, 255, 0.02)',
+                        border: `1px solid ${isAdv ? 'rgba(34, 197, 94, 0.25)' : 'var(--border-light)'}`,
+                        fontSize: '0.84rem',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {t.rank ? (
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: '26px',
+                              height: '26px',
+                              borderRadius: '50%',
+                              background: t.rank === 1 ? 'rgba(234, 179, 8, 0.2)' : 'rgba(255, 255, 255, 0.06)',
+                              color: t.rank === 1 ? '#eab308' : 'var(--text-primary)',
+                              fontSize: '0.78rem',
+                              fontWeight: 800,
+                            }}
+                          >
+                            #{t.rank}
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: '26px',
+                              height: '26px',
+                              borderRadius: '50%',
+                              background: 'rgba(255, 255, 255, 0.03)',
+                              color: 'var(--text-muted)',
+                              fontSize: '0.74rem',
+                            }}
+                          >
+                            -
+                          </span>
+                        )}
+
+                        <div>
+                          <strong style={{ color: 'var(--text-primary)' }}>{t.name}</strong>
+                          <span style={{ color: 'var(--text-muted)', marginLeft: '6px', fontSize: '0.76rem' }}>
+                            ({t.registrationId})
+                          </span>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {t.score !== null && t.score !== undefined && (
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                            Score: <strong>{t.score}</strong>
+                          </span>
+                        )}
+
+                        {isHeld ? (
+                          <span
+                            style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              background: 'rgba(234, 179, 8, 0.15)',
+                              color: '#eab308',
+                              border: '1px solid rgba(234, 179, 8, 0.3)',
+                            }}
+                          >
+                            HELD BACK
+                          </span>
+                        ) : isAdv ? (
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              padding: '3px 8px',
+                              borderRadius: '4px',
+                              background: 'rgba(34, 197, 94, 0.15)',
+                              color: '#16a34a',
+                              border: '1px solid rgba(34, 197, 94, 0.3)',
+                            }}
+                          >
+                            <CheckCircle2 size={12} /> QUALIFIED
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 600,
+                              padding: '3px 8px',
+                              borderRadius: '4px',
+                              background: 'rgba(255, 255, 255, 0.05)',
+                              color: 'var(--text-muted)',
+                              border: '1px solid var(--border-light)',
+                            }}
+                          >
+                            NOT ADVANCED
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              {finalTeamsToPublish.length === 0 && (
+                <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.84rem' }}>
+                  No candidate teams detected in this round.
+                </div>
+              )}
+            </div>
+
+            {/* Footer Buttons */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setPublishConfirmModalOpen(false)}
+                className="btn btn-secondary"
+                disabled={releasing}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleRelease}
+                className="btn btn-primary"
+                disabled={releasing}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                <Share2 size={16} /> {releasing ? 'Publishing Results...' : 'Confirm & Publish Results to Teams'}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

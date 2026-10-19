@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.main import app
 from app.models import Role, RbacRole, RolePermission, UserRoleAssignment, EventConfig
+from app.rbac import assign_default_role
 from tests.factories import make_org_event, make_user, make_volunteer, auth_header
 
 client = TestClient(app)
@@ -51,6 +52,7 @@ def test_rbac_parity_matrix(db: Session):
     admin = make_user(db, event, Role.ADMIN, "matrix_admin")
     vol_rec = make_volunteer(db, event, "matrix_vol")
     vol = make_user(db, event, Role.VOLUNTEER, "matrix_vol", volunteer=vol_rec)
+    assign_default_role(db, vol, vol_rec)
     leader = make_user(db, event, Role.LEADER, "matrix_leader")
 
     routes = _get_target_routes()

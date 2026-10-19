@@ -200,6 +200,7 @@ class CheckpointType(Base):
     eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(100), nullable=False)
     description = Column(String(255), nullable=True)
+    isDefault = Column(Boolean, default=False, server_default=text("false"), nullable=False)
 
     # Relationships
     event = relationship("Event", back_populates="checkpointTypes")
@@ -330,6 +331,7 @@ class RubricVersion(Base):
     event = relationship("Event")
     round = relationship("EvaluationRound", back_populates="rubricVersions")
     fields = relationship("RubricField", back_populates="rubricVersion", cascade="all, delete-orphan")
+    guidances = relationship("RubricPSGuidance", back_populates="rubricVersion", cascade="all, delete-orphan")
 
     __table_args__ = (
         UniqueConstraint("roundId", "version", name="uq_rubric_round_version"),
@@ -341,6 +343,7 @@ class RubricField(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     eventId = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
     rubricVersionId = Column(String(36), ForeignKey("rubric_versions.id", ondelete="CASCADE"), nullable=False, index=True)
+    problemStatementId = Column(String(36), ForeignKey("problem_statements.id", ondelete="CASCADE"), nullable=True, index=True)
     fieldKey = Column(String(36), nullable=False)
     type = Column(String(10), nullable=False)  # numeric | text
     label = Column(String(150), nullable=False)
@@ -355,9 +358,26 @@ class RubricField(Base):
 
     event = relationship("Event")
     rubricVersion = relationship("RubricVersion", back_populates="fields")
+    problemStatement = relationship("ProblemStatement")
 
     __table_args__ = (
         UniqueConstraint("rubricVersionId", "fieldKey", name="uq_rubric_field_key"),
+    )
+
+class RubricPSGuidance(Base):
+    __tablename__ = "rubric_ps_guidance"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    rubricVersionId = Column(String(36), ForeignKey("rubric_versions.id", ondelete="CASCADE"), nullable=False, index=True)
+    problemStatementId = Column(String(36), ForeignKey("problem_statements.id", ondelete="CASCADE"), nullable=False, index=True)
+    decisiveTest = Column(Text, nullable=True)
+    notes = Column(Text, nullable=True)
+
+    rubricVersion = relationship("RubricVersion", back_populates="guidances")
+    problemStatement = relationship("ProblemStatement")
+
+    __table_args__ = (
+        UniqueConstraint("rubricVersionId", "problemStatementId", name="uq_rubric_ps_guidance"),
     )
 
 class Submission(Base):

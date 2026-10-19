@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import MobileNav from './MobileNav';
 import CommandPalette from './CommandPalette';
+import AmbientCursorGlow from '../AmbientCursorGlow';
 import { useAuth } from '../../contexts/AuthContext';
 import { visibleGroups } from '../../modules/registry';
 
@@ -20,7 +21,7 @@ export default function AdminShell({
   badges = {},
   children,
 }) {
-  const { can, canAny, features } = useAuth();
+  const { can, canAny, features, access } = useAuth();
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   // Desktop sidebar collapse state persisted in localStorage
@@ -50,8 +51,8 @@ export default function AdminShell({
 
   // Filter groups according to current permissions and feature flags
   const groups = useMemo(() => {
-    return visibleGroups(can, canAny, features);
-  }, [can, canAny, features]);
+    return visibleGroups(can, canAny, features, access?.isAdmin);
+  }, [can, canAny, features, access?.isAdmin]);
 
   const stageLabel = useMemo(() => {
     const raw = stage || features?.stage || 'setup';
@@ -75,6 +76,9 @@ export default function AdminShell({
 
   return (
     <div className={`admin-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
+      <AmbientCursorGlow />
+      <div className="admin-ambient-glow admin-ambient-glow-1" />
+      <div className="admin-ambient-glow admin-ambient-glow-2" />
       <TopBar
         eventName={eventName}
         stage={stageLabel}

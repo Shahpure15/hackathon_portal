@@ -8,12 +8,14 @@ export const ADMIN_NAV_PERMISSIONS = {
   pods: ['pod.view'],
   panels: ['panel.view'],
   evalRounds: ['round.view'],
+  myScoring: ['evaluation.score'],
   volunteers: ['staff.view'],
   checkpoints: ['checkpoint.view'],
   ps: ['ps.view'],
   psLive: ['ps.view'],
   roles: ['role.manage'],
   email: ['email.manage', 'staff.invite'],
+  eventConfig: ['config.view'],
 };
 
 export const STAFF_TAB_PERMISSIONS = {
@@ -27,7 +29,7 @@ export const ADMIN_GROUPS = [
     id: 'overview',
     label: 'Overview',
     items: [
-      { id: 'overview', label: 'Overview', icon: 'LayoutDashboard', requires: [] },
+      { id: 'overview', label: 'Overview', icon: 'LayoutDashboard', requires: [], adminOnly: true },
     ],
   },
   {
@@ -55,6 +57,7 @@ export const ADMIN_GROUPS = [
     label: 'Judging',
     items: [
       { id: 'evalRounds', label: 'Rounds', icon: 'ClipboardCheck', requires: ['round.view'], feature: 'evaluation' },
+      { id: 'myScoring', label: 'Score teams', icon: 'Award', requires: ['evaluation.score'], feature: 'evaluation' },
     ],
   },
   {
@@ -68,6 +71,7 @@ export const ADMIN_GROUPS = [
     id: 'settings',
     label: 'Settings',
     items: [
+      { id: 'eventConfig', label: 'Event configuration', icon: 'Settings', requires: ['config.view'] },
       { id: 'roles', label: 'Roles & access', icon: 'ShieldCheck', requires: ['role.manage'] },
     ],
   },
@@ -79,9 +83,10 @@ export const ADMIN_GROUPS = [
  * @param {Function} can - (perm: string) => boolean
  * @param {Function} canAny - (perms: string[]) => boolean
  * @param {Object} features - Event feature flags object
+ * @param {boolean} isAdmin - Whether the current user is an admin
  * @returns {Array} List of groups with visible items
  */
-export function visibleGroups(can, canAny, features = {}) {
+export function visibleGroups(can, canAny, features = {}, isAdmin = false) {
   const checkCan = typeof can === 'function' ? can : () => true;
   const checkCanAny = typeof canAny === 'function' ? canAny : (perms) => perms.some((p) => checkCan(p));
 
@@ -91,6 +96,9 @@ export function visibleGroups(can, canAny, features = {}) {
     const visibleItems = [];
 
     for (const item of group.items) {
+      if (item.adminOnly && !isAdmin) {
+        continue;
+      }
       // Feature check: hide if feature explicitly disabled
       if (item.feature && features?.[item.feature] === false) {
         continue;

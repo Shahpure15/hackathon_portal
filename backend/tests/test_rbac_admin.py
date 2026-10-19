@@ -378,7 +378,7 @@ def test_turning_pods_off_with_pod_scoped_members_is_409(db: Session):
     assert "pod-scoped" in str(res.json()["detail"])
 
 
-def test_last_assignment_removal_is_409(db: Session):
+def test_last_assignment_removal_succeeds(db: Session):
     event = make_org_event(db)
     admin = make_user(db, event, Role.ADMIN, "last_admin")
     admin_hdr = auth_header(admin)
@@ -396,10 +396,16 @@ def test_last_assignment_removal_is_409(db: Session):
     db.query(UserRoleAssignment).filter(UserRoleAssignment.userId == user.id, UserRoleAssignment.roleId != r1_id).delete()
     db.commit()
 
-    # Try removing last assignment -> 409
+    # Removing last assignment -> 200 and remainingRoles == 0
     res = client.delete(f"/admin/rbac/roles/{r1_id}/members/{user.id}", headers=admin_hdr)
-    assert res.status_code == 409
-    assert "Assign another role first" in res.json()["detail"]
+    assert res.status_code == 200
+    assert res.json()["remainingRoles"] == 0
+    assert res.json()["message"] == "Member removed from role"
+
+    # User /auth/me now returns empty permissions
+    me_res = client.get("/auth/me", headers=auth_header(user))
+    assert me_res.status_code == 200
+    assert me_res.json()["permissions"] == []
 
 
 def test_cross_event_isolation(db: Session):

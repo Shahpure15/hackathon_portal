@@ -1,0 +1,595 @@
+{
+  "general": [
+    {
+      "label": "Technical Implementation & Integration",
+      "description": "Components are genuinely connected and working (not a mock-up); design choices are sound and explainable.",
+      "maxMarks": 15,
+      "weight": 15,
+      "sortOrder": 1
+    },
+    {
+      "label": "Testing, Validation & Reliability",
+      "description": "Measured results, edge cases handled, failures analysed and reported honestly.",
+      "maxMarks": 15,
+      "weight": 15,
+      "sortOrder": 2
+    },
+    {
+      "label": "Development Progress & Ownership",
+      "description": "Verified progress since Round 1, feedback addressed, and each member can explain their own part.",
+      "maxMarks": 15,
+      "weight": 15,
+      "sortOrder": 3
+    },
+    {
+      "label": "Deployment & Real-World Readiness",
+      "description": "Usable by target users, with data privacy, documentation and maintainability covered.",
+      "maxMarks": 10,
+      "weight": 10,
+      "sortOrder": 4
+    },
+    {
+      "label": "Technical Demonstration & Q&A",
+      "description": "Live demo, clear answers, honest about limitations.",
+      "maxMarks": 5,
+      "weight": 5,
+      "sortOrder": 5
+    }
+  ],
+  "general_text": [
+    {
+      "fieldKey": "gen_judge_notes",
+      "type": "text",
+      "label": "Judge Notes (Internal)",
+      "description": "Private notes and observations for the jury panel.",
+      "visibility": "staff",
+      "isRequired": false,
+      "sortOrder": 90
+    },
+    {
+      "fieldKey": "gen_team_feedback",
+      "type": "text",
+      "label": "Team Feedback",
+      "description": "Constructive feedback visible to the participants.",
+      "visibility": "participant",
+      "isRequired": false,
+      "sortOrder": 95
+    }
+  ],
+  "problem_statements": {
+    "PSE01": {
+      "psNumber": 1,
+      "title": "AI-Assisted Tele-Triage Companion for ASHA/PHC Workers",
+      "decisiveTest": "Disconnect the internet and give a local-language symptom/vitals input. Verify the triage output and referral note, then restore the network and check the PHC sync.",
+      "notes": "",
+      "criteria": [
+        {
+          "label": "On-device triage correctness",
+          "description": "Red / yellow / green flags are produced from symptoms and vitals with no cloud call. Outputs on relevant test cases are consistent with clinical guidelines.",
+          "maxMarks": 12,
+          "weight": 12
+        },
+        {
+          "label": "Local-language voice intake",
+          "description": "The ASHA worker can enter symptoms and vitals in a regional language. Transcription reliably preserves clinically important details.",
+          "maxMarks": 8,
+          "weight": 8
+        },
+        {
+          "label": "Referral note and actionable output",
+          "description": "A clear referral note for the PHC doctor, with relevant symptoms, vitals and the triage reason.",
+          "maxMarks": 8,
+          "weight": 8
+        },
+        {
+          "label": "Offline operation and deferred sync",
+          "description": "Intake and triage work without internet. Records sync reliably once connectivity returns, with no duplicates or data loss.",
+          "maxMarks": 6,
+          "weight": 6
+        },
+        {
+          "label": "Clinical safety and uncertainty handling",
+          "description": "Red flags escalate appropriately. Uncertain or incomplete input never gives unsafe reassurance. The system makes no false diagnosis claim.",
+          "maxMarks": 6,
+          "weight": 6
+        }
+      ]
+    },
+    "PSE02": {
+      "psNumber": 2,
+      "title": "Smartphone-Based Non-Invasive Anaemia Screening",
+      "decisiveTest": "Use good-quality and deliberately poor-quality images. Inspect the Hb estimate, confidence handling and the retake/escalation response.",
+      "notes": "Classification accuracy alone, or one successful screenshot, does not prove Hb estimation reliability.",
+      "criteria": [
+        {
+          "label": "Hb estimation and output validity",
+          "description": "A numerical Hb estimate (or clearly defined Hb output) is generated from the image; appropriate error metrics are reported on held-out labelled data.",
+          "maxMarks": 12,
+          "weight": 12
+        },
+        {
+          "label": "Robustness across capture conditions",
+          "description": "Performance is tested across different lighting, phone cameras and skin tones; limitations are measured, not just claimed.",
+          "maxMarks": 10,
+          "weight": 10
+        },
+        {
+          "label": "Low-confidence escalation",
+          "description": "Poor-quality images and uncertain predictions are detected; a repeat capture or confirmatory blood-test referral is given.",
+          "maxMarks": 8,
+          "weight": 8
+        },
+        {
+          "label": "Image capture and quality control",
+          "description": "Consistent capture instructions, usable-image checks, and a rejection or retake workflow for blurred or poorly lit images.",
+          "maxMarks": 5,
+          "weight": 5
+        },
+        {
+          "label": "Clinical validation and honest reporting",
+          "description": "Test set, sample limitations, error distribution and intended-use boundaries are documented; not presented as a substitute for lab-confirmed diagnosis.",
+          "maxMarks": 5,
+          "weight": 5
+        }
+      ]
+    },
+    "PSE03": {
+      "psNumber": 3,
+      "title": "Immunisation Dropout Prediction and Recall",
+      "decisiveTest": "Add one high-risk child and one on-time vaccination history to synthetic records. Compare risk ranking, next-dose date and reminder workflow.",
+      "notes": "",
+      "criteria": [
+        {
+          "label": "Dropout risk prediction",
+          "description": "Next-dose dropout risk is estimated from dose history, punctuality, geography or other relevant features, with proper validation and baseline comparison.",
+          "maxMarks": 12,
+          "weight": 12
+        },
+        {
+          "label": "Risk-ranked ASHA visit list",
+          "description": "High-risk children appear in priority order; the ranking helps field workers make actionable decisions.",
+          "maxMarks": 8,
+          "weight": 8
+        },
+        {
+          "label": "Proactive reminder workflow",
+          "description": "Timely SMS/IVR reminders are generated from the next-dose schedule and risk, supporting the parent’s language.",
+          "maxMarks": 8,
+          "weight": 8
+        },
+        {
+          "label": "Scheduling and follow-up logic",
+          "description": "Due dates, upcoming doses, missed-dose states and follow-up status are handled correctly.",
+          "maxMarks": 6,
+          "weight": 6
+        },
+        {
+          "label": "Prediction quality and privacy",
+          "description": "Model evaluation, false negatives/positives and data limitations are documented; child and parent records are protected.",
+          "maxMarks": 6,
+          "weight": 6
+        }
+      ]
+    },
+    "PSE04": {
+      "psNumber": 4,
+      "title": "Voice-First Multilingual Agri-Advisory",
+      "decisiveTest": "Ask one supported crop-advisory query, one location/season-specific query and one out-of-scope question. Verify sources and unsupported-answer handling.",
+      "notes": "",
+      "criteria": [
+        {
+          "label": "Grounded agricultural answers",
+          "description": "Responses to crop, sowing window, irrigation and input-use queries are supported by ICAR/KVK or another approved advisory source.",
+          "maxMarks": 14,
+          "weight": 14
+        },
+        {
+          "label": "Voice-first regional-language interaction",
+          "description": "The farmer can speak and receive an understandable response; interaction in a supported language is practical.",
+          "maxMarks": 8,
+          "weight": 8
+        },
+        {
+          "label": "Source traceability and hallucination control",
+          "description": "Each answer identifies its source or advisory context; unsupported questions show uncertainty instead of invented advice.",
+          "maxMarks": 8,
+          "weight": 8
+        },
+        {
+          "label": "Farmer-specific relevance",
+          "description": "Advice fits the crop, location/season and question context; unsupported context is clearly identified.",
+          "maxMarks": 6,
+          "weight": 6
+        },
+        {
+          "label": "Accessible phone/WhatsApp workflow",
+          "description": "The full query-to-answer flow works on the chosen channel; the demo is not limited to a static chatbot screen.",
+          "maxMarks": 4,
+          "weight": 4
+        }
+      ]
+    },
+    "PSE05": {
+      "psNumber": 5,
+      "title": "Adaptive Peer Learning Network",
+      "decisiveTest": "Input students with different performance profiles. Check whether groups, quizzes and pace recommendations change logically with their learning gaps.",
+      "notes": "Facial emotion is not definitive proof of understanding; the system should treat it as an imperfect signal.",
+      "criteria": [
+        {
+          "label": "Adaptive peer grouping",
+          "description": "Meaningful clusters form from student performance data; each group’s strengths and weaknesses can be explained.",
+          "maxMarks": 12,
+          "weight": 12
+        },
+        {
+          "label": "Group-specific micro-quizzes",
+          "description": "Quiz questions are generated or selected for each group’s identified gaps; content is relevant and answerable.",
+          "maxMarks": 10,
+          "weight": 10
+        },
+        {
+          "label": "Engagement/confusion estimation",
+          "description": "A webcam workflow identifies broad categories (engaged, confused, disengaged); limitations and prediction errors are acknowledged.",
+          "maxMarks": 8,
+          "weight": 8
+        },
+        {
+          "label": "Teaching pace adjustment",
+          "description": "The signal leads to an actionable pace suggestion or adaptation, not just an emotion label.",
+          "maxMarks": 6,
+          "weight": 6
+        },
+        {
+          "label": "Learning-loop evidence",
+          "description": "Quiz results or later performance refine the grouping or learning recommendation.",
+          "maxMarks": 4,
+          "weight": 4
+        }
+      ]
+    },
+    "PSE06": {
+      "psNumber": 6,
+      "title": "Smart Sign Language Learning & Real-Time Translation App",
+      "decisiveTest": "Show known gestures, unseen examples and no-sign/background frames to the live camera. Inspect recognition, latency and learning mode.",
+      "notes": "If the team recognises only letters, do not score it as full sign-language sentence translation. Claimed scope must match actual functionality.",
+      "criteria": [
+        {
+          "label": "Sign/gesture recognition correctness",
+          "description": "Supported signs or letters are recognised correctly; results are reported on representative held-out examples.",
+          "maxMarks": 14,
+          "weight": 14
+        },
+        {
+          "label": "Real-time performance",
+          "description": "Recognition and translated output appear with practical latency from camera frames; failure conditions are tested.",
+          "maxMarks": 8,
+          "weight": 8
+        },
+        {
+          "label": "Learning-mode effectiveness",
+          "description": "Students can learn and practise signs with examples, feedback or recognition-based practice, not just a translation screen.",
+          "maxMarks": 8,
+          "weight": 8
+        },
+        {
+          "label": "Robustness and uncertainty handling",
+          "description": "Tested with different users, camera positions or backgrounds; unknown or ambiguous gestures are not confidently mislabelled.",
+          "maxMarks": 6,
+          "weight": 6
+        },
+        {
+          "label": "Accessible communication output",
+          "description": "Recognised signs/letters become usable text or other supported output, with a clear user workflow.",
+          "maxMarks": 4,
+          "weight": 4
+        }
+      ]
+    },
+    "PSE07": {
+      "psNumber": 7,
+      "title": "AI-Based Investor Fraud & Impersonation Detection",
+      "decisiveTest": "Test one benign media sample, one known manipulated sample, and suspicious versus normal adviser text. Verify the result, evidence and alert.",
+      "notes": "No marks for a detection layer the team did not implement. Public benchmark data is acceptable.",
+      "criteria": [
+        {
+          "label": "Deepfake media detection",
+          "description": "Supported video/audio inputs are analysed for manipulation risk; performance and false alarms are reported on benchmark/test examples.",
+          "maxMarks": 14,
+          "weight": 14
+        },
+        {
+          "label": "Impersonation detection",
+          "description": "Chat/profile text is checked for fake financial-adviser claims, suspicious urgency or other impersonation indicators; triggered signals can be explained.",
+          "maxMarks": 10,
+          "weight": 10
+        },
+        {
+          "label": "Fake trading-app indicators",
+          "description": "A practical mechanism flags suspicious apps from listing/interface metadata or defined indicators, with evidence and limitations.",
+          "maxMarks": 6,
+          "weight": 6
+        },
+        {
+          "label": "Risk aggregation and actionable alerts",
+          "description": "Signals combine into an understandable risk result or alert, with supporting reasons for the user.",
+          "maxMarks": 6,
+          "weight": 6
+        },
+        {
+          "label": "Robustness and uncertainty",
+          "description": "Benign and manipulated/suspicious examples are tested; an uncertain result is not presented as confirmed fraud.",
+          "maxMarks": 4,
+          "weight": 4
+        }
+      ]
+    },
+    "PSE08": {
+      "psNumber": 8,
+      "title": "Tokenized, Privacy-Preserving KYC Framework",
+      "decisiveTest": "Have an institution request only an age/address-type attribute. Verify that after consent only the required attribute is shared, not the full KYC record. Also test an invalid/tampered token.",
+      "notes": "Issuing a token alone does not prove privacy-preserving KYC. Inspect the actual disclosure boundary and verification process.",
+      "criteria": [
+        {
+          "label": "Credential/token issuance and verification",
+          "description": "The KYC provider issues a verified credential/token; the requesting institution can verify its validity.",
+          "maxMarks": 10,
+          "weight": 10
+        },
+        {
+          "label": "Consent and selective disclosure",
+          "description": "The customer gives consent and only the requested KYC attributes are shared; the institution is not exposed to the full underlying record.",
+          "maxMarks": 12,
+          "weight": 12
+        },
+        {
+          "label": "Privacy and security controls",
+          "description": "Safeguards against unauthorised access, token tampering, replay and inappropriate data exposure are demonstrated.",
+          "maxMarks": 8,
+          "weight": 8
+        },
+        {
+          "label": "End-to-end verification workflow",
+          "description": "Provider → issuance → consent → institution request → selective disclosure → verification runs as one integrated flow.",
+          "maxMarks": 6,
+          "weight": 6
+        },
+        {
+          "label": "Auditability and user control",
+          "description": "Verification requests, consent and disclosure events have a traceable audit; the customer gets an understandable record of sharing.",
+          "maxMarks": 4,
+          "weight": 4
+        }
+      ]
+    },
+    "PSE10": {
+      "psNumber": 10,
+      "title": "AI-Based Personalised Internship & Skill Recommendation Engine",
+      "decisiveTest": "Input two contrasting student profiles and one internship listing. Verify the recommendations and skill-gap analysis change meaningfully when the student’s skills change.",
+      "notes": "",
+      "criteria": [
+        {
+          "label": "Personalised internship matching",
+          "description": "Relevant internships are ranked using academic record, projects, certifications and skills; reasons for matches can be explained.",
+          "maxMarks": 12,
+          "weight": 12
+        },
+        {
+          "label": "Skill-gap analysis",
+          "description": "Student skills are compared with internship requirements to identify missing skills; gaps trace back to actual role requirements.",
+          "maxMarks": 10,
+          "weight": 10
+        },
+        {
+          "label": "Targeted course recommendations",
+          "description": "Relevant courses from SWAYAM or another suitable catalogue address the identified gaps.",
+          "maxMarks": 8,
+          "weight": 8
+        },
+        {
+          "label": "Recommendation relevance and transparency",
+          "description": "Irrelevant listings are reduced; skill match, missing requirements and ranking logic are understandable.",
+          "maxMarks": 6,
+          "weight": 6
+        },
+        {
+          "label": "Student accessibility and profile workflow",
+          "description": "Students can input/update their profile; intended language support and a usable end-to-end recommendation workflow exist.",
+          "maxMarks": 4,
+          "weight": 4
+        }
+      ]
+    },
+    "PSE11": {
+      "psNumber": 11,
+      "title": "The Real-Time DPDPA Compliance Monitoring Agent",
+      "decisiveTest": "Run four controlled cases: permitted attribute, purpose-mismatched attribute, raw PII in logs, incomplete erasure request. After each, verify the correct violation, displayed reason and suitable remediation.",
+      "notes": "Six teams are on this PS: use the same test-event pack, criterion weights and scoring anchors for all six. Do not give marks for dashboard polish when compliance detection is missing.",
+      "criteria": [
+        {
+          "label": "Data minimisation and purpose limitation",
+          "description": "API/database attributes are evaluated against the declared processing purpose; unnecessary or unauthorised collection is flagged.",
+          "maxMarks": 10,
+          "weight": 10
+        },
+        {
+          "label": "Unmasked PII leakage detection",
+          "description": "Raw phone, PAN, email or other defined sensitive fields in simulated logs are detected, with the event and reason identified.",
+          "maxMarks": 10,
+          "weight": 10
+        },
+        {
+          "label": "Retention and erasure auditing",
+          "description": "Missing expiry labels are detected; after a simulated erasure request, incomplete deletion across storage-layer stubs is flagged.",
+          "maxMarks": 10,
+          "weight": 10
+        },
+        {
+          "label": "Real-time pipeline, dashboard and remediation",
+          "description": "Ingestion → compliance rules → alert/dashboard works end-to-end, showing violation count, status, rule/clause and actionable remediation.",
+          "maxMarks": 10,
+          "weight": 10
+        }
+      ]
+    },
+    "PSE12": {
+      "psNumber": 12,
+      "title": "Real-Time Transaction Fraud Detection",
+      "decisiveTest": "Run a normal transaction, a high-value transaction, an unusual-hour/location case and a multiple-signal case. Compare risk scores with triggering reasons.",
+      "notes": "",
+      "criteria": [
+        {
+          "label": "Fraud signal coverage",
+          "description": "Transaction-value threshold, unusual day/hour, location mismatch and unusual purchase pattern are all evaluated appropriately.",
+          "maxMarks": 12,
+          "weight": 12
+        },
+        {
+          "label": "Risk scoring and detection quality",
+          "description": "Rules/ML produce a risk score or level; suitable metrics and a baseline comparison on labelled test data are available.",
+          "maxMarks": 10,
+          "weight": 10
+        },
+        {
+          "label": "Explainability of flagged transactions",
+          "description": "The judge gets a clear reason: which rule or signal triggered and why the transaction looks suspicious.",
+          "maxMarks": 8,
+          "weight": 8
+        },
+        {
+          "label": "Real-time alert workflow",
+          "description": "A risk result and alert are produced in practical runtime after a transaction is input; the event traces back to the transaction.",
+          "maxMarks": 6,
+          "weight": 6
+        },
+        {
+          "label": "False-positive handling and validation",
+          "description": "Legitimate unusual transactions and known fraud examples are tested; false alarms and missed-fraud limits are documented.",
+          "maxMarks": 4,
+          "weight": 4
+        }
+      ]
+    },
+    "PSE13": {
+      "psNumber": 13,
+      "title": "Health Screening Assistant",
+      "decisiveTest": "Input low-risk, high-risk and several same-locality synthetic patient records. Inspect the risk result, facility ranking and aggregate alert.",
+      "notes": "Disease-prediction accuracy is not medical validity. The team must explain test data, limitations and intended screening use.",
+      "criteria": [
+        {
+          "label": "Symptom-based risk assessment",
+          "description": "Symptom intake produces a risk tier and possible disease category; test cases and classifier limitations are documented.",
+          "maxMarks": 12,
+          "weight": 12
+        },
+        {
+          "label": "Healthcare facility recommendation",
+          "description": "Facilities are ranked by location, distance and required service; the nearest facility alone is not enough if its service is unsuitable.",
+          "maxMarks": 10,
+          "weight": 10
+        },
+        {
+          "label": "Aggregated facility alerts",
+          "description": "Multiple screening records produce catchment-area caseload or risk-cluster summaries; the relevant facility gets an actionable notification.",
+          "maxMarks": 8,
+          "weight": 8
+        },
+        {
+          "label": "Safe screening and escalation",
+          "description": "High-risk symptoms trigger escalation; uncertainty and limitations are clear; output does not claim a definitive diagnosis.",
+          "maxMarks": 6,
+          "weight": 6
+        },
+        {
+          "label": "End-to-end screening workflow",
+          "description": "Symptom entry to risk output, facility recommendation and alerting works as one integrated workflow.",
+          "maxMarks": 4,
+          "weight": 4
+        }
+      ]
+    },
+    "PSE14": {
+      "psNumber": 14,
+      "title": "ClaimPilot AI",
+      "decisiveTest": "Using the team’s selected modules, run real/synthetic claim documents, duplicate claim records or vehicle damage images. Verify the outputs perform actual verification, fraud detection or cost estimation.",
+      "notes": "The team declares its two modules before judging; no penalty for the third. A UI mock-up alone is not a completed module.",
+      "criteria": [
+        {
+          "label": "First selected module: depth and validation",
+          "description": "The module is genuinely implemented and validated on relevant test cases (document extraction and rule checks, fraud-signal detection, or damage severity and repair-cost range).",
+          "maxMarks": 15,
+          "weight": 15
+        },
+        {
+          "label": "Second selected module: depth and validation",
+          "description": "The module is genuinely implemented and validated on relevant test cases (document extraction and rule checks, fraud-signal detection, or damage severity and repair-cost range).",
+          "maxMarks": 15,
+          "weight": 15
+        },
+        {
+          "label": "Integration into claim workflow",
+          "description": "Selected modules work in one coherent claim workflow; output is reviewable, reasons/uncertainties are shown, and there is no unsupported automatic approval or rejection.",
+          "maxMarks": 10,
+          "weight": 10
+        }
+      ]
+    },
+    "PSE15": {
+      "psNumber": 15,
+      "title": "AI-Powered Crew Assembly for Event Staffing (CrewForge AI)",
+      "decisiveTest": "Configure an event with a tight budget, some unavailable candidates, and a required role whose preferred candidate is unsuitable. Check that the system assembles a feasible complete crew within budget with useful backups.",
+      "notes": "Do not score CrewForge as a search/filter app. The central challenge is joint constrained optimisation.",
+      "criteria": [
+        {
+          "label": "Joint crew optimisation",
+          "description": "A complete crew is assembled, not a list of individually top-rated candidates; required roles are covered with skill-fit, availability, proximity, reliability and budget considered jointly.",
+          "maxMarks": 14,
+          "weight": 14
+        },
+        {
+          "label": "Budget and constraint satisfaction",
+          "description": "Total crew cost is within budget; role coverage and availability constraints hold; if no feasible crew exists, the violation is clearly reported.",
+          "maxMarks": 10,
+          "weight": 10
+        },
+        {
+          "label": "Ranked backup candidates and no-show resilience",
+          "description": "A ranked backup list exists for every required role; backups fit on skills, availability, location and reliability.",
+          "maxMarks": 8,
+          "weight": 8
+        },
+        {
+          "label": "Candidate matching and reliability logic",
+          "description": "Skills, ratings, location, calendar overlap and past collaboration success are appropriately used in selection.",
+          "maxMarks": 5,
+          "weight": 5
+        },
+        {
+          "label": "Event-specific adaptability",
+          "description": "Changing event type, date, location, budget or required roles meaningfully updates the crew.",
+          "maxMarks": 3,
+          "weight": 3
+        }
+      ]
+    },
+    "PSE09": {
+      "psNumber": 9,
+      "title": "AI-Driven Crop Price Forecasting & Market Routing App",
+      "decisiveTest": "Run forecasting model on price history; inspect price trend projection and routing recommendations.",
+      "notes": "Check accuracy across seasonal variations and market volatility.",
+      "criteria": [
+        {
+          "label": "Price Forecasting Accuracy & Validation",
+          "description": "Price prediction model validity on historical data and error analysis across seasonal variations.",
+          "maxMarks": 20,
+          "weight": 20
+        },
+        {
+          "label": "Market Routing & Logistics Optimization",
+          "description": "Practicality and optimality of market selection, transport cost estimation, and net profit advice for farmers.",
+          "maxMarks": 20,
+          "weight": 20
+        }
+      ]
+    }
+  }
+}

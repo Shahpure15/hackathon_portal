@@ -80,29 +80,34 @@ const VolunteerDashboard = () => {
   const [isAssigningPs, setIsAssigningPs] = useState(false);
 
   useEffect(() => {
-    fetchCheckpoints();
-    fetchVolunteerConfig();
-  }, []);
+    if (can('checkpoint.view') || can('attendance.mark')) {
+      fetchCheckpoints();
+    }
+    if (can('team.view') || can('attendance.mark')) {
+      fetchVolunteerConfig();
+    }
+  }, [can]);
 
   useEffect(() => {
-    if (activeTab === 'checkin') {
+    if (activeTab === 'checkin' && (can('team.view') || can('attendance.mark'))) {
       const delayDebounce = setTimeout(() => {
         fetchTeams();
       }, 300);
       return () => clearTimeout(delayDebounce);
     }
-  }, [search, page, activeTab]);
+  }, [search, page, activeTab, can]);
 
   useEffect(() => {
-    if (activeTab === 'people') {
+    if (activeTab === 'people' && (can('people.view') || can('people.checkin'))) {
       const delayDebounce = setTimeout(() => {
         fetchPeople();
       }, 300);
       return () => clearTimeout(delayDebounce);
     }
-  }, [peopleSearch, peopleTypeFilter, peoplePage, activeTab, activeCheckpointId]);
+  }, [peopleSearch, peopleTypeFilter, peoplePage, activeTab, activeCheckpointId, can]);
 
   const fetchPeople = async () => {
+    if (!can('people.view') && !can('people.checkin')) return;
     setPeopleLoading(true);
     try {
       const res = await api.get('/volunteer/people', {
@@ -177,6 +182,7 @@ const VolunteerDashboard = () => {
   };
 
   const fetchCheckpoints = async () => {
+    if (!can('checkpoint.view') && !can('attendance.mark')) return;
     try {
       const res = await api.get('/volunteer/checkpoints');
       const data = res.data;
@@ -184,10 +190,18 @@ const VolunteerDashboard = () => {
       setCheckpoints(cps);
       if (data.eventId) setEventId(data.eventId);
       if (cps.length > 0) {
-        setActiveCheckpointId(cps[0].id);
+        setActiveCheckpointId(prev => {
+          if (prev && cps.some(cp => cp.id === prev)) {
+            return prev;
+          }
+          const defaultCp = cps.find(cp => cp.isDefault);
+          return defaultCp ? defaultCp.id : cps[0].id;
+        });
       }
     } catch (err) {
-      addToast('Failed to fetch checkpoints list', 'error');
+      if (err?.response?.status !== 403) {
+        addToast('Failed to fetch checkpoints list', 'error');
+      }
     }
   };
 
@@ -379,7 +393,9 @@ const VolunteerDashboard = () => {
                 style={{ width: '220px', minHeight: '38px', padding: '6px 12px' }}
               >
                 {checkpoints.map(cp => (
-                  <option key={cp.id} value={cp.id}>{cp.name}</option>
+                  <option key={cp.id} value={cp.id}>
+                    {cp.name}{cp.isDefault ? ' (Default)' : ''}
+                  </option>
                 ))}
               </select>
             </div>

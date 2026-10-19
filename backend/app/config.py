@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     CORS_ALLOWED_ORIGIN_REGEX: str = ""
     ENVIRONMENT: str = "development"
     SENTRY_DSN: str = ""
-    BACKEND_VERSION: str = "10.7.0"
+    BACKEND_VERSION: str = "10.7.1"
     SECRETS_ENCRYPTION_KEY: str = ""
     FRONTEND_BASE_URL: str = ""
     EMAIL_WORKER_ENABLED: bool = True
@@ -23,3 +23,13 @@ class Settings(BaseSettings):
     )
 
 settings = Settings()
+
+if settings.ENVIRONMENT == "production":
+    insecure_jwt = settings.JWT_SECRET_KEY == "CHANGE_ME_INSECURE_DEFAULT_SECRET_KEY"
+    insecure_refresh = settings.JWT_REFRESH_SECRET_KEY == "CHANGE_ME_INSECURE_DEFAULT_REFRESH_KEY"
+    empty_enc = not settings.SECRETS_ENCRYPTION_KEY or not settings.SECRETS_ENCRYPTION_KEY.strip()
+    if insecure_jwt or insecure_refresh or empty_enc:
+        raise RuntimeError(
+            "Production security check failed: JWT_SECRET_KEY, JWT_REFRESH_SECRET_KEY must not be default values, "
+            "and SECRETS_ENCRYPTION_KEY must not be empty when ENVIRONMENT=production."
+        )

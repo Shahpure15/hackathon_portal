@@ -10,6 +10,7 @@ from app.models import (
     EvaluationRound,
     RubricVersion,
     RubricField,
+    RubricPSGuidance,
     JudgeAssignment,
     Evaluation,
     EvaluationVersion,
@@ -18,6 +19,7 @@ from app.models import (
 )
 from app.routers.admin import log_audit
 from app.services.scoring import judge_total_pct
+from app.services.rubric import applicable_fields
 
 
 def get_or_create_evaluation(
@@ -121,11 +123,7 @@ def save_draft(
     if rubric_ver.lockedAt is None:
         rubric_ver.lockedAt = now
 
-    rubric_fields_list = (
-        db.query(RubricField)
-        .filter(RubricField.rubricVersionId == rubric_ver.id)
-        .all()
-    )
+    rubric_fields_list = applicable_fields(db, rubric_ver, evaluation.teamId, require_ps=True)
     fields_by_id = {f.id: f for f in rubric_fields_list}
     fields_by_key = {f.fieldKey: f for f in rubric_fields_list}
 
@@ -321,11 +319,12 @@ def submit(
                 detail="This evaluation changed in another tab."
             )
 
-    rubric_fields = (
-        db.query(RubricField)
-        .filter(RubricField.rubricVersionId == draft.rubricVersionId)
-        .all()
+    rubric_ver = (
+        db.query(RubricVersion)
+        .filter(RubricVersion.id == draft.rubricVersionId)
+        .first()
     )
+    rubric_fields = applicable_fields(db, rubric_ver, evaluation.teamId, require_ps=True)
     scores = {
         s.fieldId: s.marks
         for s in db.query(EvaluationScore).filter(EvaluationScore.versionId == draft.id).all()
@@ -555,6 +554,7 @@ def revise_rubric(
         nf = RubricField(
             eventId=round_obj.eventId,
             rubricVersionId=new_rubric.id,
+            problemStatementId=of.problemStatementId,
             fieldKey=of.fieldKey,
             type=of.type,
             label=of.label,
@@ -568,6 +568,20 @@ def revise_rubric(
             maxLength=of.maxLength,
         )
         db.add(nf)
+
+    old_guidances = (
+        db.query(RubricPSGuidance)
+        .filter(RubricPSGuidance.rubricVersionId == curr_rubric.id)
+        .all()
+    )
+    for og in old_guidances:
+        ng = RubricPSGuidance(
+            rubricVersionId=new_rubric.id,
+            problemStatementId=og.problemStatementId,
+            decisiveTest=og.decisiveTest,
+            notes=og.notes,
+        )
+        db.add(ng)
 
     round_obj.currentRubricVersion = new_v_num
     db.flush()
@@ -632,10 +646,13 @@ def diff_versions(
     db: Session
 ) -> dict:
     """Per-field before and after for the audit trail."""
-    new_fields = {
-        f.id: f
-        for f in db.query(RubricField).filter(RubricField.rubricVersionId == v_new.rubricVersionId).all()
-    }
+    ev = db.query(Evaluation).filter(Evaluation.id == v_new.evaluationId).first()
+    team_id = ev.teamId if ev else None
+
+    v_new_rubric = db.query(RubricVersion).filter(RubricVersion.id == v_new.rubricVersionId).first() if v_new.rubricVersionId else None
+    app_new_fields = applicable_fields(db, v_new_rubric, team_id) if v_new_rubric else []
+    new_fields = {f.id: f for f in app_new_fields}
+
     new_scores = {
         s.fieldId: s.marks
         for s in db.query(EvaluationScore).filter(EvaluationScore.versionId == v_new.id).all()
@@ -649,10 +666,9 @@ def diff_versions(
     old_texts: Dict[str, Optional[str]] = {}
     old_fields_by_key = {}
     if v_old:
-        old_fields = {
-            f.id: f
-            for f in db.query(RubricField).filter(RubricField.rubricVersionId == v_old.rubricVersionId).all()
-        }
+        v_old_rubric = db.query(RubricVersion).filter(RubricVersion.id == v_old.rubricVersionId).first() if v_old.rubricVersionId else None
+        app_old_fields = applicable_fields(db, v_old_rubric, team_id) if v_old_rubric else []
+        old_fields = {f.id: f for f in app_old_fields}
         old_fields_by_key = {f.fieldKey: f for f in old_fields.values()}
         old_scores = {
             s.fieldId: s.marks

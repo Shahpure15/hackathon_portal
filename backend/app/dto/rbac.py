@@ -16,3 +16,4 @@ class AuthMeResponse(BaseModel):
     scope: Dict[str, Any]
     features: Dict[str, Any]
     moduleGates: Dict[str, Any] = {}
+    landing: str = 'none'

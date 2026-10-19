@@ -87,6 +87,11 @@ SEED_ROLES = {
         'description': 'Scores the teams assigned to them.',
         'permissions': ['evaluation.score'],
     },
+    'faculty': {
+        'name': 'Faculty Lead',
+        'description': 'Problem statements, team tracking, and evaluation oversight.',
+        'permissions': ['team.view', 'ps.view', 'panel.view', 'round.view', 'evaluation.view_all', 'checkpoint.view', 'people.view'],
+    },
 }
 
 

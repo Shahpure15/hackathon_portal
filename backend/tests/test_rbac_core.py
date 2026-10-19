@@ -9,6 +9,7 @@ from app.rbac import (
     Principal,
     ResolvedAccess,
     apply_team_scope,
+    assign_default_role,
     invalidate_user,
     require_permission,
     resolve_access,
@@ -42,7 +43,7 @@ def test_2_admin_resolves_every_catalog_key(db: Session):
 def test_3_volunteer_with_seeded_role(db: Session):
     event = make_org_event(db)
     vol_user = make_user(db, event, Role.VOLUNTEER, "vol_seeded")
-    # Trigger seed and assignment via legacy fallback or migration
+    assign_default_role(db, vol_user, None)
     ctx = CurrentUser(
         id=vol_user.id,
         eventId=event.id,
@@ -59,9 +60,9 @@ def test_3_volunteer_with_seeded_role(db: Session):
     assert principal.has('config.manage') is False
 
 
-def test_4_legacy_fallback(db: Session):
+def test_4_volunteer_no_assignment_deny_by_default(db: Session):
     event = make_org_event(db)
-    vol_user = make_user(db, event, Role.VOLUNTEER, "vol_fallback")
+    vol_user = make_user(db, event, Role.VOLUNTEER, "vol_no_assignment")
     ctx = CurrentUser(
         id=vol_user.id,
         eventId=event.id,
@@ -73,16 +74,18 @@ def test_4_legacy_fallback(db: Session):
     assert db.query(UserRoleAssignment).filter(UserRoleAssignment.userId == vol_user.id).count() == 0
 
     access = resolve_access(db, ctx)
-    assert 'team.view' in access.permissions
+    assert len(access.permissions) == 0
+    assert access.role_names == []
 
-    # Assignment row created
+    # resolve_access must NEVER write to the database
     count = db.query(UserRoleAssignment).filter(UserRoleAssignment.userId == vol_user.id).count()
-    assert count == 1
+    assert count == 0
 
     # Calling again creates no second row
     invalidate_user(vol_user.id)
-    resolve_access(db, ctx)
-    assert db.query(UserRoleAssignment).filter(UserRoleAssignment.userId == vol_user.id).count() == 1
+    access2 = resolve_access(db, ctx)
+    assert len(access2.permissions) == 0
+    assert db.query(UserRoleAssignment).filter(UserRoleAssignment.userId == vol_user.id).count() == 0
 
 
 def test_5_scope_union(db: Session):
