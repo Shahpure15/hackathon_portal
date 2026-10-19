@@ -10,7 +10,7 @@ from app.logger import logger
 from app.models import (
     Role, Team, TeamMember, ProblemStatement, PSSelection, 
     EventConfig, Volunteer, AttendanceRecord, EvaluationRound, Submission,
-    ResultRelease, ResultReleaseItem, Notification, TeamRoundStatus
+    ResultRelease, ResultReleaseItem, Notification, TeamRoundStatus, JudgeAssignment
 )
 from app.auth import require_role, CurrentUser
 from app.schemas import ProblemStatementResponse, SubmissionCreate
@@ -414,6 +414,12 @@ def get_leader_rounds(
         .all()
     )
     eligible_rounds = [r for r in rounds if is_team_eligible(db, r, team.id)]
+    assigned_round_ids = {
+        a.roundId
+        for a in db.query(JudgeAssignment.roundId)
+        .filter(JudgeAssignment.teamId == team.id, JudgeAssignment.status == "active")
+        .all()
+    }
     submissions = {s.roundId: s for s in db.query(Submission).filter(Submission.teamId == team.id).all()}
 
     round_ids = [r.id for r in eligible_rounds]
@@ -437,6 +443,8 @@ def get_leader_rounds(
 
     res = []
     for r in eligible_rounds:
+        is_eligible = True
+        has_assignment = r.id in assigned_round_ids
         sub = submissions.get(r.id)
         latest_rel = latest_release_by_round.get(r.id)
         is_released = latest_rel is not None
@@ -451,14 +459,22 @@ def get_leader_rounds(
             adv_state = status_by_round.get(r.id, "not_advanced")
             advancement_val = "advanced" if adv_state == "advanced" else "not_advanced"
 
+        is_sub_open = bool(r.isSubmissionOpen and r.submissionEnabled and is_eligible)
+
         res.append({
             "id": r.id,
             "name": r.name,
             "roundNumber": r.roundNumber,
             "description": r.description,
             "fields": r.fields or [],
-            "isOpen": r.isSubmissionOpen,
-            "submissionEnabled": r.submissionEnabled,
+            "isOpen": is_sub_open,
+            "opensAt": r.opensAt.isoformat() if r.opensAt else None,
+            "closesAt": r.closesAt.isoformat() if r.closesAt else None,
+            "status": r.status,
+            "submissionEnabled": bool(r.submissionEnabled),
+            "evaluationEnabled": bool(r.evaluationEnabled),
+            "isEligible": bool(is_eligible),
+            "hasAssignment": bool(has_assignment),
             "results": results_info,
             "advancement": advancement_val,
             "submission": {

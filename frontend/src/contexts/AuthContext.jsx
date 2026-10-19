@@ -1,33 +1,21 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import api, { setAccessToken } from '../services/api';
 
 const AuthContext = createContext(null);
 
-const SEEDED_VOLUNTEER_PERMS = [
-  'team.view',
-  'team.checkin',
-  'people.view',
-  'ps.view',
-  'ps.select',
-  'checkpoint.view',
-  'checkpoint.log',
-  'qr.scan',
-  'announcement.view',
-];
-
 const buildFallbackAccess = (role) => {
   const normalizedRole = (role || '').toUpperCase();
   const isAdmin = normalizedRole === 'ADMIN';
-  const isVolunteer = normalizedRole === 'VOLUNTEER';
-  const perms = isVolunteer ? new Set(SEEDED_VOLUNTEER_PERMS) : new Set();
 
   return {
-    permissions: perms,
+    permissions: new Set(),
     isAdmin,
-    scope: isVolunteer ? 'all' : null,
+    scope: null,
     features: {},
     roleNames: role ? [role] : [],
     moduleGates: {},
+    landing: null,
+    loadFailed: true,
   };
 };
 
@@ -42,6 +30,8 @@ const fetchAccess = async (role) => {
       features: data.features || {},
       roleNames: data.roleNames || [],
       moduleGates: data.moduleGates || {},
+      landing: data.landing || 'none',
+      loadFailed: false,
     };
   } catch (err) {
     console.warn('Failed to fetch /auth/me, falling back to role-based access:', err);
@@ -65,6 +55,10 @@ export const AuthProvider = ({ children }) => {
 
       const userAccess = await fetchAccess(role);
       setAccess(userAccess);
+      const computedRole = userAccess?.roleNames?.length
+        ? userAccess.roleNames[0]
+        : (userAccess?.isAdmin ? 'ADMIN' : (userAccess?.landing === 'judge' ? 'JUDGE' : (userAccess?.landing === 'volunteer' ? 'VOLUNTEER' : role)));
+      setUser({ username: responseUsername, role, eventId, teamId, displayRole: computedRole });
 
       return { success: true };
     } catch (error) {
@@ -105,11 +99,14 @@ export const AuthProvider = ({ children }) => {
       const response = await api.post('/auth/refresh');
       const { access_token, role, eventId, teamId, username } = response.data;
       setAccessToken(access_token);
-      setUser({ username, role, eventId, teamId });
       localStorage.setItem('has_session', 'true');
 
       const userAccess = await fetchAccess(role);
       setAccess(userAccess);
+      const computedRole = userAccess?.roleNames?.length
+        ? userAccess.roleNames[0]
+        : (userAccess?.isAdmin ? 'ADMIN' : (userAccess?.landing === 'judge' ? 'JUDGE' : (userAccess?.landing === 'volunteer' ? 'VOLUNTEER' : role)));
+      setUser({ username, role, eventId, teamId, displayRole: computedRole });
     } catch (error) {
       // Refresh token invalid or expired, clear session
       localStorage.removeItem('has_session');
@@ -135,6 +132,46 @@ export const AuthProvider = ({ children }) => {
     return (keys || []).some((k) => Boolean(access.permissions?.has(k)));
   }, [access]);
 
+  const refreshAccess = useCallback(async () => {
+    if (!user) return;
+    const freshAccess = await fetchAccess(user.role);
+    setAccess(freshAccess);
+    const computedRole = freshAccess?.roleNames?.length
+      ? freshAccess.roleNames[0]
+      : (freshAccess?.isAdmin ? 'ADMIN' : (freshAccess?.landing === 'judge' ? 'JUDGE' : (freshAccess?.landing === 'volunteer' ? 'VOLUNTEER' : user.role)));
+    setUser((prev) => (prev ? { ...prev, displayRole: computedRole } : prev));
+  }, [user]);
+
+  const lastRefreshRef = useRef(0);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const handleFocus = () => {
+      const now = Date.now();
+      if (now - lastRefreshRef.current >= 60000) {
+        lastRefreshRef.current = now;
+        refreshAccess();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      const now = Date.now();
+      if (document.visibilityState === 'visible' && now - lastRefreshRef.current >= 60000) {
+        lastRefreshRef.current = now;
+        refreshAccess();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [user, refreshAccess]);
+
   const features = access?.features || {};
 
   useEffect(() => {
@@ -154,7 +191,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, access, can, canAny, features, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, access, can, canAny, features, loading, login, logout, refreshAccess }}>
       {children}
     </AuthContext.Provider>
   );

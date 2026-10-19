@@ -14,6 +14,7 @@ import {
   Radio,
   Mail,
   ShieldCheck,
+  Award,
   Circle,
 } from 'lucide-react';
 
@@ -30,6 +31,7 @@ const ICON_MAP = {
   ClipboardCheck,
   Mail,
   ShieldCheck,
+  Award,
 };
 
 export default function MobileNav({

@@ -11,6 +11,7 @@ from app.database import SessionLocal
 from app.models import Event, EventConfig, User, Role, CheckpointType
 from app.auth import get_password_hash
 from app.config import settings
+from app.rbac import assign_default_role
 
 def generate_random_password(length=16):
     alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
@@ -77,6 +78,8 @@ def seed_db():
             role=Role.VOLUNTEER
         )
         db.add(volunteer)
+        db.flush()
+        assign_default_role(db, volunteer, None, created_by='SEED')
 
         # 5. Create Standard Checkpoint Types
         checkpoints = [

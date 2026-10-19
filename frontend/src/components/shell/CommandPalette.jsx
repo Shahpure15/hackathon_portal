@@ -17,6 +17,7 @@ import {
   ClipboardCheck,
   Mail,
   ShieldCheck,
+  Award,
   Circle,
   ArrowRight,
 } from 'lucide-react';
@@ -37,6 +38,7 @@ const ICON_MAP = {
   ClipboardCheck,
   Mail,
   ShieldCheck,
+  Award,
 };
 
 export default function CommandPalette({

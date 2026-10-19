@@ -11,6 +11,7 @@ from app.dto.judge import (
     JudgeTeamItemDTO,
     JudgeTeamDetailDTO,
     JudgeRubricSummaryDTO,
+    JudgeRubricSectionDTO,
     JudgeRubricFieldDTO,
     JudgeTeamSubmissionDTO,
     JudgeMineDTO,
@@ -25,6 +26,7 @@ from app.models import (
     EvaluationRound,
     RubricVersion,
     RubricField,
+    RubricPSGuidance,
     JudgeAssignment,
     Evaluation,
     EvaluationVersion,
@@ -42,6 +44,8 @@ from app.services.evaluation import (
     submit as service_submit,
     _token_from_version,
 )
+from app.services.rubric import applicable_fields
+from app.services.eligibility import is_team_eligible
 
 router = APIRouter(prefix="/judge", tags=["judge"])
 
@@ -59,9 +63,11 @@ def _get_judge_id(current_user: Principal) -> str:
 @router.get("/rounds", response_model=List[JudgeRoundItemDTO])
 def get_judge_rounds(
     db: Session = Depends(get_db),
-    current_user: Principal = Depends(require_permission("evaluation.score", principal_types=(Role.VOLUNTEER,))),
+    current_user: Principal = Depends(require_permission("evaluation.score", principal_types=(Role.VOLUNTEER, Role.ADMIN))),
 ):
-    judge_id = _get_judge_id(current_user)
+    judge_id = getattr(current_user, "volunteerId", None)
+    if not judge_id:
+        return []
 
     # Active assignments for this judge
     active_assignments = (
@@ -101,10 +107,16 @@ def get_judge_rounds(
             )
             .first()
         )
-        if not rubric or rubric.publishedAt is None:
+        if not rubric:
             continue
+        if rubric.publishedAt is None:
+            if r.status == "live" and r.evaluationEnabled:
+                rubric.publishedAt = datetime.utcnow()
+                db.commit()
+            else:
+                continue
 
-        judge_round_assigns = [a for a in active_assignments if a.roundId == r.id]
+        judge_round_assigns = [a for a in active_assignments if a.roundId == r.id and is_team_eligible(db, r, a.teamId)]
         assigned_team_ids = {a.teamId for a in judge_round_assigns}
 
         # Check evaluations for this judge in this round
@@ -155,7 +167,7 @@ def get_judge_rounds(
 def get_judge_round_teams(
     rid: str,
     db: Session = Depends(get_db),
-    current_user: Principal = Depends(require_permission("evaluation.score", principal_types=(Role.VOLUNTEER,))),
+    current_user: Principal = Depends(require_permission("evaluation.score", principal_types=(Role.VOLUNTEER, Role.ADMIN))),
 ):
     judge_id = _get_judge_id(current_user)
 
@@ -181,20 +193,21 @@ def get_judge_round_teams(
         )
         .all()
     )
+    assignments = [a for a in assignments if is_team_eligible(db, round_obj, a.teamId)]
     if not assignments:
         raise HTTPException(status_code=404, detail="No assigned teams in this round")
 
     team_ids = [a.teamId for a in assignments]
     teams = {t.id: t for t in db.query(Team).filter(Team.id.in_(team_ids)).all()}
 
-    # PS Titles
+    # PS details (code, title, description)
     selections = (
-        db.query(PSSelection.teamId, ProblemStatement.title)
+        db.query(PSSelection.teamId, ProblemStatement.code, ProblemStatement.title, ProblemStatement.description)
         .join(ProblemStatement, PSSelection.psId == ProblemStatement.id)
         .filter(PSSelection.teamId.in_(team_ids))
         .all()
     )
-    ps_map = {s[0]: s[1] for s in selections}
+    ps_map = {s[0]: {"code": s[1], "title": s[2], "description": s[3]} for s in selections}
 
     # Evaluations
     evaluations = (
@@ -244,12 +257,15 @@ def get_judge_round_teams(
             pct = None
             updated = None
 
+        ps_info = ps_map.get(t.id, {})
         out.append(
             JudgeTeamItemDTO(
                 teamId=t.id,
                 name=t.name,
                 registrationId=t.registrationId,
-                psTitle=ps_map.get(t.id),
+                psCode=ps_info.get("code"),
+                psTitle=ps_info.get("title"),
+                psDescription=ps_info.get("description"),
                 status=item_status,
                 myTotalPct=pct,
                 updatedAt=updated,
@@ -263,7 +279,7 @@ def get_judge_team_detail(
     rid: str,
     tid: str,
     db: Session = Depends(get_db),
-    current_user: Principal = Depends(require_permission("evaluation.score", principal_types=(Role.VOLUNTEER,))),
+    current_user: Principal = Depends(require_permission("evaluation.score", principal_types=(Role.VOLUNTEER, Role.ADMIN))),
 ):
     judge_id = _get_judge_id(current_user)
 
@@ -292,6 +308,9 @@ def get_judge_team_detail(
     )
     if not assignment:
         raise HTTPException(status_code=404, detail="Team assignment not found")
+
+    if not is_team_eligible(db, round_obj, tid):
+        raise HTTPException(status_code=403, detail="Team is not eligible for this round")
 
     team = db.query(Team).filter(Team.id == tid).first()
     if not team:
@@ -326,17 +345,49 @@ def get_judge_team_detail(
         .first()
     )
     if not rubric_ver or rubric_ver.publishedAt is None:
-        raise HTTPException(status_code=400, detail="Rubric is not published")
+        if rubric_ver and round_obj.status == "live" and round_obj.evaluationEnabled:
+            rubric_ver.publishedAt = datetime.utcnow()
+            db.commit()
+        else:
+            raise HTTPException(status_code=400, detail="Rubric is not published")
 
-    rubric_fields = (
-        db.query(RubricField)
-        .filter(RubricField.rubricVersionId == rubric_ver.id)
-        .order_by(RubricField.sortOrder.asc())
-        .all()
-    )
+    # Fetch applicable fields for this team (will raise 409 if multi-PS and team has no PS)
+    rubric_fields = applicable_fields(db, rubric_ver, tid, require_ps=True)
+
+    decisive_test = None
+    guidance_notes = None
+    if ps_selection:
+        guidance = (
+            db.query(RubricPSGuidance)
+            .filter(
+                RubricPSGuidance.rubricVersionId == rubric_ver.id,
+                RubricPSGuidance.problemStatementId == ps_selection.psId,
+            )
+            .first()
+        )
+        if guidance:
+            decisive_test = guidance.decisiveTest
+            guidance_notes = guidance.notes
+
+    has_ps_fields = any(f.problemStatementId is not None for f in rubric_fields)
     field_dtos = []
+    sec_a_ids = []
+    sec_b_ids = []
+    sec_a_max = Decimal("0")
+    sec_b_max = Decimal("0")
+
     for f in rubric_fields:
         aud = "staff" if f.visibility == "staff" else "participants"
+        section_key = ("A" if f.problemStatementId is not None else "B") if has_ps_fields else None
+        if section_key == "A":
+            sec_a_ids.append(f.id)
+            if f.maxMarks:
+                sec_a_max += f.maxMarks
+        elif section_key == "B":
+            sec_b_ids.append(f.id)
+            if f.maxMarks:
+                sec_b_max += f.maxMarks
+
         field_dtos.append(
             JudgeRubricFieldDTO(
                 id=f.id,
@@ -350,9 +401,35 @@ def get_judge_team_detail(
                 maxLength=f.maxLength,
                 sortOrder=f.sortOrder or 0,
                 audience=aud,
+                section=section_key,
+                problemStatementId=f.problemStatementId,
             )
         )
-    rubric_summary = JudgeRubricSummaryDTO(version=rubric_ver.version, fields=field_dtos)
+
+    sections = None
+    if has_ps_fields:
+        sections = [
+            JudgeRubricSectionDTO(
+                key="A",
+                title=f"Section A: {ps_obj.code} Specific Criteria" if ps_obj else "Section A: PS Specific Criteria",
+                maxMarks=sec_a_max,
+                weight=sec_a_max,
+                fieldIds=sec_a_ids,
+            ),
+            JudgeRubricSectionDTO(
+                key="B",
+                title="Section B: General Evaluation Criteria",
+                maxMarks=sec_b_max,
+                weight=sec_b_max,
+                fieldIds=sec_b_ids,
+            ),
+        ]
+
+    rubric_summary = JudgeRubricSummaryDTO(
+        version=rubric_ver.version,
+        fields=field_dtos,
+        sections=sections,
+    )
 
     # Mine Evaluation
     ev = (
@@ -398,8 +475,11 @@ def get_judge_team_detail(
         teamId=team.id,
         name=team.name,
         registrationId=team.registrationId,
+        psCode=ps_obj.code if ps_obj else None,
         psTitle=ps_obj.title if ps_obj else None,
         psDescription=ps_obj.description if ps_obj else None,
+        decisiveTest=decisive_test,
+        guidanceNotes=guidance_notes,
         submission=submission_dto,
         rubric=rubric_summary,
         mine=mine_dto,
@@ -414,7 +494,7 @@ def save_judge_draft(
     tid: str,
     payload: JudgeDraftRequest,
     db: Session = Depends(get_db),
-    current_user: Principal = Depends(require_permission("evaluation.score", principal_types=(Role.VOLUNTEER,))),
+    current_user: Principal = Depends(require_permission("evaluation.score", principal_types=(Role.VOLUNTEER, Role.ADMIN))),
 ):
     judge_id = _get_judge_id(current_user)
 
@@ -444,9 +524,12 @@ def save_judge_draft(
     if not assignment:
         raise HTTPException(status_code=404, detail="Team assignment not found")
 
+    if not is_team_eligible(db, round_obj, tid):
+        raise HTTPException(status_code=403, detail="Team is not eligible for this round")
+
     ev = get_or_create_evaluation(db, round_obj, tid, judge_id)
 
-    draft_ver, new_token = save_draft(
+    draft_ver, _ = save_draft(
         db=db,
         evaluation=ev,
         payload=payload.dict(),
@@ -454,6 +537,8 @@ def save_judge_draft(
         actor=current_user.username,
     )
     db.commit()
+    db.refresh(draft_ver)
+    new_token = _token_from_version(draft_ver)
 
     return JudgeDraftResponse(token=new_token, savedAt=draft_ver.updatedAt or datetime.utcnow())
 
@@ -466,7 +551,7 @@ def submit_judge_evaluation(
     tid: str,
     payload: JudgeSubmitRequest,
     db: Session = Depends(get_db),
-    current_user: Principal = Depends(require_permission("evaluation.score", principal_types=(Role.VOLUNTEER,))),
+    current_user: Principal = Depends(require_permission("evaluation.score", principal_types=(Role.VOLUNTEER, Role.ADMIN))),
 ):
     judge_id = _get_judge_id(current_user)
 
@@ -496,6 +581,9 @@ def submit_judge_evaluation(
     if not assignment:
         raise HTTPException(status_code=404, detail="Team assignment not found")
 
+    if not is_team_eligible(db, round_obj, tid):
+        raise HTTPException(status_code=403, detail="Team is not eligible for this round")
+
     ev = get_or_create_evaluation(db, round_obj, tid, judge_id)
 
     final_ver = service_submit(
@@ -505,6 +593,7 @@ def submit_judge_evaluation(
         actor=current_user.username,
     )
     db.commit()
+    db.refresh(final_ver)
 
     return JudgeSubmitResponse(
         status="submitted",

@@ -353,3 +353,116 @@ def test_round_put_eligibility_validation(client: TestClient, admin_results_setu
         headers=headers,
     )
     assert res_fake.status_code == 422
+
+
+def test_release_manual_round_without_rubric_or_finals(client: TestClient, admin_results_setup, db):
+    ctx = admin_results_setup
+    admin = ctx["admin"]
+    event = ctx["event"]
+    headers = auth_header(admin)
+
+    # Create round without rubrics or judge evaluations
+    manual_round = EvaluationRound(
+        eventId=event.id,
+        name="Round Screening",
+        roundNumber=10,
+        submissionEnabled=True,
+        evaluationEnabled=True,
+    )
+    db.add(manual_round)
+    db.flush()
+
+    # Create two teams and set manual progression
+    t1 = make_team(db, event, name="Team Qual 1", registration_id="REG-Q1")
+    t2 = make_team(db, event, name="Team Qual 2", registration_id="REG-Q2")
+
+    s1 = TeamRoundStatus(
+        eventId=event.id,
+        roundId=manual_round.id,
+        teamId=t1.id,
+        state="advanced",
+        via="manual",
+        rankSnapshot=1,
+    )
+    s2 = TeamRoundStatus(
+        eventId=event.id,
+        roundId=manual_round.id,
+        teamId=t2.id,
+        state="not_advanced",
+        via="manual",
+        rankSnapshot=2,
+    )
+    db.add_all([s1, s2])
+    db.commit()
+
+    # Release results with advancement visible and rank visible
+    res = client.post(
+        f"/admin/rounds/{manual_round.id}/results/release",
+        json={
+            "showAdvancement": True,
+            "showRank": True,
+            "showScore": False,
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["releaseNo"] == 1
+    assert data["count"] == 2
+
+    # Check that the leader of t1 can fetch the released result
+    u1 = make_user(db, event, role="LEADER", username="leader_q1", team_id=t1.id)
+    leader_headers = auth_header(u1)
+    res_ldr = client.get(f"/leader/rounds/{manual_round.id}/result", headers=leader_headers)
+    assert res_ldr.status_code == 200, res_ldr.text
+    ldr_data = res_ldr.json()
+    assert ldr_data["advancement"] == "advanced"
+    assert ldr_data["rank"] == 1
+
+
+def test_detailed_sheets_export(client: TestClient, admin_results_setup):
+    ctx = admin_results_setup
+    admin, round_row = ctx["admin"], ctx["round"]
+    headers = auth_header(admin)
+
+    # 1. Test detailed sheets export (GET and POST)
+    res = client.get(f"/admin/rounds/{round_row.id}/export/detailed-sheets", headers=headers)
+    assert res.status_code == 200
+    assert "application/vnd.openxmlformats" in res.headers["content-type"]
+
+    wb = openpyxl.load_workbook(io.BytesIO(res.content))
+    assert "Evaluation Summary" in wb.sheetnames
+    # There should be sheets for evaluated teams
+    assert len(wb.sheetnames) >= 2
+    ws_sum = wb["Evaluation Summary"]
+    assert "EVALUATION SUMMARY & LEADERBOARD" in str(ws_sum["A1"].value)
+    # Check headers include College / Institution and Team Leader
+    sum_headers = [cell.value for cell in ws_sum[3] if cell.value]
+    assert "College / Institution" in sum_headers
+    assert "Team Leader" in sum_headers
+    assert "Status" in sum_headers
+
+    # Check POST also works
+    res_post = client.post(f"/admin/rounds/{round_row.id}/export/detailed-sheets", headers=headers)
+    assert res_post.status_code == 200
+
+    # 2. Test leaderboard export (GET and POST)
+    lb_res = client.get(f"/admin/rounds/{round_row.id}/leaderboard/export", headers=headers)
+    assert lb_res.status_code == 200
+    assert "application/vnd.openxmlformats" in lb_res.headers["content-type"]
+
+    lb_wb = openpyxl.load_workbook(io.BytesIO(lb_res.content))
+    lb_ws = lb_wb.active
+    lb_headers = [cell.value for cell in lb_ws[1] if cell.value]
+    assert "Rank" in lb_headers
+    assert "Team Registration ID" in lb_headers
+    assert "College / Institution" in lb_headers
+    assert "Team Leader" in lb_headers
+    assert "Final Score (/100)" in lb_headers
+
+    # Check POST also works
+    lb_post = client.post(f"/admin/rounds/{round_row.id}/leaderboard/export", headers=headers)
+    assert lb_post.status_code == 200
+
+
+

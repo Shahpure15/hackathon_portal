@@ -299,3 +299,131 @@ def test_revoked_assignment_and_rate_limit_user_key(client, judge_fixture, db):
     assert key_a.startswith("user:")
     assert key_b.startswith("user:")
     assert key_a != key_b  # Different users get distinct buckets behind the same IP
+
+
+def test_judge_multi_ps_detail_sections_and_submission(client, db):
+    from app.models import ProblemStatement, PSSelection, JudgeAssignment, Role
+    from app.services.rubric import save_draft_rubric, publish_rubric
+    from tests.factories import make_org_event, make_volunteer, make_user, make_team
+
+    event = make_org_event(db, name="Judge Multi PS Event")
+    rnd = EvaluationRound(
+        eventId=event.id,
+        name="Round Multi PS",
+        roundNumber=1,
+        status="live",
+        evaluationEnabled=True,
+    )
+    db.add(rnd)
+    db.flush()
+
+    ps1 = ProblemStatement(eventId=event.id, code="PSE01", title="PS One", description="Desc 1", capacity=10)
+    ps2 = ProblemStatement(eventId=event.id, code="PSE02", title="PS Two", description="Desc 2", capacity=10)
+    db.add_all([ps1, ps2])
+    db.flush()
+
+    # Rubric: 60 general + 40 PS1 + 40 PS2
+    fields = [
+        {"type": "numeric", "label": "Gen Feasibility", "maxMarks": 30, "weight": 30, "problemStatementId": None},
+        {"type": "numeric", "label": "Gen Presentation", "maxMarks": 30, "weight": 30, "problemStatementId": None},
+        {"type": "numeric", "label": "PS1 Tech", "maxMarks": 20, "weight": 20, "problemStatementId": ps1.id},
+        {"type": "numeric", "label": "PS1 Demo", "maxMarks": 20, "weight": 20, "problemStatementId": ps1.id},
+        {"type": "numeric", "label": "PS2 Scale", "maxMarks": 25, "weight": 25, "problemStatementId": ps2.id},
+        {"type": "numeric", "label": "PS2 Latency", "maxMarks": 15, "weight": 15, "problemStatementId": ps2.id},
+    ]
+    guidances = [
+        {"problemStatementId": ps1.id, "decisiveTest": "Demo PS1 under load", "notes": "Check errors"},
+        {"problemStatementId": ps2.id, "decisiveTest": "Latency benchmark", "notes": "Must be < 100ms"},
+    ]
+    r_ver = save_draft_rubric(db, rnd, fields, "admin", guidance_payload=guidances)
+    publish_rubric(db, rnd, "admin")
+
+    judge_role = RbacRole(
+        eventId=event.id,
+        name="Judge MPS Role",
+        isSystem=True,
+        systemKey="judge",
+    )
+    from app.models import RolePermission
+    db.add(judge_role)
+    db.flush()
+    db.add(RolePermission(roleId=judge_role.id, permissionKey="evaluation.score"))
+
+    judge_vol = make_volunteer(db, event, name="Judge MPS", email="jmps@example.com")
+    judge_user = make_user(db, event, Role.VOLUNTEER, username="jmps", volunteer=judge_vol)
+    db.add(UserRoleAssignment(eventId=event.id, userId=judge_user.id, roleId=judge_role.id))
+    db.commit()
+    judge_header = auth_header(judge_user)
+
+    t1 = make_team(db, event, "Team Alpha", "REG_MPS_1")
+    t2 = make_team(db, event, "Team Beta", "REG_MPS_2")
+    db.add(PSSelection(teamId=t1.id, psId=ps1.id))
+    # t2 has NO PSSelection!
+
+    db.add(JudgeAssignment(eventId=event.id, roundId=rnd.id, judgeVolunteerId=judge_vol.id, teamId=t1.id, status="active"))
+    db.add(JudgeAssignment(eventId=event.id, roundId=rnd.id, judgeVolunteerId=judge_vol.id, teamId=t2.id, status="active"))
+    db.commit()
+
+    # 1. Team without PS selection returns 409
+    res_t2 = client.get(f"/judge/rounds/{rnd.id}/teams/{t2.id}", headers=judge_header)
+    assert res_t2.status_code == 409
+    assert "no problem statement selection" in res_t2.json()["detail"].lower()
+
+    # 2. Team 1 detail returns Section A (PS1) + Section B (General) and decisive test
+    res_t1 = client.get(f"/judge/rounds/{rnd.id}/teams/{t1.id}", headers=judge_header)
+    assert res_t1.status_code == 200
+    d1 = res_t1.json()
+    assert d1["psCode"] == "PSE01"
+    assert d1["decisiveTest"] == "Demo PS1 under load"
+    assert d1["guidanceNotes"] == "Check errors"
+
+    rubric_d1 = d1["rubric"]
+    # Should only have 4 applicable fields (2 general + 2 PS1, excluding PS2)
+    assert len(rubric_d1["fields"]) == 4
+    for f in rubric_d1["fields"]:
+        assert f["problemStatementId"] in (None, ps1.id)
+        assert f["section"] in ("A", "B")
+
+    sections = rubric_d1["sections"]
+    assert len(sections) == 2
+    assert sections[0]["key"] == "A"
+    assert float(sections[0]["maxMarks"]) == 40.0
+    assert sections[1]["key"] == "B"
+    assert float(sections[1]["maxMarks"]) == 60.0
+
+    # 3. Draft save and submission for Team 1
+    t1_fields = {f["label"]: f["id"] for f in rubric_d1["fields"]}
+    draft_scores = {
+        t1_fields["Gen Feasibility"]: "28",
+        t1_fields["Gen Presentation"]: "27",
+        t1_fields["PS1 Tech"]: "18",
+        t1_fields["PS1 Demo"]: "19",
+    }
+    res_draft = client.put(
+        f"/judge/rounds/{rnd.id}/teams/{t1.id}/draft",
+        json={"scores": draft_scores},
+        headers=judge_header,
+    )
+    assert res_draft.status_code == 200
+    token = res_draft.json()["token"]
+
+    # 4. Attempting to score a PS2 field for Team 1 fails with 422
+    ps2_field = next(f for f in r_ver.fields if f.problemStatementId == ps2.id)
+    res_bad = client.put(
+        f"/judge/rounds/{rnd.id}/teams/{t1.id}/draft",
+        json={"scores": {ps2_field.id: "20"}, "token": token},
+        headers=judge_header,
+    )
+    assert res_bad.status_code == 422
+
+    # 5. Submit Team 1 evaluation
+    res_sub = client.post(
+        f"/judge/rounds/{rnd.id}/teams/{t1.id}/submit",
+        json={"token": token},
+        headers=judge_header,
+    )
+    assert res_sub.status_code == 200
+    assert res_sub.json()["status"] == "submitted"
+    # Total score: (28 + 27 + 18 + 19) = 92 / 100 = 92.000%
+    assert float(res_sub.json()["totalPct"]) == 92.0
+

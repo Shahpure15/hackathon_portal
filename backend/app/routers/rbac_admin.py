@@ -544,6 +544,11 @@ def get_role_members(
     for assignment, user, volunteer in records:
         name = volunteer.name if volunteer else user.username
         v_type = volunteer.type.value if (volunteer and hasattr(volunteer.type, "value")) else (str(volunteer.type) if volunteer else "STAFF")
+        user_role_count = (
+            db.query(UserRoleAssignment)
+            .filter(UserRoleAssignment.userId == user.id, UserRoleAssignment.eventId == current_user.eventId)
+            .count()
+        )
         results.append(
             RoleMemberResponse(
                 userId=user.id,
@@ -551,6 +556,7 @@ def get_role_members(
                 name=name,
                 type=v_type,
                 scope=assignment.scope,
+                roleCount=user_role_count,
             )
         )
     return results
@@ -593,6 +599,37 @@ def add_role_member(
         raise HTTPException(status_code=409, detail="User is already assigned to this role")
 
     canonical_scope = _canonicalize_scope(db, current_user.eventId, payload.scope)
+
+    if role.systemKey:
+        other_sys_roles = (
+            db.query(RbacRole)
+            .filter(
+                RbacRole.eventId == current_user.eventId,
+                RbacRole.systemKey.isnot(None),
+                RbacRole.id != role.id,
+            )
+            .all()
+        )
+        other_sys_ids = {r.id for r in other_sys_roles}
+        if other_sys_ids:
+            conflicting_asgns = (
+                db.query(UserRoleAssignment)
+                .filter(
+                    UserRoleAssignment.userId == user_id,
+                    UserRoleAssignment.eventId == current_user.eventId,
+                    UserRoleAssignment.roleId.in_(other_sys_ids),
+                )
+                .all()
+            )
+            for old_a in conflicting_asgns:
+                db.delete(old_a)
+
+        if role.systemKey == "judge":
+            volunteer.type = "Judge / Evaluator"
+        elif role.systemKey == "faculty":
+            volunteer.type = "FACULTY"
+        elif role.systemKey == "volunteer":
+            volunteer.type = "Volunteer / Monitor"
 
     assignment = UserRoleAssignment(
         eventId=current_user.eventId,
@@ -693,20 +730,6 @@ def remove_role_member(
     if not assignment:
         raise HTTPException(status_code=404, detail="Member assignment not found")
 
-    total_assignments = (
-        db.query(UserRoleAssignment)
-        .filter(
-            UserRoleAssignment.userId == user_id,
-            UserRoleAssignment.eventId == current_user.eventId,
-        )
-        .count()
-    )
-    if total_assignments <= 1:
-        raise HTTPException(
-            status_code=409,
-            detail="Assign another role first, or revoke the login",
-        )
-
     db.delete(assignment)
     db.commit()
 
@@ -720,4 +743,9 @@ def remove_role_member(
         {"userId": user_id, "roleId": role_id},
         event_id=current_user.eventId,
     )
-    return {"message": "Member removed from role"}
+    remaining = (
+        db.query(UserRoleAssignment)
+        .filter(UserRoleAssignment.userId == user_id, UserRoleAssignment.eventId == current_user.eventId)
+        .count()
+    )
+    return {"message": "Member removed from role", "remainingRoles": remaining}

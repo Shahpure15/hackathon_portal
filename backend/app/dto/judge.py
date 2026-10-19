@@ -20,7 +20,9 @@ class JudgeTeamItemDTO(BaseModel):
     teamId: str
     name: str
     registrationId: str
+    psCode: Optional[str] = None
     psTitle: Optional[str] = None
+    psDescription: Optional[str] = None
     status: str  # not_started | draft | submitted
     myTotalPct: Optional[Decimal] = None
     updatedAt: Optional[datetime] = None
@@ -39,12 +41,24 @@ class JudgeRubricFieldDTO(BaseModel):
     maxLength: Optional[int] = None
     sortOrder: int = 0
     audience: str = "participants"  # participants | staff
+    section: Optional[str] = None  # "A" | "B"
+    problemStatementId: Optional[str] = None
+
+
+class JudgeRubricSectionDTO(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    key: str  # "A" | "B"
+    title: str
+    maxMarks: Optional[Decimal] = None
+    weight: Optional[Decimal] = None
+    fieldIds: List[str] = []
 
 
 class JudgeRubricSummaryDTO(BaseModel):
     model_config = ConfigDict(extra="ignore")
     version: int
     fields: List[JudgeRubricFieldDTO]
+    sections: Optional[List[JudgeRubricSectionDTO]] = None
 
 
 class JudgeTeamSubmissionDTO(BaseModel):
@@ -69,8 +83,11 @@ class JudgeTeamDetailDTO(BaseModel):
     teamId: str
     name: str
     registrationId: str
+    psCode: Optional[str] = None
     psTitle: Optional[str] = None
     psDescription: Optional[str] = None
+    decisiveTest: Optional[str] = None
+    guidanceNotes: Optional[str] = None
     submission: Optional[JudgeTeamSubmissionDTO] = None
     rubric: JudgeRubricSummaryDTO
     mine: JudgeMineDTO

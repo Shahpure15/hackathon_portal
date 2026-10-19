@@ -11,6 +11,7 @@ from app.dto.rounds import (
     RoundListItemDTO,
     RoundUpdateRequest,
     RubricFieldItemDTO,
+    RubricPSGuidanceDTO,
     RubricResponse,
     RubricSaveRequest,
     RubricSummaryDTO,
@@ -48,25 +49,30 @@ def _build_round_detail(round_obj: EvaluationRound, db: Session) -> RoundDetailD
     rubric_summary = _build_rubric_summary(rubric_ver)
 
     rubric_fields_dto = []
-    if rubric_ver and rubric_ver.fields:
-        ordered_fields = sorted(rubric_ver.fields, key=lambda f: f.sortOrder)
-        for f in ordered_fields:
-            rubric_fields_dto.append(
-                RubricFieldItemDTO(
-                    id=f.id,
-                    fieldKey=f.fieldKey,
-                    type=f.type,
-                    label=f.label,
-                    description=f.description,
-                    sortOrder=f.sortOrder,
-                    isRequired=f.isRequired,
-                    maxMarks=f.maxMarks,
-                    weight=f.weight,
-                    anchors=f.anchors,
-                    visibility=f.visibility,
-                    maxLength=f.maxLength,
+    guidance_dto = []
+    if rubric_ver:
+        if rubric_ver.fields:
+            ordered_fields = sorted(rubric_ver.fields, key=lambda f: f.sortOrder)
+            for f in ordered_fields:
+                rubric_fields_dto.append(
+                    RubricFieldItemDTO(
+                        id=f.id,
+                        problemStatementId=f.problemStatementId,
+                        fieldKey=f.fieldKey,
+                        type=f.type,
+                        label=f.label,
+                        description=f.description,
+                        sortOrder=f.sortOrder,
+                        isRequired=f.isRequired,
+                        maxMarks=f.maxMarks,
+                        weight=f.weight,
+                        anchors=f.anchors,
+                        visibility=f.visibility,
+                        maxLength=f.maxLength,
+                    )
                 )
-            )
+        if rubric_ver.guidances:
+            guidance_dto = [RubricPSGuidanceDTO.from_orm(g) for g in rubric_ver.guidances]
 
     return RoundDetailDTO(
         id=round_obj.id,
@@ -90,6 +96,7 @@ def _build_round_detail(round_obj: EvaluationRound, db: Session) -> RoundDetailD
         submissionCount=sub_count,
         rubricSummary=rubric_summary,
         rubricFields=rubric_fields_dto,
+        guidance=guidance_dto,
     )
 
 
@@ -435,6 +442,7 @@ def get_round_rubric(
     if not rubric_ver:
         return RubricResponse(
             rubricFields=[],
+            guidance=[],
             errors=[],
             warnings=[],
             version=0,
@@ -448,6 +456,7 @@ def get_round_rubric(
         fields_dto.append(
             RubricFieldItemDTO(
                 id=f.id,
+                problemStatementId=f.problemStatementId,
                 fieldKey=f.fieldKey,
                 type=f.type,
                 label=f.label,
@@ -464,6 +473,7 @@ def get_round_rubric(
         fields_data.append(
             {
                 "id": f.id,
+                "problemStatementId": f.problemStatementId,
                 "fieldKey": f.fieldKey,
                 "type": f.type,
                 "label": f.label,
@@ -473,13 +483,16 @@ def get_round_rubric(
             }
         )
 
+    guidance_dto = [RubricPSGuidanceDTO.from_orm(g) for g in (rubric_ver.guidances or [])]
+
     # Compute validation status: weights not 100 is warning during editing
     validation_errs = validate_rubric(fields_data, tie_break_keys=round_obj.tieBreakOrder or [])
-    warnings = [e for e in validation_errs if "weights must total exactly 100" in e]
-    errors = [e for e in validation_errs if "weights must total exactly 100" not in e]
+    warnings = [e for e in validation_errs if "weights must total exactly" in e]
+    errors = [e for e in validation_errs if "weights must total exactly" not in e]
 
     return RubricResponse(
         rubricFields=fields_dto,
+        guidance=guidance_dto,
         errors=errors,
         warnings=warnings,
         version=rubric_ver.version,
@@ -507,7 +520,8 @@ def update_round_rubric(
         raise HTTPException(status_code=404, detail="Evaluation round not found")
 
     fields_raw = [f.dict() for f in payload.rubricFields]
-    rubric_ver = save_draft_rubric(db, round_obj, fields_raw, current_user.id)
+    guidance_payload = [g.dict() for g in payload.guidance] if payload.guidance is not None else None
+    rubric_ver = save_draft_rubric(db, round_obj, fields_raw, current_user.id, guidance_payload=guidance_payload)
 
     # Prepare response with warnings vs errors
     fields_dto = []
@@ -516,6 +530,7 @@ def update_round_rubric(
         fields_dto.append(
             RubricFieldItemDTO(
                 id=f.id,
+                problemStatementId=f.problemStatementId,
                 fieldKey=f.fieldKey,
                 type=f.type,
                 label=f.label,
@@ -532,6 +547,7 @@ def update_round_rubric(
         fields_data.append(
             {
                 "id": f.id,
+                "problemStatementId": f.problemStatementId,
                 "fieldKey": f.fieldKey,
                 "type": f.type,
                 "label": f.label,
@@ -541,12 +557,15 @@ def update_round_rubric(
             }
         )
 
+    guidance_dto = [RubricPSGuidanceDTO.from_orm(g) for g in (rubric_ver.guidances or [])]
+
     validation_errs = validate_rubric(fields_data, tie_break_keys=round_obj.tieBreakOrder or [])
-    warnings = [e for e in validation_errs if "weights must total exactly 100" in e]
-    errors = [e for e in validation_errs if "weights must total exactly 100" not in e]
+    warnings = [e for e in validation_errs if "weights must total exactly" in e]
+    errors = [e for e in validation_errs if "weights must total exactly" not in e]
 
     return RubricResponse(
         rubricFields=fields_dto,
+        guidance=guidance_dto,
         errors=errors,
         warnings=warnings,
         version=rubric_ver.version,
@@ -576,6 +595,7 @@ def publish_round_rubric(
     fields_dto = [
         RubricFieldItemDTO(
             id=f.id,
+            problemStatementId=f.problemStatementId,
             fieldKey=f.fieldKey,
             type=f.type,
             label=f.label,
@@ -590,8 +610,10 @@ def publish_round_rubric(
         )
         for f in sorted(rubric_ver.fields, key=lambda x: x.sortOrder)
     ]
+    guidance_dto = [RubricPSGuidanceDTO.from_orm(g) for g in (rubric_ver.guidances or [])]
     return RubricResponse(
         rubricFields=fields_dto,
+        guidance=guidance_dto,
         errors=[],
         warnings=[],
         version=rubric_ver.version,
@@ -621,6 +643,7 @@ def unpublish_round_rubric(
     fields_dto = [
         RubricFieldItemDTO(
             id=f.id,
+            problemStatementId=f.problemStatementId,
             fieldKey=f.fieldKey,
             type=f.type,
             label=f.label,
@@ -635,11 +658,126 @@ def unpublish_round_rubric(
         )
         for f in sorted(rubric_ver.fields, key=lambda x: x.sortOrder)
     ]
+    guidance_dto = [RubricPSGuidanceDTO.from_orm(g) for g in (rubric_ver.guidances or [])]
     return RubricResponse(
         rubricFields=fields_dto,
+        guidance=guidance_dto,
         errors=[],
         warnings=[],
         version=rubric_ver.version,
         published=False,
         locked=rubric_ver.lockedAt is not None,
     )
+
+
+@router.get("/{round_id}/preflight")
+def get_round_preflight(
+    round_id: str,
+    db: Session = Depends(get_db),
+    current_user: Principal = Depends(require_permission("round.view")),
+):
+    round_obj = (
+        db.query(EvaluationRound)
+        .filter(
+            EvaluationRound.id == round_id,
+            EvaluationRound.eventId == current_user.eventId,
+        )
+        .first()
+    )
+    if not round_obj:
+        raise HTTPException(status_code=404, detail="Evaluation round not found")
+
+    issues = []
+    rubric_ver = get_current_rubric(db, round_obj)
+    if not rubric_ver:
+        issues.append("No current rubric version configured for round.")
+    elif rubric_ver.publishedAt is None:
+        issues.append(f"Rubric Version {rubric_ver.version} is not published.")
+
+    fields = db.query(RubricField).filter(RubricField.rubricVersionId == rubric_ver.id).all() if rubric_ver else []
+    guidances = db.query(RubricPSGuidance).filter(RubricPSGuidance.rubricVersionId == rubric_ver.id).all() if rubric_ver else []
+
+    general_numeric = [f for f in fields if f.type == "numeric" and f.problemStatementId is None]
+    gen_sum = sum(f.maxMarks for f in general_numeric)
+    if gen_sum != 60 and rubric_ver:
+        issues.append(f"General numeric criteria total {gen_sum} marks, expected exactly 60.")
+
+    ps_guidance_map = {g.problemStatementId: g for g in guidances}
+    ps_grouped = {}
+    for f in fields:
+        if f.problemStatementId is not None:
+            ps_grouped.setdefault(f.problemStatementId, []).append(f)
+
+    for ps_id, ps_fields in ps_grouped.items():
+        num_fields = [f for f in ps_fields if f.type == "numeric"]
+        ps_sum = sum(f.maxMarks for f in num_fields)
+        if ps_sum != 40:
+            issues.append(f"PS {ps_id} criteria total {ps_sum} marks, expected exactly 40.")
+        if ps_id not in ps_guidance_map:
+            issues.append(f"PS {ps_id} is missing Decisive Test guidance.")
+
+    assignments = (
+        db.query(JudgeAssignment)
+        .filter(JudgeAssignment.roundId == round_obj.id, JudgeAssignment.status == "active")
+        .all()
+    )
+    assigned_team_ids = {a.teamId for a in assignments}
+    missing_ps_teams = []
+    for tid in assigned_team_ids:
+        sel = db.query(PSSelection).filter(PSSelection.teamId == tid).first()
+        if not sel or not sel.psId:
+            team = db.query(Team).filter(Team.id == tid).first()
+            missing_ps_teams.append(team.name if team else tid)
+
+    if missing_ps_teams:
+        issues.append(f"Teams with active assignments missing PS selection: {missing_ps_teams}")
+
+    assigned_judge_ids = {a.judgeVolunteerId for a in assignments}
+    unqualified_judges = []
+    for jid in assigned_judge_ids:
+        vol = db.query(Volunteer).filter(Volunteer.id == jid).first()
+        if not vol or vol.type != "JUDGE":
+            unqualified_judges.append(f"Volunteer {jid} not of type JUDGE")
+            continue
+        user = db.query(User).filter(User.volunteerId == vol.id).first()
+        if not user or user.status != "active":
+            unqualified_judges.append(f"Judge '{vol.name}' has no active user account")
+            continue
+        role_assigns = db.query(UserRoleAssignment).filter(UserRoleAssignment.userId == user.id).all()
+        role_ids = [ra.roleId for ra in role_assigns]
+        has_score_perm = db.query(RolePermission).filter(
+            RolePermission.roleId.in_(role_ids),
+            RolePermission.permissionKey == "evaluation.score"
+        ).first()
+        if not has_score_perm:
+            unqualified_judges.append(f"Judge '{vol.name}' lacks 'evaluation.score' permission")
+
+    if unqualified_judges:
+        issues.extend(unqualified_judges)
+
+    return {
+        "status": "PASS" if not issues else "FAIL",
+        "round": {
+            "id": round_obj.id,
+            "name": round_obj.name,
+            "number": round_obj.roundNumber,
+            "status": round_obj.status,
+            "evaluationEnabled": round_obj.evaluationEnabled,
+        },
+        "rubric": {
+            "version": rubric_ver.version if rubric_ver else None,
+            "published": rubric_ver.publishedAt is not None if rubric_ver else False,
+            "generalMarks": float(gen_sum),
+            "psCount": len(ps_grouped),
+            "guidanceCount": len(guidances),
+        },
+        "teams": {
+            "assigned": len(assigned_team_ids),
+            "missingPsCount": len(missing_ps_teams),
+        },
+        "judges": {
+            "distinctJudges": len(assigned_judge_ids),
+            "totalAssignments": len(assignments),
+        },
+        "issues": issues,
+    }

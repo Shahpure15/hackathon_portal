@@ -8,10 +8,16 @@ import {
   Layers,
   FileText,
   AlertTriangle,
+  Trophy,
+  Users,
+  Award,
 } from 'lucide-react';
 import api from '../../services/api';
 import RoundList from './RoundList';
 import RoundEditor from './RoundEditor';
+import AssignmentWizard from './AssignmentWizard';
+import JudgingProgressConsole from './JudgingProgressConsole';
+import DirectLeaderboardView from './DirectLeaderboardView';
 import Modal from '../../components/Modal';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { useToast } from '../../contexts/ToastContext';
@@ -24,6 +30,12 @@ export const RoundsModule = () => {
   const [rounds, setRounds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [activeTab, setActiveTab] = useState('rounds'); // 'rounds' | 'leaderboard'
+  const [leaderboardRoundId, setLeaderboardRoundId] = useState('');
+
+  // Standalone dedicated modals for wizards
+  const [assignmentWizardRound, setAssignmentWizardRound] = useState(null);
+  const [progressConsoleRound, setProgressConsoleRound] = useState(null);
 
   // Editor modal state
   const [editorOpen, setEditorOpen] = useState(false);
@@ -59,52 +71,22 @@ export const RoundsModule = () => {
   // Open Create
   const handleOpenCreate = () => {
     setSelectedRound({
-      name: `Round ${rounds.length + 1} Evaluation`,
+      name: '',
       number: rounds.length + 1,
-      description: 'Submit your project architecture slide deck link and source code repository URL.',
-      submissionEnabled: true,
+      description: '',
+      submissionEnabled: false,
       evaluationEnabled: features?.evaluation !== false,
       isSubmissionOpen: false,
       status: 'live',
-      submissionFields: [
-        { id: 'field_1', name: 'Google Drive / Slide Deck Link', description: 'Presentation or Architecture PDF link', fieldType: 'text', required: true },
-        { id: 'field_2', name: 'GitHub Repository Link', description: 'Public repository source code link', fieldType: 'text', required: true },
-      ],
-      rubricFields: [
-        {
-          type: 'numeric',
-          label: 'Innovation & Originality',
-          description: 'Originality of concept and unique approach to solving problem statement',
-          maxMarks: 10,
-          weight: 40,
-          anchors: [
-            { from: 0, to: 4, label: 'Derivative' },
-            { from: 5, to: 8, label: 'Creative' },
-            { from: 9, to: 10, label: 'Breakthrough' },
-          ],
-        },
-        {
-          type: 'numeric',
-          label: 'Technical Implementation & Architecture',
-          description: 'Code quality, backend stability, design patterns, and deployment completeness',
-          maxMarks: 20,
-          weight: 60,
-          anchors: [
-            { from: 0, to: 10, label: 'Basic' },
-            { from: 11, to: 16, label: 'Functional' },
-            { from: 17, to: 20, label: 'Production Quality' },
-          ],
-        },
-        {
-          type: 'text',
-          label: 'Judge Feedback & Recommendations',
-          description: 'Constructive notes and next step suggestions for the team',
-          visibility: 'participant',
-          maxLength: 500,
-        },
-      ],
+      submissionFields: [],
+      rubricFields: [],
     });
     setEditorOpen(true);
+    const params = new URLSearchParams(window.location.search);
+    params.set('action', 'create');
+    params.delete('roundId');
+    window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
+    window.dispatchEvent(new Event('popstate'));
   };
 
   // Open Edit
@@ -117,7 +99,50 @@ export const RoundsModule = () => {
       setSelectedRound(r);
       setEditorOpen(true);
     }
+    const params = new URLSearchParams(window.location.search);
+    params.set('roundId', r.id);
+    params.delete('action');
+    window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
+    window.dispatchEvent(new Event('popstate'));
   };
+
+  // Close Editor and clear roundId from URL
+  const handleCloseEditor = () => {
+    setEditorOpen(false);
+    setSelectedRound(null);
+    const params = new URLSearchParams(window.location.search);
+    params.delete('roundId');
+    params.delete('action');
+    const newQuery = params.toString();
+    const newUrl = `${window.location.pathname}${newQuery ? `?${newQuery}` : ''}`;
+    window.history.replaceState(null, '', newUrl);
+    fetchRounds();
+    window.dispatchEvent(new Event('rounds-updated'));
+  };
+
+  // Sync URL search params with active round on mount and popstate
+  useEffect(() => {
+    const handleUrlSync = () => {
+      const params = new URLSearchParams(window.location.search);
+      const rId = params.get('roundId');
+      const action = params.get('action');
+      if (action === 'create') {
+        if (!editorOpen) handleOpenCreate();
+      } else if (rId && rounds.length > 0) {
+        const found = rounds.find((rnd) => rnd.id === rId);
+        if (found && (!selectedRound || selectedRound.id !== rId)) {
+          handleOpenEdit(found);
+        }
+      } else if (!rId && !action && editorOpen) {
+        setEditorOpen(false);
+        setSelectedRound(null);
+        fetchRounds();
+      }
+    };
+    handleUrlSync();
+    window.addEventListener('popstate', handleUrlSync);
+    return () => window.removeEventListener('popstate', handleUrlSync);
+  }, [rounds, editorOpen]);
 
   // Toggle submission open/close
   const handleToggleSubmission = async (roundId, currentOpen) => {
@@ -268,6 +293,22 @@ export const RoundsModule = () => {
     );
   });
 
+  if (editorOpen) {
+    return (
+      <div style={{ marginBottom: '28px' }}>
+        <RoundEditor
+          round={selectedRound}
+          features={features}
+          onClose={handleCloseEditor}
+          onSaved={() => {
+            fetchRounds();
+            window.dispatchEvent(new Event('rounds-updated'));
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div style={{ marginBottom: '28px' }}>
       {/* Title Section */}
@@ -280,170 +321,249 @@ export const RoundsModule = () => {
         </p>
       </div>
 
-      {/* Action Toolbar */}
+      {/* Navigation Switcher: Rounds vs Direct Leaderboard */}
       <div
-        className="glass-panel"
         style={{
-          padding: '12px 16px',
-          borderRadius: '16px',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-          gap: '10px',
-          alignItems: 'center',
-          marginBottom: '24px',
+          display: 'flex',
+          borderBottom: '1px solid var(--border-color)',
+          gap: '8px',
+          marginBottom: '20px',
         }}
       >
         <button
           type="button"
-          onClick={handleExportMasterWorkbook}
-          className="btn btn-primary touch-target"
+          onClick={() => setActiveTab('rounds')}
           style={{
-            width: '100%',
-            height: '42px',
-            minHeight: '42px',
-            justifyContent: 'center',
-            fontSize: '0.85rem',
-            fontWeight: 600,
-            padding: '0 12px',
-            display: 'inline-flex',
+            padding: '10px 18px',
+            border: 'none',
+            background: 'transparent',
+            fontSize: '0.9rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+            borderBottom: activeTab === 'rounds' ? '2px solid var(--primary)' : '2px solid transparent',
+            color: activeTab === 'rounds' ? 'var(--primary)' : 'var(--text-secondary)',
+            display: 'flex',
             alignItems: 'center',
-            gap: '6px',
+            gap: '8px',
           }}
-          title="Export Multi-Sheet Excel Workbook for All Rounds"
         >
-          <Download size={16} /> Export All Rounds (Excel)
+          <Layers size={16} /> Competition Rounds ({rounds.length})
         </button>
 
         <button
           type="button"
-          onClick={handleDownloadTemplate}
-          className="btn btn-secondary touch-target"
+          onClick={() => setActiveTab('leaderboard')}
           style={{
-            width: '100%',
-            height: '42px',
-            minHeight: '42px',
-            justifyContent: 'center',
-            fontSize: '0.85rem',
-            fontWeight: 600,
-            padding: '0 12px',
-            display: 'inline-flex',
+            padding: '10px 18px',
+            border: 'none',
+            background: 'transparent',
+            fontSize: '0.9rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+            borderBottom: activeTab === 'leaderboard' ? '2px solid var(--primary)' : '2px solid transparent',
+            color: activeTab === 'leaderboard' ? 'var(--primary)' : 'var(--text-secondary)',
+            display: 'flex',
             alignItems: 'center',
-            gap: '6px',
-          }}
-          title="Download Rounds Template CSV"
-        >
-          <Download size={16} /> Template CSV
-        </button>
-
-        <button
-          type="button"
-          onClick={handleExportRoundsCsv}
-          className="btn btn-secondary touch-target"
-          style={{
-            width: '100%',
-            height: '42px',
-            minHeight: '42px',
-            justifyContent: 'center',
-            fontSize: '0.85rem',
-            fontWeight: 600,
-            padding: '0 12px',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-          }}
-          title="Export Rounds CSV"
-        >
-          <Download size={16} /> Export CSV
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setImportModalOpen(true)}
-          className="btn btn-secondary touch-target"
-          style={{
-            width: '100%',
-            height: '42px',
-            minHeight: '42px',
-            justifyContent: 'center',
-            fontSize: '0.85rem',
-            fontWeight: 600,
-            padding: '0 12px',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-          }}
-          title="Import Rounds CSV"
-        >
-          <Upload size={16} /> Import CSV
-        </button>
-
-        <button
-          type="button"
-          onClick={handleOpenCreate}
-          className="btn btn-primary touch-target"
-          style={{
-            width: '100%',
-            height: '42px',
-            minHeight: '42px',
-            justifyContent: 'center',
-            fontSize: '0.85rem',
-            fontWeight: 600,
-            padding: '0 12px',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
+            gap: '8px',
           }}
         >
-          <Plus size={16} /> + Add Round
+          <Trophy size={16} /> Direct Leaderboard & Standings
         </button>
       </div>
 
-      {/* Search Input */}
-      <div className="glass-panel" style={{ padding: '16px 20px', marginBottom: '24px', position: 'relative' }}>
-        <Search
-          size={18}
-          style={{
-            position: 'absolute',
-            left: '36px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            color: 'var(--text-muted)',
-          }}
-        />
-        <input
-          type="text"
-          placeholder="Search rounds by name, number or description..."
-          className="form-input"
-          style={{ paddingLeft: '48px', width: '100%' }}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
+      {activeTab === 'leaderboard' ? (
+        <DirectLeaderboardView defaultRoundId={leaderboardRoundId} />
+      ) : (
+        <>
+          {/* Action Toolbar */}
+          <div
+            className="glass-panel"
+            style={{
+              padding: '12px 16px',
+              borderRadius: '16px',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+              gap: '10px',
+              alignItems: 'center',
+              marginBottom: '24px',
+            }}
+          >
+            <button
+              type="button"
+              onClick={handleExportMasterWorkbook}
+              className="btn btn-primary touch-target"
+              style={{
+                width: '100%',
+                height: '42px',
+                minHeight: '42px',
+                justifyContent: 'center',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                padding: '0 12px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+              title="Export Multi-Sheet Excel Workbook for All Rounds"
+            >
+              <Download size={16} /> Export All Rounds (Excel)
+            </button>
 
-      {/* Round Cards Grid */}
-      <RoundList
-        rounds={filteredRounds}
-        loading={loading}
-        onEditRound={handleOpenEdit}
-        onDeleteRound={handleDeleteClick}
-        onToggleSubmission={handleToggleSubmission}
-        onExportSubmissions={handleExportSubmissions}
-        onAddRound={handleOpenCreate}
-      />
+            <button
+              type="button"
+              onClick={handleDownloadTemplate}
+              className="btn btn-secondary touch-target"
+              style={{
+                width: '100%',
+                height: '42px',
+                minHeight: '42px',
+                justifyContent: 'center',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                padding: '0 12px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+              title="Download Rounds Template CSV"
+            >
+              <Download size={16} /> Template CSV
+            </button>
 
-      {/* Round Editor Modal */}
-      {editorOpen && (
-        <RoundEditor
-          round={selectedRound}
-          features={features}
-          onClose={() => {
-            setEditorOpen(false);
-            setSelectedRound(null);
-          }}
-          onSaved={() => {
-            fetchRounds();
-          }}
-        />
+            <button
+              type="button"
+              onClick={handleExportRoundsCsv}
+              className="btn btn-secondary touch-target"
+              style={{
+                width: '100%',
+                height: '42px',
+                minHeight: '42px',
+                justifyContent: 'center',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                padding: '0 12px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+              title="Export Rounds CSV"
+            >
+              <Download size={16} /> Export CSV
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setImportModalOpen(true)}
+              className="btn btn-secondary touch-target"
+              style={{
+                width: '100%',
+                height: '42px',
+                minHeight: '42px',
+                justifyContent: 'center',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                padding: '0 12px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+              title="Import Rounds CSV"
+            >
+              <Upload size={16} /> Import CSV
+            </button>
+
+            <button
+              type="button"
+              onClick={handleOpenCreate}
+              className="btn btn-primary touch-target"
+              style={{
+                width: '100%',
+                height: '42px',
+                minHeight: '42px',
+                justifyContent: 'center',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                padding: '0 12px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <Plus size={16} /> + Add Round
+            </button>
+          </div>
+
+          {/* Search Input */}
+          <div className="glass-panel" style={{ padding: '16px 20px', marginBottom: '24px', position: 'relative' }}>
+            <Search
+              size={18}
+              style={{
+                position: 'absolute',
+                left: '36px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: 'var(--text-muted)',
+              }}
+            />
+            <input
+              type="text"
+              placeholder="Search rounds by name, number or description..."
+              className="form-input"
+              style={{ paddingLeft: '48px', width: '100%' }}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          {/* Round Cards Grid */}
+          <RoundList
+            rounds={filteredRounds}
+            loading={loading}
+            onEditRound={handleOpenEdit}
+            onDeleteRound={handleDeleteClick}
+            onToggleSubmission={handleToggleSubmission}
+            onExportSubmissions={handleExportSubmissions}
+            onAddRound={handleOpenCreate}
+            onAssignJudges={(round) => setAssignmentWizardRound(round)}
+            onViewProgress={(round) => setProgressConsoleRound(round)}
+            onViewLeaderboard={(round) => {
+              setLeaderboardRoundId(round.id);
+              setActiveTab('leaderboard');
+            }}
+          />
+        </>
+      )}
+
+      {/* Standalone Assignment Wizard Modal */}
+      {assignmentWizardRound && (
+        <Modal
+          isOpen={true}
+          onClose={() => setAssignmentWizardRound(null)}
+          title={`Judge & Team Assignment Wizard: ${assignmentWizardRound.name}`}
+          maxWidth="1220px"
+        >
+          <AssignmentWizard
+            roundId={assignmentWizardRound.id}
+            features={features}
+            onClose={() => setAssignmentWizardRound(null)}
+          />
+        </Modal>
+      )}
+
+      {/* Standalone Progress Console Modal */}
+      {progressConsoleRound && (
+        <Modal
+          isOpen={true}
+          onClose={() => setProgressConsoleRound(null)}
+          title={`Judging Progress: ${progressConsoleRound.name}`}
+          maxWidth="1100px"
+        >
+          <JudgingProgressConsole
+            roundId={progressConsoleRound.id}
+            roundName={progressConsoleRound.name}
+            onClose={() => setProgressConsoleRound(null)}
+          />
+        </Modal>
       )}
 
       {/* Delete Confirmation Dialog */}

@@ -14,6 +14,8 @@ import {
   Users,
   AlertCircle,
   Plus,
+  Trophy,
+  Award,
 } from 'lucide-react';
 import Skeleton from '../../components/Skeleton';
 
@@ -25,6 +27,9 @@ export const RoundList = ({
   onToggleSubmission,
   onExportSubmissions,
   onAddRound,
+  onAssignJudges,
+  onViewProgress,
+  onViewLeaderboard,
 }) => {
   if (loading) {
     return (
@@ -86,7 +91,8 @@ export const RoundList = ({
         return (
           <div
             key={round.id}
-            className="glass-card"
+            className="glass-card round-card-clickable"
+            onClick={() => onEditRound(round)}
             style={{
               padding: '24px',
               borderRadius: '16px',
@@ -95,6 +101,18 @@ export const RoundList = ({
               justifyContent: 'space-between',
               gap: '16px',
               border: '1px solid var(--border-color)',
+              cursor: 'pointer',
+              transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = 'var(--primary)';
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 10px 28px rgba(0, 0, 0, 0.18)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = 'var(--border-color)';
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = 'none';
             }}
           >
             <div>
@@ -142,7 +160,10 @@ export const RoundList = ({
 
                   <button
                     type="button"
-                    onClick={() => onDeleteRound(round)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteRound(round);
+                    }}
                     className="btn btn-icon touch-target"
                     title="Delete Round"
                     style={{ color: '#ef4444', padding: '4px' }}
@@ -255,37 +276,93 @@ export const RoundList = ({
             </div>
 
             {/* Action Buttons */}
-            <div style={{ display: 'flex', gap: '8px', paddingTop: '10px', borderTop: '1px solid var(--border-color)', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={() => onEditRound(round)}
-                className="btn btn-secondary touch-target"
-                style={{ flex: 1, minWidth: '110px', justifyContent: 'center', fontSize: '0.82rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-              >
-                <Edit2 size={15} /> Edit Config
-              </button>
-
-              {isSubEnabled && (
-                <button
-                  type="button"
-                  onClick={() => onToggleSubmission(round.id, isOpen)}
-                  className={`btn ${isOpen ? 'btn-secondary' : 'btn-primary'} touch-target`}
-                  style={{ flex: 1, minWidth: '110px', justifyContent: 'center', fontSize: '0.82rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                >
-                  {isOpen ? <Lock size={15} /> : <Unlock size={15} />}
-                  {isOpen ? 'Close Window' : 'Open Window'}
-                </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '10px', borderTop: '1px solid var(--border-color)' }}>
+              {isEvalEnabled && (
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {onAssignJudges && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAssignJudges(round);
+                      }}
+                      className="btn btn-primary touch-target"
+                      style={{ flex: 1, minWidth: '130px', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <Users size={14} /> Assign Judges
+                    </button>
+                  )}
+                  {onViewLeaderboard && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onViewLeaderboard(round);
+                      }}
+                      className="btn btn-secondary touch-target"
+                      style={{ flex: 1, minWidth: '110px', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <Trophy size={14} /> Leaderboard
+                    </button>
+                  )}
+                  {onViewProgress && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onViewProgress(round);
+                      }}
+                      className="btn btn-secondary touch-target"
+                      style={{ padding: '0 10px', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      title="View Judging Progress"
+                    >
+                      <Award size={14} /> Progress
+                    </button>
+                  )}
+                </div>
               )}
 
-              <button
-                type="button"
-                onClick={() => onExportSubmissions(round.id, round.name)}
-                className="btn btn-secondary touch-target"
-                title="Download Submissions Excel"
-                style={{ padding: '0 12px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-              >
-                <Download size={15} />
-              </button>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEditRound(round);
+                  }}
+                  className="btn btn-secondary touch-target"
+                  style={{ flex: 1, minWidth: '100px', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Edit2 size={14} /> Setup & Rubric
+                </button>
+
+                {isSubEnabled && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleSubmission(round.id, isOpen);
+                    }}
+                    className={`btn ${isOpen ? 'btn-secondary' : 'btn-primary'} touch-target`}
+                    style={{ flex: 1, minWidth: '110px', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    {isOpen ? <Lock size={14} /> : <Unlock size={14} />}
+                    {isOpen ? 'Close Gate' : 'Open Gate'}
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onExportSubmissions(round.id, round.name);
+                  }}
+                  className="btn btn-secondary touch-target"
+                  title="Download Submissions Excel"
+                  style={{ padding: '0 12px', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Download size={14} />
+                </button>
+              </div>
             </div>
           </div>
         );

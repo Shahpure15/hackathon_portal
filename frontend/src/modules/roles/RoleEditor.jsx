@@ -49,15 +49,6 @@ export const RoleEditor = ({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  useEffect(() => {
-    setName(role?.name || '');
-    setDescription(role?.description || '');
-    setSelectedPermissions(role?.permissions || []);
-    setConfirmSensitive(false);
-    setErrorMessage(null);
-    setActiveTab('permissions');
-  }, [role]);
-
   // Map of permission key -> Permission object
   const permMap = useMemo(() => {
     const map = {};
@@ -68,6 +59,22 @@ export const RoleEditor = ({
     }
     return map;
   }, [catalog]);
+
+  const sensitiveSelected = useMemo(() => {
+    return selectedPermissions.filter((k) => permMap[k]?.tier === 'sensitive');
+  }, [selectedPermissions, permMap]);
+
+  useEffect(() => {
+    setName(role?.name || '');
+    setDescription(role?.description || '');
+    const perms = role?.permissions || [];
+    setSelectedPermissions(perms);
+    // If existing role already has sensitive permissions, default to confirmed
+    const hasSensitive = perms.some((k) => permMap[k]?.tier === 'sensitive');
+    setConfirmSensitive(hasSensitive);
+    setErrorMessage(null);
+    setActiveTab('permissions');
+  }, [role, permMap]);
 
   // Compute effective permissions closure
   const effectivePermissions = useMemo(() => {
@@ -92,11 +99,24 @@ export const RoleEditor = ({
     setSaving(true);
     setErrorMessage(null);
 
+    let willConfirm = confirmSensitive;
+    if (sensitiveSelected.length > 0 && !confirmSensitive) {
+      const ok = window.confirm(
+        `This role includes sensitive permissions (${sensitiveSelected.join(', ')}). Do you confirm granting these elevated permissions?`
+      );
+      if (!ok) {
+        setSaving(false);
+        return;
+      }
+      willConfirm = true;
+      setConfirmSensitive(true);
+    }
+
     const payload = {
       name: name.trim(),
       description: description.trim() || null,
       permissions: selectedPermissions,
-      confirmSensitive,
+      confirmSensitive: willConfirm,
     };
 
     try {

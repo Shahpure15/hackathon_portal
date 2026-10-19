@@ -83,6 +83,7 @@ class RoleMemberResponse(BaseModel):
     name: str
     type: Optional[str] = None
     scope: Optional[Dict[str, Any]] = None
+    roleCount: Optional[int] = None
 
 
 class RoleMemberAddRequest(BaseModel):

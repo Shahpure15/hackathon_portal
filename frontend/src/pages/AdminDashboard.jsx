@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Users, Layers, UserCheck, FileText, FileSpreadsheet, Download, Upload,
-  Search, X, Edit2, AlertCircle, CheckCircle, Info, ChevronLeft, ChevronRight, Eye, EyeOff, LogOut, Menu, Lock, Plus, Trash2, QrCode, ShieldCheck, Mail
+  Search, X, Edit2, AlertCircle, CheckCircle, Info, ChevronLeft, ChevronRight, Eye, EyeOff, LogOut, Menu, Lock, Plus, Trash2, QrCode, ShieldCheck, Mail, Star
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -29,6 +29,8 @@ import AdminShell from '../components/shell/AdminShell';
 const OverviewModule = React.lazy(() => import('../modules/overview/OverviewModule'));
 const RolesModule = React.lazy(() => import('../modules/roles/RolesModule'));
 const RoundsModule = React.lazy(() => import('../modules/rounds/RoundsModule'));
+const DirectLeaderboardView = React.lazy(() => import('../modules/rounds/DirectLeaderboardView'));
+const JudgeConsole = React.lazy(() => import('../modules/evaluation/JudgeConsole'));
 const EmailModule = React.lazy(() => import('../modules/email/EmailModule'));
 const EventConfigModule = React.lazy(() => import('../modules/config/EventConfigModule'));
 
@@ -51,25 +53,31 @@ const formatContact = (contactStr) => {
 const AdminDashboard = () => {
   const { user, access, can, canAny, features } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialModule = searchParams.get('module') || localStorage.getItem('adminActiveTab') || 'overview';
-  const [activeTab, setActiveTab] = useState(initialModule);
-  const [visitedTabs, setVisitedTabs] = useState(() => new Set([initialModule]));
+  const [activeTab, setActiveTab] = useState(() => {
+    const raw = searchParams.get('module') || localStorage.getItem('adminActiveTab');
+    if (!access?.isAdmin && (!raw || raw === 'overview')) {
+      const groups = visibleGroups(can, canAny, features, access?.isAdmin);
+      return groups.flatMap((g) => g.items.map((i) => i.id))[0] || 'teams';
+    }
+    return raw || 'overview';
+  });
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set([activeTab]));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [alertsCount, setAlertsCount] = useState(0);
 
   // Auto-redirect to first permitted tab if activeTab is not permitted
   useEffect(() => {
-    const groups = visibleGroups(can, canAny, features);
+    const groups = visibleGroups(can, canAny, features, access?.isAdmin);
     const validIds = groups.flatMap((g) => g.items.map((i) => i.id));
     if (validIds.length > 0 && !validIds.includes(activeTab)) {
       setActiveTab(validIds[0]);
     }
-  }, [can, canAny, features, activeTab]);
+  }, [can, canAny, features, access?.isAdmin, activeTab]);
 
   useEffect(() => {
     let timer = null;
     const fetchAlerts = async () => {
-      if (document.hidden) return;
+      if (document.hidden || !access?.isAdmin) return;
       try {
         const res = await api.get('/admin/overview');
         if (res.data?.attention) {
@@ -84,7 +92,7 @@ const AdminDashboard = () => {
     timer = setInterval(fetchAlerts, 60000);
 
     const handleVisibilityChange = () => {
-      if (!document.hidden) {
+      if (!document.hidden && access?.isAdmin) {
         fetchAlerts();
       }
     };
@@ -94,7 +102,7 @@ const AdminDashboard = () => {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, [access?.isAdmin]);
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1000);
   const { addToast } = useToast();
@@ -264,6 +272,20 @@ const AdminDashboard = () => {
           <div style={{ display: activeTab === 'evalRounds' ? 'block' : 'none' }} className="fade-in-up">
             <React.Suspense fallback={<Skeleton count={4} />}>
               <RoundsModule />
+            </React.Suspense>
+          </div>
+        )}
+        {visitedTabs.has('myScoring') && (
+          <div style={{ display: activeTab === 'myScoring' ? 'block' : 'none' }} className="fade-in-up">
+            <React.Suspense fallback={<Skeleton count={4} />}>
+              <JudgeConsole />
+            </React.Suspense>
+          </div>
+        )}
+        {visitedTabs.has('leaderboard') && (
+          <div style={{ display: activeTab === 'leaderboard' ? 'block' : 'none' }} className="fade-in-up">
+            <React.Suspense fallback={<Skeleton count={4} />}>
+              <DirectLeaderboardView />
             </React.Suspense>
           </div>
         )}
@@ -4574,6 +4596,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
       setVolunteers((prev) =>
         prev.map((v) => (v.id === volId ? { ...v, hasLogin: true, username: res.data.username } : v))
       );
+      setEditingVolunteer((prev) => (prev && prev.id === volId ? { ...prev, hasLogin: true, username: res.data.username } : prev));
     } catch (err) {
       addToast(err.response?.data?.detail || 'Failed to create login', 'error');
     }
@@ -4589,6 +4612,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
       setVolunteers((prev) =>
         prev.map((v) => (v.id === volId ? { ...v, hasLogin: false, username: null } : v))
       );
+      setEditingVolunteer((prev) => (prev && prev.id === volId ? { ...prev, hasLogin: false, username: null } : prev));
     } catch (err) {
       addToast(err.response?.data?.detail || 'Failed to revoke login', 'error');
     }
@@ -5119,6 +5143,58 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
                   </select>
                 </div>
               )}
+
+              {/* Login Account Management in Edit Modal */}
+              <div style={{
+                marginTop: '16px',
+                marginBottom: '20px',
+                padding: '14px',
+                borderRadius: '8px',
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid var(--border-light)'
+              }}>
+                <label className="form-label" style={{ fontWeight: 700, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Lock size={14} />
+                  Login Account & Credentials
+                </label>
+                {editingVolunteer?.hasLogin ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
+                      Account Active: <code style={{ fontWeight: 600, color: 'var(--primary)' }}>{editingVolunteer.username}</code>
+                    </div>
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleResetVolunteerPassword(editingVolunteer.id, editingVolunteer.name)}
+                        className="btn btn-secondary touch-target"
+                        style={{ fontSize: '0.8rem', padding: '6px 12px', minHeight: 0, height: 'auto' }}
+                      >
+                        Reset Password
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRevokeConfirmState({ isOpen: true, volId: editingVolunteer.id, volName: editingVolunteer.name })}
+                        className="btn btn-secondary touch-target"
+                        style={{ fontSize: '0.8rem', padding: '6px 12px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.2)', minHeight: 0, height: 'auto' }}
+                      >
+                        Revoke Access
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>No login account provisioned</span>
+                    <button
+                      type="button"
+                      onClick={() => handleCreateVolunteerLogin(editingVolunteer.id, editingVolunteer.name)}
+                      className="btn btn-primary touch-target"
+                      style={{ fontSize: '0.8rem', padding: '6px 12px', minHeight: 0, height: 'auto' }}
+                    >
+                      Provision Login Access
+                    </button>
+                  </div>
+                )}
+              </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
                 <button type="button" onClick={() => setShowEditModal(false)} className="btn btn-secondary touch-target" disabled={isSaving}>Cancel</button>
@@ -5816,6 +5892,7 @@ const CheckpointsView = () => {
   const [cpId, setCpId] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [isDefault, setIsDefault] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
 
@@ -5870,11 +5947,13 @@ const CheckpointsView = () => {
     try {
       await api.post('/admin/checkpoints', {
         name: name.trim(),
-        description: description.trim() || null
+        description: description.trim() || null,
+        isDefault
       });
       addToast('Attendance Slot created successfully!', 'success');
       setName('');
       setDescription('');
+      setIsDefault(false);
       setShowAddModal(false);
       fetchCheckpoints();
     } catch (err) {
@@ -5891,18 +5970,32 @@ const CheckpointsView = () => {
     try {
       await api.patch(`/admin/checkpoints/${cpId}`, {
         name: name.trim(),
-        description: description.trim() || null
+        description: description.trim() || null,
+        isDefault
       });
       addToast('Attendance Slot updated successfully!', 'success');
       setCpId('');
       setName('');
       setDescription('');
+      setIsDefault(false);
       setShowEditModal(false);
       fetchCheckpoints();
     } catch (err) {
       addToast(err.response?.data?.detail || 'Failed to update Attendance Slot', 'error');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleSetDefault = async (cp) => {
+    try {
+      await api.patch(`/admin/checkpoints/${cp.id}`, {
+        isDefault: true
+      });
+      addToast(`"${cp.name}" set as default slot for volunteers!`, 'success');
+      fetchCheckpoints();
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to set default slot', 'error');
     }
   };
 
@@ -5968,6 +6061,7 @@ const CheckpointsView = () => {
     setCpId(cp.id);
     setName(cp.name);
     setDescription(cp.description || '');
+    setIsDefault(!!cp.isDefault);
     setShowEditModal(true);
   };
 
@@ -6068,7 +6162,7 @@ const CheckpointsView = () => {
         <button onClick={() => setShowImportModal(true)} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Import Slots CSV">
           <Upload size={16} /> Import CSV
         </button>
-        <button onClick={() => setShowAddModal(true)} className="btn btn-primary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+        <button onClick={() => { setName(''); setDescription(''); setIsDefault(false); setShowAddModal(true); }} className="btn btn-primary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
           + Add Attendance Slot
         </button>
       </div>
@@ -6103,10 +6197,28 @@ const CheckpointsView = () => {
             render: (c) => (
               <div 
                 onClick={(e) => { e.stopPropagation(); openEditModal(c); }} 
-                style={{ cursor: 'pointer' }}
+                style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}
                 title="Click to edit Attendance Slot"
               >
                 <div style={{ fontWeight: 700, color: 'var(--primary)' }}>{c.name}</div>
+                {c.isDefault ? (
+                  <span 
+                    className="status-badge status-active" 
+                    style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                    title="Active default slot for volunteers"
+                  >
+                    <Star size={11} fill="currentColor" /> Default
+                  </span>
+                ) : (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleSetDefault(c); }}
+                    className="btn btn-secondary"
+                    style={{ padding: '2px 8px', minHeight: '24px', fontSize: '0.72rem', color: 'var(--text-secondary)' }}
+                    title="Set this slot as default for volunteers"
+                  >
+                    Set Default
+                  </button>
+                )}
               </div>
             )
           },
@@ -6193,7 +6305,7 @@ const CheckpointsView = () => {
             />
           </div>
 
-          <div className="form-group" style={{ marginBottom: '24px' }}>
+          <div className="form-group" style={{ marginBottom: '16px' }}>
             <label className="form-label">Description (Optional)</label>
             <textarea
               placeholder="Provide context for volunteers..."
@@ -6203,6 +6315,22 @@ const CheckpointsView = () => {
               onChange={(e) => setDescription(e.target.value)}
               disabled={isSaving}
             />
+          </div>
+
+          <div className="form-group" style={{ marginBottom: '24px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-primary)', userSelect: 'none' }}>
+              <input
+                type="checkbox"
+                checked={isDefault}
+                onChange={(e) => setIsDefault(e.target.checked)}
+                disabled={isSaving}
+                style={{ accentColor: 'var(--primary)', width: '16px', height: '16px', cursor: 'pointer' }}
+              />
+              <span style={{ fontWeight: 600 }}>Set as default slot for volunteers</span>
+            </label>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px', marginLeft: '24px' }}>
+              When volunteers open their dashboard, this slot will automatically be pre-selected.
+            </p>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
@@ -6235,7 +6363,7 @@ const CheckpointsView = () => {
             />
           </div>
 
-          <div className="form-group" style={{ marginBottom: '24px' }}>
+          <div className="form-group" style={{ marginBottom: '16px' }}>
             <label className="form-label">Description (Optional)</label>
             <textarea
               placeholder="Provide context for volunteers..."
@@ -6245,6 +6373,22 @@ const CheckpointsView = () => {
               onChange={(e) => setDescription(e.target.value)}
               disabled={isSaving}
             />
+          </div>
+
+          <div className="form-group" style={{ marginBottom: '24px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-primary)', userSelect: 'none' }}>
+              <input
+                type="checkbox"
+                checked={isDefault}
+                onChange={(e) => setIsDefault(e.target.checked)}
+                disabled={isSaving}
+                style={{ accentColor: 'var(--primary)', width: '16px', height: '16px', cursor: 'pointer' }}
+              />
+              <span style={{ fontWeight: 600 }}>Set as default slot for volunteers</span>
+            </label>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px', marginLeft: '24px' }}>
+              When volunteers open their dashboard, this slot will automatically be pre-selected.
+            </p>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>

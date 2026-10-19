@@ -15,6 +15,7 @@ from app.dto.evaluation_admin import (
     AssignmentItemDTO,
     UnlockRequest,
     ReviseRubricRequest,
+    ClearEvaluationRequest,
 )
 from app.models import (
     Event,
@@ -42,6 +43,7 @@ from app.services.assignment import (
     make_preview_token,
     verify_preview_token,
 )
+from app.services.eligibility import is_team_eligible
 from app.services.evaluation import (
     unlock as service_unlock,
     revise_rubric as service_revise_rubric,
@@ -65,7 +67,8 @@ def get_assignable_teams(
     if not round_obj:
         raise HTTPException(status_code=404, detail="Round not found")
 
-    teams = db.query(Team).filter(Team.eventId == current_user.eventId).all()
+    all_teams = db.query(Team).filter(Team.eventId == current_user.eventId).all()
+    teams = [t for t in all_teams if is_team_eligible(db, round_obj, t.id)]
 
     # Active judge assignments count per team
     active_counts = dict(
@@ -130,6 +133,13 @@ def preview_assignments(
     teams = db.query(Team).filter(Team.id.in_(payload.teamIds), Team.eventId == current_user.eventId).all()
     if len(teams) != len(set(payload.teamIds)):
         raise HTTPException(status_code=422, detail="One or more team IDs do not belong to this event")
+
+    ineligible_teams = [t.name for t in teams if not is_team_eligible(db, round_obj, t.id)]
+    if ineligible_teams:
+        raise HTTPException(
+            status_code=422,
+            detail=f"The following teams are not eligible for this round: {', '.join(ineligible_teams[:5])}",
+        )
 
     # Validate judge IDs
     judges = (
@@ -211,11 +221,18 @@ def commit_assignments(
     if not verify_preview_token(settings.JWT_SECRET_KEY, payload.token, rid, current_user.eventId, pairs_tuples):
         raise HTTPException(status_code=400, detail="Invalid or expired preview token")
 
+    team_ids = {p[0] for p in pairs_tuples}
+    teams = db.query(Team).filter(Team.id.in_(team_ids)).all()
+    ineligible_teams = [t.name for t in teams if not is_team_eligible(db, round_obj, t.id)]
+    if ineligible_teams:
+        raise HTTPException(
+            status_code=422,
+            detail=f"The following teams are not eligible for this round: {', '.join(ineligible_teams[:5])}",
+        )
+
     # Conflict check
     if not payload.overrideConflicts:
-        team_ids = {p[0] for p in pairs_tuples}
         judge_ids = {p[1] for p in pairs_tuples}
-        teams = db.query(Team).filter(Team.id.in_(team_ids)).all()
         judges = db.query(Volunteer).filter(Volunteer.id.in_(judge_ids)).all()
         team_attrs = {t.id: t.collegeName or "" for t in teams}
         judge_attrs = {j.id: j.remarks or "" for j in judges}
@@ -326,6 +343,13 @@ def manual_assign(
     teams = db.query(Team).filter(Team.id.in_(payload.teamIds), Team.eventId == current_user.eventId).all()
     if len(teams) != len(set(payload.teamIds)):
         raise HTTPException(status_code=422, detail="One or more team IDs do not belong to this event")
+
+    ineligible_teams = [t.name for t in teams if not is_team_eligible(db, round_obj, t.id)]
+    if ineligible_teams:
+        raise HTTPException(
+            status_code=422,
+            detail=f"The following teams are not eligible for this round: {', '.join(ineligible_teams[:5])}",
+        )
 
     judges = (
         db.query(Volunteer)
@@ -529,22 +553,20 @@ def get_round_progress(
     eval_map = {(e.teamId, e.judgeVolunteerId): e for e in evaluations}
     eval_ids = [e.id for e in evaluations]
 
-    # Map versions
+    # Map versions: latest version per evaluation determines current status
     versions = (
         db.query(EvaluationVersion)
         .filter(
             EvaluationVersion.evaluationId.in_(eval_ids),
             EvaluationVersion.status.in_(["draft", "final"]),
         )
+        .order_by(EvaluationVersion.version.desc())
         .all()
     )
     status_by_eval = {}
     for v in versions:
-        # final takes precedence over draft in display
-        if v.status == "final":
-            status_by_eval[v.evaluationId] = "final"
-        elif v.status == "draft" and status_by_eval.get(v.evaluationId) != "final":
-            status_by_eval[v.evaluationId] = "draft"
+        if v.evaluationId not in status_by_eval:
+            status_by_eval[v.evaluationId] = v.status
 
     judges_map: Dict[str, dict] = {}
     teams_map: Dict[str, dict] = {}
@@ -649,6 +671,75 @@ def get_team_evaluation_trail(
         })
 
     return {"teamId": team_id, "teamName": team.name, "evaluations": trail}
+
+
+@router.get("/admin/rounds/{round_id}/evaluations/trail")
+def get_round_team_evaluation_trail(
+    round_id: str,
+    teamId: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: Principal = Depends(require_permission("evaluation.view_all")),
+):
+    team = (
+        db.query(Team)
+        .filter(Team.id == teamId, Team.eventId == current_user.eventId)
+        .first()
+    )
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+
+    evaluations = (
+        db.query(Evaluation)
+        .filter(
+            Evaluation.teamId == teamId,
+            Evaluation.roundId == round_id,
+            Evaluation.eventId == current_user.eventId,
+        )
+        .all()
+    )
+
+    judge_ids = {e.judgeVolunteerId for e in evaluations}
+    judges = {j.id: j.name for j in db.query(Volunteer).filter(Volunteer.id.in_(judge_ids)).all()}
+
+    rounds_map = {
+        r.id: r.name
+        for r in db.query(EvaluationRound).filter(EvaluationRound.eventId == current_user.eventId).all()
+    }
+
+    trail = []
+    for ev in evaluations:
+        versions = (
+            db.query(EvaluationVersion)
+            .filter(EvaluationVersion.evaluationId == ev.id)
+            .order_by(EvaluationVersion.version.asc())
+            .all()
+        )
+        version_items = []
+        prev_ver = None
+        for v in versions:
+            diff = diff_versions(prev_ver, v, db) if prev_ver else diff_versions(None, v, db)
+            version_items.append({
+                "id": v.id,
+                "version": v.version,
+                "status": v.status,
+                "totalPct": str(v.totalPct) if v.totalPct is not None else None,
+                "submittedAt": v.submittedAt,
+                "supersededAt": v.supersededAt,
+                "supersededReason": v.supersededReason,
+                "diff": diff,
+            })
+            prev_ver = v
+
+        trail.append({
+            "evaluationId": ev.id,
+            "roundId": ev.roundId,
+            "roundName": rounds_map.get(ev.roundId, "Unknown Round"),
+            "judgeVolunteerId": ev.judgeVolunteerId,
+            "judgeName": judges.get(ev.judgeVolunteerId, "Unknown Judge"),
+            "versions": version_items,
+        })
+
+    return {"teamId": teamId, "teamName": team.name, "evaluations": trail}
 
 
 @router.post("/admin/evaluations/{eid}/unlock")
@@ -767,3 +858,140 @@ def revise_round_rubric(
     )
     db.commit()
     return result
+
+
+@router.post("/admin/evaluations/{eid}/clear")
+def clear_evaluation(
+    eid: str,
+    payload: Optional[ClearEvaluationRequest] = None,
+    db: Session = Depends(get_db),
+    current_user: Principal = Depends(require_permission("evaluation.unlock")),
+):
+    evaluation = (
+        db.query(Evaluation)
+        .filter(Evaluation.id == eid, Evaluation.eventId == current_user.eventId)
+        .first()
+    )
+    if not evaluation:
+        raise HTTPException(status_code=404, detail="Evaluation not found")
+
+    reason = (payload.reason if payload and payload.reason else "Admin cleared evaluation for re-evaluation").strip()
+    now = datetime.utcnow()
+
+    active_versions = (
+        db.query(EvaluationVersion)
+        .filter(
+            EvaluationVersion.evaluationId == eid,
+            EvaluationVersion.status.in_(["draft", "final"]),
+        )
+        .all()
+    )
+
+    if not active_versions:
+        return {"ok": True, "message": "No active evaluation versions to clear", "archivedVersions": 0}
+
+    archived_count = 0
+    for v in active_versions:
+        if v.status == "final":
+            v.status = "superseded"
+        else:
+            v.status = "discarded"
+        v.supersededAt = now
+        v.supersededReason = "admin_clear"
+        archived_count += 1
+
+    evaluation.currentVersionId = None
+    db.commit()
+
+    log_audit(
+        db,
+        current_user.username,
+        "evaluation.admin_clear",
+        "evaluation",
+        eid,
+        {
+            "roundId": evaluation.roundId,
+            "teamId": evaluation.teamId,
+            "judgeVolunteerId": evaluation.judgeVolunteerId,
+            "reason": reason,
+            "archivedVersions": archived_count,
+        },
+        event_id=current_user.eventId,
+    )
+
+    return {
+        "ok": True,
+        "message": f"Successfully archived {archived_count} version(s). Team can now be re-evaluated.",
+        "archivedVersions": archived_count,
+        "evaluationId": eid,
+    }
+
+
+@router.post("/admin/rounds/{round_id}/teams/{team_id}/clear-evaluations")
+def clear_team_evaluations(
+    round_id: str,
+    team_id: str,
+    payload: Optional[ClearEvaluationRequest] = None,
+    db: Session = Depends(get_db),
+    current_user: Principal = Depends(require_permission("evaluation.unlock")),
+):
+    evaluations = (
+        db.query(Evaluation)
+        .filter(
+            Evaluation.roundId == round_id,
+            Evaluation.teamId == team_id,
+            Evaluation.eventId == current_user.eventId,
+        )
+        .all()
+    )
+    if not evaluations:
+        raise HTTPException(status_code=404, detail="No evaluations found for this team in this round")
+
+    reason = (payload.reason if payload and payload.reason else "Admin cleared team evaluations for re-evaluation").strip()
+    now = datetime.utcnow()
+    total_archived = 0
+
+    for ev in evaluations:
+        active_versions = (
+            db.query(EvaluationVersion)
+            .filter(
+                EvaluationVersion.evaluationId == ev.id,
+                EvaluationVersion.status.in_(["draft", "final"]),
+            )
+            .all()
+        )
+        for v in active_versions:
+            if v.status == "final":
+                v.status = "superseded"
+            else:
+                v.status = "discarded"
+            v.supersededAt = now
+            v.supersededReason = "admin_clear"
+            total_archived += 1
+        ev.currentVersionId = None
+
+    db.commit()
+
+    log_audit(
+        db,
+        current_user.username,
+        "evaluation.admin_clear_team",
+        "team",
+        team_id,
+        {
+            "roundId": round_id,
+            "evaluationsCount": len(evaluations),
+            "totalArchived": total_archived,
+            "reason": reason,
+        },
+        event_id=current_user.eventId,
+    )
+
+    return {
+        "ok": True,
+        "message": f"Successfully cleared evaluations for team. Archived {total_archived} version(s).",
+        "archivedVersions": total_archived,
+        "teamId": team_id,
+        "roundId": round_id,
+    }
+

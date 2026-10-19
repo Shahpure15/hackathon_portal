@@ -95,6 +95,53 @@ def ensure_system_roles(db: Session, event_id: str) -> None:
     db.commit()
 
 
+def default_system_key_for(volunteer_type) -> str:
+    """Map legacy volunteers.type to a system role key:
+    JUDGE -> 'judge'; FACULTY -> 'faculty'; VOLUNTEER (and anything unknown) -> 'volunteer'."""
+    raw = getattr(volunteer_type, 'value', volunteer_type)
+    val = str(raw or '').strip().upper()
+    if 'JUDGE' in val or 'EVALUATOR' in val:
+        return 'judge'
+    if 'FACULTY' in val:
+        return 'faculty'
+    return 'volunteer'
+
+
+def assign_default_role(db: Session, user, volunteer, created_by: str = 'AUTO_DEFAULT'):
+    """Idempotently give a freshly created staff login its default system role based on
+    the linked volunteer's type. Does nothing if the user already has ANY assignment in
+    this event (so it never overrides an admin's explicit choice). The caller must have
+    already added and flushed `user`. This function commits (ensure_system_roles commits);
+    that is acceptable at every call site listed in Change 2."""
+    existing = (
+        db.query(UserRoleAssignment)
+        .filter(UserRoleAssignment.userId == user.id, UserRoleAssignment.eventId == user.eventId)
+        .first()
+    )
+    if existing:
+        return existing
+    ensure_system_roles(db, user.eventId)
+    key = default_system_key_for(getattr(volunteer, 'type', None))
+    role = (
+        db.query(RbacRole)
+        .filter(RbacRole.eventId == user.eventId, RbacRole.systemKey == key)
+        .first()
+    )
+    if not role:
+        return None
+    assignment = UserRoleAssignment(
+        eventId=user.eventId,
+        userId=user.id,
+        roleId=role.id,
+        scope={'teams': {'mode': 'all', 'ids': []}},
+        createdBy=created_by,
+    )
+    db.add(assignment)
+    db.commit()
+    invalidate_user(user.id)
+    return assignment
+
+
 def resolve_access(db: Session, ctx: CurrentUser) -> ResolvedAccess:
     if ctx.role == Role.ADMIN:
         return ResolvedAccess(set(CATALOG), True, set(), set(), ['Admin'])
@@ -107,32 +154,17 @@ def resolve_access(db: Session, ctx: CurrentUser) -> ResolvedAccess:
     if hit and now - hit[0] < CACHE_TTL_SECONDS:
         return hit[1]
 
-    # Load (assignment, role) rows for ctx.id.
+    # Deny by default: a user with no assignment has no permissions. Roles are granted
+    # explicitly (assign_default_role at login creation, the Roles module, or staff invite).
+    # resolve_access must NEVER write to the database.
     assignments = (
         db.query(UserRoleAssignment)
-        .filter(UserRoleAssignment.userId == ctx.id)
+        .filter(
+            UserRoleAssignment.userId == ctx.id,
+            UserRoleAssignment.eventId == ctx.eventId,
+        )
         .all()
     )
-
-    # Legacy fallback: If there are none, ensure system roles and create an assignment
-    if not assignments and ctx.eventId:
-        ensure_system_roles(db, ctx.eventId)
-        vol_role = (
-            db.query(RbacRole)
-            .filter(RbacRole.eventId == ctx.eventId, RbacRole.systemKey == 'volunteer')
-            .first()
-        )
-        if vol_role:
-            new_assignment = UserRoleAssignment(
-                eventId=ctx.eventId,
-                userId=ctx.id,
-                roleId=vol_role.id,
-                scope={'teams': {'mode': 'all', 'ids': []}},
-                createdBy='SYSTEM',
-            )
-            db.add(new_assignment)
-            db.commit()
-            assignments = [new_assignment]
 
     all_perms: Set[str] = set()
     team_scope_all = False
@@ -243,3 +275,32 @@ def apply_team_scope(query, principal: Principal, team_model=Team):
         return query.filter(false())
 
     return query.filter(or_(*clauses))
+
+
+# Permissions that justify showing the staff shell (the admin-style module sidebar).
+# Anything outside this set (evaluation.score alone, people.view/people.checkin alone)
+# does not.
+SHELL_PERMISSIONS = {
+    k for k in CATALOG
+    if k not in ('evaluation.score', 'people.view', 'people.checkin')
+}
+
+
+def compute_landing(role_value: str, permissions: Set[str], is_admin: bool) -> str:
+    """Single source of truth for where a user lands after login.
+    Returns one of: 'admin', 'staff', 'judge', 'leader', 'none'."""
+    role_value = (role_value or '').upper()
+    if is_admin or role_value == 'ADMIN':
+        return 'admin'
+    if role_value == 'LEADER':
+        return 'leader'
+    if role_value == 'VOLUNTEER':
+        if not permissions:
+            return 'none'
+        if permissions & SHELL_PERMISSIONS:
+            return 'staff'
+        if 'evaluation.score' in permissions:
+            return 'judge'
+        return 'staff'   # people.view / people.checkin only: still a staff user
+    return 'none'
+

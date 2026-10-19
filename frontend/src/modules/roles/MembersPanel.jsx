@@ -619,7 +619,11 @@ export const MembersPanel = ({ role, features }) => {
       <ConfirmDialog
         isOpen={confirmRemoveOpen}
         title="Remove Member from Role"
-        message={`Are you sure you want to remove ${memberToRemove?.name || 'this member'} from role '${role.name}'? Every person with a login must retain at least one role assignment.`}
+        message={`Are you sure you want to remove ${memberToRemove?.name || 'this member'} from role '${role.name}'?${
+          (memberToRemove?.roleCount === 1 || memberToRemove?.roles?.length === 1)
+            ? ' This is their only role. They will be able to log in but will see no access until you assign another role.'
+            : ''
+        }`}
         onConfirm={handleConfirmRemove}
         onCancel={() => {
           setConfirmRemoveOpen(false);
