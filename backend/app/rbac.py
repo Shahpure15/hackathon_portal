@@ -95,8 +95,12 @@ def ensure_system_roles(db: Session, event_id: str) -> None:
     db.commit()
 
 
-def default_system_key_for(volunteer_type) -> str:
-    """Map legacy volunteers.type to a system role key:
+STAFF_PRINCIPAL_TYPES = (Role.VOLUNTEER, Role.JUDGE, Role.FACULTY)
+JUDGE_PRINCIPAL_TYPES = (Role.VOLUNTEER, Role.JUDGE, Role.FACULTY, Role.ADMIN)
+
+
+def default_system_key_for(volunteer_type, user_role=None) -> str:
+    """Map legacy volunteers.type or user.role to a system role key:
     JUDGE -> 'judge'; FACULTY -> 'faculty'; VOLUNTEER (and anything unknown) -> 'volunteer'."""
     raw = getattr(volunteer_type, 'value', volunteer_type)
     val = str(raw or '').strip().upper()
@@ -104,6 +108,13 @@ def default_system_key_for(volunteer_type) -> str:
         return 'judge'
     if 'FACULTY' in val:
         return 'faculty'
+    if user_role is not None:
+        u_raw = getattr(user_role, 'value', user_role)
+        u_val = str(u_raw or '').strip().upper()
+        if 'JUDGE' in u_val or 'EVALUATOR' in u_val:
+            return 'judge'
+        if 'FACULTY' in u_val:
+            return 'faculty'
     return 'volunteer'
 
 
@@ -121,7 +132,7 @@ def assign_default_role(db: Session, user, volunteer, created_by: str = 'AUTO_DE
     if existing:
         return existing
     ensure_system_roles(db, user.eventId)
-    key = default_system_key_for(getattr(volunteer, 'type', None))
+    key = default_system_key_for(getattr(volunteer, 'type', None), getattr(user, 'role', None))
     role = (
         db.query(RbacRole)
         .filter(RbacRole.eventId == user.eventId, RbacRole.systemKey == key)
@@ -295,7 +306,7 @@ SHELL_PERMISSIONS = {
 
 def compute_landing(role_value: str, permissions: Set[str], is_admin: bool) -> str:
     """Single source of truth for where a user lands after login.
-    Returns one of: 'admin', 'staff', 'judge', 'leader', 'volunteer', 'none'."""
+    Returns one of: 'admin', 'staff', 'judge', 'leader', 'none'."""
     role_value = (role_value or '').upper()
     if is_admin or role_value == 'ADMIN':
         return 'admin'
@@ -303,18 +314,13 @@ def compute_landing(role_value: str, permissions: Set[str], is_admin: bool) -> s
         return 'leader'
     if not permissions:
         return 'none'
-    if role_value == 'FACULTY':
-        return 'staff'
     if role_value == 'JUDGE':
         return 'judge'
-    if role_value == 'VOLUNTEER':
-        return 'volunteer'
-    # Fallback by permissions if role_value is unrecognized or empty
+    if role_value == 'FACULTY':
+        return 'staff'
     if permissions & SHELL_PERMISSIONS:
         return 'staff'
     if 'evaluation.score' in permissions:
         return 'judge'
-    if 'attendance.mark' in permissions or 'checkpoint.view' in permissions:
-        return 'volunteer'
-    return 'none'
+    return 'staff'
 

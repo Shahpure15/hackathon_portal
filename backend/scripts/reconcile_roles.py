@@ -45,13 +45,13 @@ def reconcile_roles(db: Session, apply: bool = False, event_id: Optional[str] = 
             vol_type_str = str(getattr(raw_v_type, "value", raw_v_type) or "").strip()
 
             # Rule 3: Skip admins and leaders
-            if user.role != Role.VOLUNTEER:
+            if user.role not in (Role.VOLUNTEER, Role.JUDGE, Role.FACULTY):
                 skipped.append({
                     "event": ev.id,
                     "username": user.username,
                     "volunteer_name": vol_name,
                     "volunteer_type": vol_type_str or str(user.role.value if hasattr(user.role, "value") else user.role),
-                    "reason": f"Non-volunteer role: {user.role.value if hasattr(user.role, 'value') else user.role}"
+                    "reason": f"Non-staff role: {user.role.value if hasattr(user.role, 'value') else user.role}"
                 })
                 continue
 
@@ -63,7 +63,7 @@ def reconcile_roles(db: Session, apply: bool = False, event_id: Optional[str] = 
 
             # Rule 1: Zero assignments
             if len(assignments) == 0:
-                target_key = default_system_key_for(vol.type if vol else None)
+                target_key = default_system_key_for(vol.type if vol else None, user.role)
                 target_role = system_roles.get(target_key)
                 if not target_role:
                     target_role = (

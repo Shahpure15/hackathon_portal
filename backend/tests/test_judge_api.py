@@ -50,7 +50,7 @@ def judge_fixture(db):
 
     # Judge A
     jA = make_volunteer(db, event, name="Judge Alice", type="JUDGE")
-    userA = make_user(db, event, Role.VOLUNTEER, username="judge_a", volunteer=jA)
+    userA = make_user(db, event, Role.JUDGE, username="judge_a", volunteer=jA)
     db.add(UserRoleAssignment(eventId=event.id, userId=userA.id, roleId=judge_role.id))
 
     # Judge B

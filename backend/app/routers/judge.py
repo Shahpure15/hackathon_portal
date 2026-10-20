@@ -37,7 +37,7 @@ from app.models import (
     PSSelection,
     ProblemStatement,
 )
-from app.rbac import Principal, require_permission
+from app.rbac import Principal, require_permission, JUDGE_PRINCIPAL_TYPES
 from app.services.evaluation import (
     get_or_create_evaluation,
     save_draft,
@@ -63,7 +63,7 @@ def _get_judge_id(current_user: Principal) -> str:
 @router.get("/rounds", response_model=List[JudgeRoundItemDTO])
 def get_judge_rounds(
     db: Session = Depends(get_db),
-    current_user: Principal = Depends(require_permission("evaluation.score", principal_types=(Role.VOLUNTEER, Role.ADMIN))),
+    current_user: Principal = Depends(require_permission("evaluation.score", principal_types=JUDGE_PRINCIPAL_TYPES)),
 ):
     judge_id = getattr(current_user, "volunteerId", None)
     if not judge_id:
@@ -167,7 +167,7 @@ def get_judge_rounds(
 def get_judge_round_teams(
     rid: str,
     db: Session = Depends(get_db),
-    current_user: Principal = Depends(require_permission("evaluation.score", principal_types=(Role.VOLUNTEER, Role.ADMIN))),
+    current_user: Principal = Depends(require_permission("evaluation.score", principal_types=JUDGE_PRINCIPAL_TYPES)),
 ):
     judge_id = _get_judge_id(current_user)
 
@@ -279,7 +279,7 @@ def get_judge_team_detail(
     rid: str,
     tid: str,
     db: Session = Depends(get_db),
-    current_user: Principal = Depends(require_permission("evaluation.score", principal_types=(Role.VOLUNTEER, Role.ADMIN))),
+    current_user: Principal = Depends(require_permission("evaluation.score", principal_types=JUDGE_PRINCIPAL_TYPES)),
 ):
     judge_id = _get_judge_id(current_user)
 
@@ -494,7 +494,7 @@ def save_judge_draft(
     tid: str,
     payload: JudgeDraftRequest,
     db: Session = Depends(get_db),
-    current_user: Principal = Depends(require_permission("evaluation.score", principal_types=(Role.VOLUNTEER, Role.ADMIN))),
+    current_user: Principal = Depends(require_permission("evaluation.score", principal_types=JUDGE_PRINCIPAL_TYPES)),
 ):
     judge_id = _get_judge_id(current_user)
 
@@ -551,7 +551,7 @@ def submit_judge_evaluation(
     tid: str,
     payload: JudgeSubmitRequest,
     db: Session = Depends(get_db),
-    current_user: Principal = Depends(require_permission("evaluation.score", principal_types=(Role.VOLUNTEER, Role.ADMIN))),
+    current_user: Principal = Depends(require_permission("evaluation.score", principal_types=JUDGE_PRINCIPAL_TYPES)),
 ):
     judge_id = _get_judge_id(current_user)
 

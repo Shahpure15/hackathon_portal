@@ -19,7 +19,7 @@ from app.auth import (
 from app.limiter import limiter, login_key_func
 from app.dto.rbac import AuthMeResponse
 from app.permissions import CATALOG
-from app.rbac import resolve_access, compute_landing
+from app.rbac import resolve_access, compute_landing, assign_default_role
 from app.services.features import get_event_features, FeaturesConfig
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -91,6 +91,13 @@ def login(
     if user.teamId:
         token_payload["teamId"] = user.teamId
 
+    # Ensure default system role for staff users if missing
+    if user.role in (Role.VOLUNTEER, Role.FACULTY, Role.JUDGE) and user.eventId:
+        vol = getattr(user, 'volunteer', None)
+        if not vol and user.volunteerId:
+            vol = db.query(Volunteer).filter(Volunteer.id == user.volunteerId).first()
+        assign_default_role(db, user, vol)
+
     # Allow multiple concurrent active logins for ADMIN role across devices & tabs
     if user.role != Role.ADMIN:
         _revoke_all_sessions(db, user.id)
@@ -156,6 +163,13 @@ def refresh(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found"
         )
+
+    # Ensure default system role for staff users if missing
+    if user.role in (Role.VOLUNTEER, Role.FACULTY, Role.JUDGE) and user.eventId:
+        vol = getattr(user, 'volunteer', None)
+        if not vol and user.volunteerId:
+            vol = db.query(Volunteer).filter(Volunteer.id == user.volunteerId).first()
+        assign_default_role(db, user, vol)
 
     # 3. Perform rotation (revokes old token, adds new one, commits)
     new_access, new_refresh = rotate_refresh_token(
