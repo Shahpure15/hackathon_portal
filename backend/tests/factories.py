@@ -113,5 +113,6 @@ def auth_header(user: User) -> dict:
         'sub': user.id,
         'role': role_val,
         'eventId': user.eventId,
+        'tv': getattr(user, 'tokenVersion', 1) or 1,
     })
     return {'Authorization': f'Bearer {token}'}

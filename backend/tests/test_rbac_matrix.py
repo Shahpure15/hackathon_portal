@@ -13,6 +13,7 @@ client = TestClient(app)
 
 PUBLIC = {('POST', '/auth/login'), ('POST', '/auth/refresh'), ('POST', '/auth/logout'), ('GET', '/health')}
 DOC_PATHS = {'/openapi.json', '/docs', '/docs/oauth2-redirect', '/redoc'}
+DESTRUCTIVE_SESSION_ROUTES = {('POST', '/admin/security/revoke-all-sessions')}
 
 
 def _get_target_routes():
@@ -34,7 +35,7 @@ def _get_target_routes():
         if r.path in DOC_PATHS or r.path.startswith('/__test'):
             continue
         for m in r.methods:
-            if (m, r.path) in PUBLIC:
+            if (m, r.path) in PUBLIC or (m, r.path) in DESTRUCTIVE_SESSION_ROUTES:
                 continue
             sub_path = re.sub(r'\{[^}]+\}', '00000000-0000-0000-0000-000000000000', r.path)
             routes.append((m, r.path, sub_path))
@@ -128,3 +129,38 @@ def test_custom_role_volunteer_partial_permissions(db: Session):
 
     res_post_checkin = client.post("/volunteer/checkin", headers=headers, json={})
     assert res_post_checkin.status_code == 403, f"Expected 403 on POST /volunteer/checkin, got {res_post_checkin.status_code}"
+
+
+def test_revoke_all_sessions_rbac(db: Session):
+    event = make_org_event(db)
+    admin = make_user(db, event, Role.ADMIN, "sec_admin")
+    vol_rec = make_volunteer(db, event, "sec_vol")
+    vol = make_user(db, event, Role.VOLUNTEER, "sec_vol", volunteer=vol_rec)
+    assign_default_role(db, vol, vol_rec)
+    leader = make_user(db, event, Role.LEADER, "sec_leader")
+
+    admin_headers = auth_header(admin)
+    vol_headers = auth_header(vol)
+    leader_headers = auth_header(leader)
+
+    # Volunteer gets 403
+    res_vol = client.post("/admin/security/revoke-all-sessions", headers=vol_headers)
+    assert res_vol.status_code == 403
+
+    # Leader gets 403
+    res_ldr = client.post("/admin/security/revoke-all-sessions", headers=leader_headers)
+    assert res_ldr.status_code == 403
+
+    # Admin gets 200
+    res_adm = client.post("/admin/security/revoke-all-sessions", headers=admin_headers)
+    assert res_adm.status_code == 200
+    assert res_adm.json()["status"] == "success"
+
+    # After admin revokes all, volunteer session is invalidated (401)
+    res_vol_after = client.get("/auth/me", headers=vol_headers)
+    assert res_vol_after.status_code == 401
+
+    # Admin's own session remains valid
+    res_adm_after = client.get("/auth/me", headers=admin_headers)
+    assert res_adm_after.status_code == 200
+

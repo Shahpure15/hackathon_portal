@@ -29,6 +29,7 @@ from app.models import (
     User,
     UserRoleAssignment,
     Volunteer,
+    RefreshToken,
 )
 from app.permissions import (
     CATALOG,
@@ -741,14 +742,6 @@ def remove_role_member(
         raise HTTPException(status_code=404, detail="Member assignment not found")
 
     db.delete(assignment)
-    # Immediately invalidate user session so removed permissions take effect
-    user_rec = db.query(User).filter(User.id == user_id).first()
-    if user_rec:
-        user_rec.tokenVersion = (getattr(user_rec, "tokenVersion", 1) or 1) + 1
-        db.query(RefreshToken).filter(
-            RefreshToken.userId == user_id,
-            RefreshToken.revoked == False
-        ).update({"revoked": True})
     db.commit()
 
     invalidate_all()
