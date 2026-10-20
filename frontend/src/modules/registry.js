@@ -20,6 +20,7 @@ export const ADMIN_NAV_PERMISSIONS = {
 
 export const STAFF_TAB_PERMISSIONS = {
   checkin: 'team.view',
+  checkpoints: 'checkpoint.view',
   people: 'people.view',
   evaluations: 'evaluation.score',
 };

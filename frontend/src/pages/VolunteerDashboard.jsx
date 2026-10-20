@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  Users, UserCheck, Search, X, CheckCircle, ChevronLeft, ChevronRight, LogOut, Info, QrCode, Menu, Layers, Download, Award
+  Users, UserCheck, Search, X, CheckCircle, ChevronLeft, ChevronRight, LogOut, Info, QrCode, Menu, Layers, Download, Award,
+  CalendarCheck, CheckSquare, Clock, Filter, Plus, Edit2, AlertCircle, RefreshCw
 } from 'lucide-react';
 import api, { getAccessToken } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -22,6 +23,7 @@ const VolunteerDashboard = () => {
 
   const allNavItems = [
     { id: 'checkin', label: can('attendance.mark') ? 'Teams Check-in' : 'Teams', icon: <UserCheck size={16} /> },
+    { id: 'checkpoints', label: 'Checkpoints', icon: <CalendarCheck size={16} /> },
     { id: 'people', label: 'People / Faculty / Judges', icon: <Users size={16} /> },
     { id: 'evaluations', label: 'Evaluate', icon: <Award size={16} /> }
   ];
@@ -40,6 +42,15 @@ const VolunteerDashboard = () => {
   const [checkpoints, setCheckpoints] = useState([]);
   const [activeCheckpointId, setActiveCheckpointId] = useState('');
   const [eventId, setEventId] = useState(null);
+
+  // Checkpoints manage modals (when permitted)
+  const [showAddCpModal, setShowAddCpModal] = useState(false);
+  const [showEditCpModal, setShowEditCpModal] = useState(false);
+  const [cpFormName, setCpFormName] = useState('');
+  const [cpFormDesc, setCpFormDesc] = useState('');
+  const [cpFormDefault, setCpFormDefault] = useState(false);
+  const [cpEditId, setCpEditId] = useState('');
+  const [cpSaving, setCpSaving] = useState(false);
 
   // QR Scanner modal state
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -95,7 +106,7 @@ const VolunteerDashboard = () => {
       }, 300);
       return () => clearTimeout(delayDebounce);
     }
-  }, [search, page, activeTab, can]);
+  }, [search, page, activeTab, activeCheckpointId, can]);
 
   useEffect(() => {
     if (activeTab === 'people' && (can('people.view') || can('people.checkin'))) {
@@ -211,6 +222,7 @@ const VolunteerDashboard = () => {
       const res = await api.get('/volunteer/teams', {
         params: {
           search: search || undefined,
+          checkpoint_id: activeCheckpointId || undefined,
           page,
           limit: 10
         }
@@ -277,6 +289,52 @@ const VolunteerDashboard = () => {
       addToast(err.response?.data?.detail || 'Failed to allot problem statement', 'error');
     } finally {
       setIsAssigningPs(false);
+    }
+  };
+
+  const handleCreateCheckpoint = async (e) => {
+    e.preventDefault();
+    if (!cpFormName.trim()) return;
+    setCpSaving(true);
+    try {
+      await api.post('/admin/checkpoints', {
+        name: cpFormName.trim(),
+        description: cpFormDesc.trim() || null,
+        isDefault: cpFormDefault
+      });
+      addToast('Checkpoint created successfully!', 'success');
+      setCpFormName('');
+      setCpFormDesc('');
+      setCpFormDefault(false);
+      setShowAddCpModal(false);
+      fetchCheckpoints();
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to create checkpoint', 'error');
+    } finally {
+      setCpSaving(false);
+    }
+  };
+
+  const handleUpdateCheckpoint = async (e) => {
+    e.preventDefault();
+    if (!cpFormName.trim() || !cpEditId) return;
+    setCpSaving(true);
+    try {
+      await api.patch(`/admin/checkpoints/${cpEditId}`, {
+        name: cpFormName.trim(),
+        description: cpFormDesc.trim() || null,
+        isDefault: cpFormDefault
+      });
+      addToast('Checkpoint updated successfully!', 'success');
+      setCpFormName('');
+      setCpFormDesc('');
+      setCpEditId('');
+      setShowEditCpModal(false);
+      fetchCheckpoints();
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to update checkpoint', 'error');
+    } finally {
+      setCpSaving(false);
     }
   };
 
@@ -369,35 +427,75 @@ const VolunteerDashboard = () => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '20px' }}>
           <div>
             <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>
-              {activeTab === 'evaluations' ? 'Judge Evaluation' : activeTab === 'checkin' ? (can('attendance.mark') ? 'Teams Check-in' : 'Teams') : 'Faculty, Judges & People'} <span className="font-accent">Desk</span>
+              {activeTab === 'evaluations'
+                ? 'Judge Evaluation'
+                : activeTab === 'checkin'
+                ? (can('attendance.mark') ? 'Teams Check-in' : 'Teams')
+                : activeTab === 'checkpoints'
+                ? 'Attendance Checkpoints'
+                : 'Faculty, Judges & People'} <span className="font-accent">Desk</span>
             </h1>
             <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
               {activeTab === 'evaluations'
                 ? 'Evaluate participant presentations, review deliverables, and record rubric scores.'
                 : activeTab === 'checkin'
                 ? (can('attendance.mark') ? 'Verify identity credentials, mark attendance checkpoints, and allot problem statements when enabled.' : 'View team rosters, members, and details.')
+                : activeTab === 'checkpoints'
+                ? 'View and manage all scheduled checkpoints, review attendee statistics, and select the active desk checkpoint.'
                 : 'Verify attendance for Faculty, Judges, Student Volunteers, Organizers, and event staff.'}
             </p>
           </div>
 
-          {/* Active Checkpoint dropdown */}
-          {activeTab === 'checkin' && can('attendance.mark') && (
-            <div className="glass-panel" style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
-                Active Checkpoint:
-              </span>
-              <select
-                value={activeCheckpointId}
-                onChange={(e) => setActiveCheckpointId(e.target.value)}
-                className="form-input"
-                style={{ width: '220px', minHeight: '38px', padding: '6px 12px' }}
-              >
-                {checkpoints.map(cp => (
-                  <option key={cp.id} value={cp.id}>
-                    {cp.name}{cp.isDefault ? ' (Default)' : ''}
-                  </option>
-                ))}
-              </select>
+          {/* Active Checkpoint dropdown & quick-pills */}
+          {['checkin', 'people', 'checkpoints'].includes(activeTab) && (can('checkpoint.view') || can('attendance.mark') || can('people.checkin')) && (
+            <div className="glass-panel" style={{ padding: '12px 18px', display: 'flex', flexDirection: 'column', gap: '10px', minWidth: '300px', maxWidth: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Active Checkpoint:
+                </span>
+                <select
+                  value={activeCheckpointId}
+                  onChange={(e) => setActiveCheckpointId(e.target.value)}
+                  className="form-input"
+                  style={{ width: '190px', minHeight: '34px', padding: '4px 10px', fontSize: '0.85rem' }}
+                >
+                  {checkpoints.length === 0 && <option value="">No Checkpoints</option>}
+                  {checkpoints.map(cp => (
+                    <option key={cp.id} value={cp.id}>
+                      {cp.name}{cp.isDefault ? ' (Default)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Quick-switch chips for all checkpoint kinds */}
+              {checkpoints.length > 0 && (
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {checkpoints.map(cp => {
+                    const isCur = cp.id === activeCheckpointId;
+                    return (
+                      <button
+                        key={cp.id}
+                        type="button"
+                        onClick={() => setActiveCheckpointId(cp.id)}
+                        style={{
+                          padding: '3px 10px',
+                          borderRadius: '16px',
+                          fontSize: '0.75rem',
+                          fontWeight: isCur ? 700 : 500,
+                          border: isCur ? '1px solid var(--primary)' : '1px solid var(--border-light)',
+                          background: isCur ? 'var(--primary)' : 'rgba(255, 255, 255, 0.05)',
+                          color: isCur ? '#fff' : 'var(--text-secondary)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        {cp.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -526,11 +624,11 @@ const VolunteerDashboard = () => {
                   )
                 }] : []),
                 {
-                  header: 'Check-In Status',
+                  header: `Check-In (${activeCheckpointName})`,
                   accessor: 'id',
                   render: (t) => {
-                    const totalMembers = t.totalMembers || 0;
-                    const checkedIn = t.checkedInMembers || 0;
+                    const totalMembers = t.totalMembers || t.memberCount || 0;
+                    const checkedIn = t.checkedInMembers ?? t.verifiedCount ?? 0;
                     const isFullyCheckedIn = totalMembers > 0 && checkedIn === totalMembers;
                     return (
                       <span className={`status-badge ${isFullyCheckedIn ? 'status-active' : checkedIn > 0 ? 'status-draft' : 'status-danger'}`} style={{ fontSize: '0.75rem' }}>
@@ -653,26 +751,55 @@ const VolunteerDashboard = () => {
                   )
                 },
                 {
-                  header: 'Check-In Status',
+                  header: `Check-In (${activeCheckpointName})`,
                   accessor: 'id',
                   render: (p) => {
                     const cpStatus = p.checkpoints?.find(cp => cp.checkpointTypeId === activeCheckpointId);
                     const isCheckedIn = cpStatus?.checkedIn;
 
-                    if (isCheckedIn) {
-                      return (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          <span style={{ color: 'var(--success)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem' }}>
-                            <CheckCircle size={14} /> Checked In
-                          </span>
-                          <div>by {cpStatus.markedBy}</div>
-                        </div>
-                      );
-                    }
                     return (
-                      <span className="status-badge status-draft" style={{ fontSize: '0.75rem' }}>
-                        Not Checked In
-                      </span>
+                      <div>
+                        {isCheckedIn ? (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            <span style={{ color: 'var(--success)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem' }}>
+                              <CheckCircle size={14} /> Checked In
+                            </span>
+                            <div>by {cpStatus.markedBy}</div>
+                          </div>
+                        ) : (
+                          <span className="status-badge status-draft" style={{ fontSize: '0.75rem' }}>
+                            Not Checked In
+                          </span>
+                        )}
+
+                        {/* All checkpoints mini pill badges */}
+                        {p.checkpoints && p.checkpoints.length > 0 && (
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '6px' }}>
+                            {p.checkpoints.map(cp => (
+                              <span
+                                key={cp.checkpointTypeId}
+                                onClick={() => setActiveCheckpointId(cp.checkpointTypeId)}
+                                style={{
+                                  fontSize: '0.7rem',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  background: cp.checkedIn ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                                  color: cp.checkedIn ? '#10b981' : 'var(--text-muted)',
+                                  border: cp.checkpointTypeId === activeCheckpointId ? '1px solid var(--primary)' : '1px solid transparent',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px'
+                                }}
+                                title={cp.checkedIn ? `Checked in: ${cp.checkpointName}` : `Click to switch to ${cp.checkpointName}`}
+                              >
+                                {cp.checkedIn ? <CheckCircle size={10} /> : <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--text-muted)' }} />}
+                                {cp.checkpointName}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     );
                   }
                 },
@@ -721,6 +848,170 @@ const VolunteerDashboard = () => {
           </div>
         )}
 
+        {/* CHECKPOINTS / ATTENDANCE SLOTS TAB CONTENT */}
+        {activeTab === 'checkpoints' && (
+          <div className="fade-in-up">
+            {/* Top Metrics Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px', marginBottom: '28px' }}>
+              <div className="glass-panel" style={{ padding: '22px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                  <CalendarCheck size={18} style={{ color: 'var(--primary)' }} />
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>
+                    Scheduled Checkpoints
+                  </span>
+                </div>
+                <div style={{ fontSize: '2rem', fontWeight: 800 }}>{checkpoints.length}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Configured event check-in checkpoints
+                </div>
+              </div>
+
+              <div className="glass-panel" style={{ padding: '22px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                  <CheckSquare size={18} style={{ color: '#10b981' }} />
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>
+                    Active Desk Checkpoint
+                  </span>
+                </div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--primary)', marginTop: '4px' }}>
+                  {activeCheckpointName}
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Currently active for team and staff check-ins
+                </div>
+              </div>
+
+              <div className="glass-panel" style={{ padding: '22px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                  <Users size={18} style={{ color: '#8b5cf6' }} />
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>
+                    Total Attendees Checked In
+                  </span>
+                </div>
+                <div style={{ fontSize: '2rem', fontWeight: 800, color: '#10b981' }}>
+                  {checkpoints.reduce((acc, c) => acc + (c.totalCount || 0), 0)}
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Across all checkpoint slots
+                </div>
+              </div>
+            </div>
+
+            {/* Checkpoint Cards Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '14px' }}>
+              <div>
+                <h2 style={{ fontSize: '1.3rem', fontWeight: 700 }}>Event Checkpoint Slots</h2>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  All checkpoints configured for participant teams and staff. Click "Set Active" to use for registration or attendance marking.
+                </p>
+              </div>
+
+              {can('checkpoint.manage') && (
+                <button
+                  onClick={() => {
+                    setCpFormName('');
+                    setCpFormDesc('');
+                    setCpFormDefault(false);
+                    setShowAddCpModal(true);
+                  }}
+                  className="btn btn-primary"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '8px 16px', fontSize: '0.85rem' }}
+                >
+                  <Plus size={16} />
+                  Add Checkpoint
+                </button>
+              )}
+            </div>
+
+            {/* Checkpoints Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
+              {checkpoints.map(cp => {
+                const isActive = cp.id === activeCheckpointId;
+                return (
+                  <div
+                    key={cp.id}
+                    className="glass-panel"
+                    style={{
+                      padding: '24px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      border: isActive ? '2px solid var(--primary)' : '1px solid var(--border-light)',
+                      position: 'relative',
+                      boxShadow: isActive ? '0 0 20px rgba(99, 102, 241, 0.25)' : 'none',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '10px' }}>
+                        <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>{cp.name}</h3>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          {cp.isDefault && (
+                            <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(99, 102, 241, 0.2)', color: 'var(--primary)', fontWeight: 700 }}>
+                              DEFAULT
+                            </span>
+                          )}
+                          {isActive && (
+                            <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', fontWeight: 700 }}>
+                              ACTIVE DESK
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '18px', minHeight: '38px', lineHeight: 1.4 }}>
+                        {cp.description || 'No description provided for this checkpoint.'}
+                      </p>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: 'rgba(255, 255, 255, 0.03)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border-light)', marginBottom: '18px' }}>
+                        <div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>PARTICIPANTS</div>
+                          <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: '2px' }}>{cp.participantCount || 0}</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>STAFF / PEOPLE</div>
+                          <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: '2px' }}>{cp.staffCount || 0}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={() => {
+                          setActiveCheckpointId(cp.id);
+                          addToast(`Switched active desk checkpoint to ${cp.name}`, 'info');
+                        }}
+                        className={`btn ${isActive ? 'btn-secondary' : 'btn-primary'}`}
+                        style={{ flex: 1, padding: '8px 14px', fontSize: '0.85rem', minHeight: '38px', fontWeight: 600 }}
+                        disabled={isActive}
+                      >
+                        {isActive ? 'Currently Active' : 'Set as Active Checkpoint'}
+                      </button>
+
+                      {can('checkpoint.manage') && (
+                        <button
+                          onClick={() => {
+                            setCpEditId(cp.id);
+                            setCpFormName(cp.name);
+                            setCpFormDesc(cp.description || '');
+                            setCpFormDefault(!!cp.isDefault);
+                            setShowEditCpModal(true);
+                          }}
+                          className="btn btn-secondary"
+                          style={{ padding: '8px 12px', minHeight: '38px' }}
+                          title="Edit Checkpoint"
+                        >
+                          <Edit2 size={15} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* JUDGE EVALUATION TAB CONTENT */}
         {activeTab === 'evaluations' && (
           <div className="fade-in-up">
@@ -745,7 +1036,7 @@ const VolunteerDashboard = () => {
               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '8px' }}>
                 Code: <strong>{detailedTeam?.registrationId || selectedTeam.registrationId}</strong> | Active Checkpoint: <strong style={{ color: 'var(--primary)' }}>{activeCheckpointName}</strong>
               </p>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
                 <span style={{ fontSize: '0.8rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-light)', padding: '4px 10px', borderRadius: '6px' }}>
                   Bench / Desk #: <strong style={{ color: 'var(--text-primary)' }}>{detailedTeam?.deskNumber || selectedTeam?.deskNumber || '—'}</strong>
                 </span>
@@ -755,6 +1046,40 @@ const VolunteerDashboard = () => {
                   </span>
                 )}
               </div>
+
+              {/* Checkpoint selector pills directly inside team modal */}
+              {checkpoints.length > 0 && (
+                <div style={{ marginBottom: '18px', padding: '10px 14px', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Select Check-in Slot:
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {checkpoints.map(cp => {
+                      const isSel = cp.id === activeCheckpointId;
+                      return (
+                        <button
+                          key={cp.id}
+                          type="button"
+                          onClick={() => setActiveCheckpointId(cp.id)}
+                          style={{
+                            padding: '5px 12px',
+                            borderRadius: '16px',
+                            fontSize: '0.8rem',
+                            fontWeight: isSel ? 700 : 500,
+                            cursor: 'pointer',
+                            border: isSel ? '1px solid var(--primary)' : '1px solid var(--border-light)',
+                            background: isSel ? 'var(--primary)' : 'rgba(255, 255, 255, 0.05)',
+                            color: isSel ? '#fff' : 'var(--text-primary)',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          {cp.name} {cp.isDefault ? '(Default)' : ''}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {modalLoading ? (
                 <div style={{ padding: '40px', textAlign: 'center' }}>
@@ -854,6 +1179,38 @@ const VolunteerDashboard = () => {
                               )}
                             </div>
                             <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>{member.email} | {member.phone}</div>
+
+                            {/* Checkpoint status badges for this member */}
+                            {member.checkpoints && member.checkpoints.length > 0 && (
+                              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
+                                {member.checkpoints.map(cp => {
+                                  const isCurrentActive = cp.checkpointTypeId === activeCheckpointId;
+                                  return (
+                                    <span
+                                      key={cp.checkpointTypeId}
+                                      onClick={() => setActiveCheckpointId(cp.checkpointTypeId)}
+                                      style={{
+                                        fontSize: '0.72rem',
+                                        padding: '2px 7px',
+                                        borderRadius: '5px',
+                                        cursor: 'pointer',
+                                        background: cp.checkedIn ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.04)',
+                                        color: cp.checkedIn ? '#10b981' : 'var(--text-muted)',
+                                        border: isCurrentActive ? '1px solid var(--primary)' : '1px solid transparent',
+                                        fontWeight: isCurrentActive ? 700 : 500,
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                      }}
+                                      title={cp.checkedIn ? `Checked in: ${cp.checkpointName}` : `Click to switch active check-in to ${cp.checkpointName}`}
+                                    >
+                                      {cp.checkedIn ? <CheckCircle size={10} color="#10b981" /> : <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--text-muted)' }} />}
+                                      {cp.checkpointName}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
 
                           <div>
@@ -883,6 +1240,124 @@ const VolunteerDashboard = () => {
                   </div>
                 </div>
               ) : null}
+            </div>
+          </div>
+        )}
+
+        {/* ADD CHECKPOINT MODAL */}
+        {showAddCpModal && (
+          <div className="modal-overlay-fade" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '20px' }}>
+            <div className="glass-card modal-scale-up" style={{ width: '100%', maxWidth: '480px', padding: '28px', position: 'relative' }}>
+              <button onClick={() => setShowAddCpModal(false)} style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                <X size={20} />
+              </button>
+              <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '6px' }}>Add Checkpoint Slot</h2>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '20px' }}>
+                Define a new check-in slot for registration, meals, mentoring, or stage entry.
+              </p>
+              <form onSubmit={handleCreateCheckpoint} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                    Checkpoint Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Day 1 Lunch Check-in"
+                    className="form-input"
+                    value={cpFormName}
+                    onChange={(e) => setCpFormName(e.target.value)}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                    Description (Optional)
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="e.g. Venue food court entrance, 1:00 PM to 2:30 PM"
+                    className="form-input"
+                    value={cpFormDesc}
+                    onChange={(e) => setCpFormDesc(e.target.value)}
+                    style={{ width: '100%', resize: 'vertical' }}
+                  />
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={cpFormDefault}
+                    onChange={(e) => setCpFormDefault(e.target.checked)}
+                  />
+                  <span>Set as Default Checkpoint</span>
+                </label>
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '10px' }}>
+                  <button type="button" onClick={() => setShowAddCpModal(false)} className="btn btn-secondary" style={{ padding: '8px 16px' }}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={cpSaving} style={{ padding: '8px 20px' }}>
+                    {cpSaving ? 'Creating...' : 'Create Checkpoint'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* EDIT CHECKPOINT MODAL */}
+        {showEditCpModal && (
+          <div className="modal-overlay-fade" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '20px' }}>
+            <div className="glass-card modal-scale-up" style={{ width: '100%', maxWidth: '480px', padding: '28px', position: 'relative' }}>
+              <button onClick={() => setShowEditCpModal(false)} style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                <X size={20} />
+              </button>
+              <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '6px' }}>Edit Checkpoint Slot</h2>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '20px' }}>
+                Update checkpoint name or schedule description.
+              </p>
+              <form onSubmit={handleUpdateCheckpoint} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                    Checkpoint Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    className="form-input"
+                    value={cpFormName}
+                    onChange={(e) => setCpFormName(e.target.value)}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                    Description (Optional)
+                  </label>
+                  <textarea
+                    rows={3}
+                    className="form-input"
+                    value={cpFormDesc}
+                    onChange={(e) => setCpFormDesc(e.target.value)}
+                    style={{ width: '100%', resize: 'vertical' }}
+                  />
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={cpFormDefault}
+                    onChange={(e) => setCpFormDefault(e.target.checked)}
+                  />
+                  <span>Set as Default Checkpoint</span>
+                </label>
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '10px' }}>
+                  <button type="button" onClick={() => setShowEditCpModal(false)} className="btn btn-secondary" style={{ padding: '8px 16px' }}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={cpSaving} style={{ padding: '8px 20px' }}>
+                    {cpSaving ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

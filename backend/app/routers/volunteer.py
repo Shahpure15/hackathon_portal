@@ -124,10 +124,25 @@ def get_checkpoints(
     db: Session = Depends(get_db),
     current_user: Principal = Depends(require_permission('checkpoint.view', principal_types=STAFF_PRINCIPAL_TYPES))
 ):
-    """Returns list of all checkpoints defined for this event."""
+    """Returns list of all checkpoints defined for this event with attendee counts."""
     checkpoints = db.query(CheckpointType).filter(
         CheckpointType.eventId == current_user.eventId
     ).order_by(CheckpointType.name).all()
+
+    checkpoint_ids = [cp.id for cp in checkpoints]
+    part_counts = dict(
+        db.query(AttendanceRecord.checkpointTypeId, func.count(AttendanceRecord.id))
+        .filter(AttendanceRecord.checkpointTypeId.in_(checkpoint_ids))
+        .group_by(AttendanceRecord.checkpointTypeId)
+        .all()
+    ) if checkpoint_ids else {}
+
+    staff_counts = dict(
+        db.query(VolunteerAttendanceRecord.checkpointTypeId, func.count(VolunteerAttendanceRecord.id))
+        .filter(VolunteerAttendanceRecord.checkpointTypeId.in_(checkpoint_ids))
+        .group_by(VolunteerAttendanceRecord.checkpointTypeId)
+        .all()
+    ) if checkpoint_ids else {}
     
     return {
         "eventId": current_user.eventId,
@@ -136,7 +151,10 @@ def get_checkpoints(
                 "id": cp.id,
                 "name": cp.name,
                 "description": cp.description,
-                "isDefault": bool(getattr(cp, "isDefault", False))
+                "isDefault": bool(getattr(cp, "isDefault", False)),
+                "participantCount": part_counts.get(cp.id, 0),
+                "staffCount": staff_counts.get(cp.id, 0),
+                "totalCount": part_counts.get(cp.id, 0) + staff_counts.get(cp.id, 0)
             } for cp in checkpoints
         ]
     }
@@ -144,6 +162,7 @@ def get_checkpoints(
 @router.get("/teams")
 def get_volunteer_teams(
     search: Optional[str] = None,
+    checkpoint_id: Optional[str] = None,
     page: int = 1,
     limit: int = 20,
     db: Session = Depends(get_db),
@@ -168,12 +187,16 @@ def get_volunteer_teams(
     teams = query.options(
         joinedload(Team.pod),
         joinedload(Team.psSelection).joinedload(PSSelection.ps),
-        joinedload(Team.members)
+        joinedload(Team.members).joinedload(TeamMember.attendance)
     ).order_by(Team.registrationId).offset((page - 1) * limit).limit(limit).all()
     
     results = []
     for team in teams:
         verified_count = sum(1 for m in team.members if m.idVerified)
+        if checkpoint_id:
+            checked_in_members = sum(1 for m in team.members if any(a.checkpointTypeId == checkpoint_id for a in m.attendance))
+        else:
+            checked_in_members = verified_count
         pod_name = team.pod.name if team.pod else None
         ps_code = team.psSelection.ps.code if (team.psSelection and team.psSelection.ps) else None
         
@@ -189,7 +212,9 @@ def get_volunteer_teams(
             "podName": pod_name,
             "selectedPsCode": ps_code,
             "memberCount": len(team.members),
-            "verifiedCount": verified_count
+            "totalMembers": len(team.members),
+            "verifiedCount": verified_count,
+            "checkedInMembers": checked_in_members
         })
         
     return {
