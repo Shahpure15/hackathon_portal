@@ -2279,25 +2279,39 @@ def get_volunteers(
         })
     return results
 
+def normalize_volunteer_type(raw_type: str):
+    val = str(raw_type or "").strip().upper()
+    if "JUDGE" in val or "EVALUATOR" in val:
+        return "JUDGE", Role.JUDGE
+    if "FACULTY" in val:
+        return "FACULTY", Role.FACULTY
+    return "VOLUNTEER", Role.VOLUNTEER
+
 DEFAULT_PEOPLE_ROLES = [
-    {"name": "Faculty Lead", "target": "both"},
-    {"name": "Judge / Evaluator", "target": "ps"},
-    {"name": "Volunteer / Monitor", "target": "pod"}
+    {"name": "VOLUNTEER", "target": "pod"},
+    {"name": "FACULTY", "target": "both"},
+    {"name": "JUDGE", "target": "ps"}
 ]
 
 def normalize_people_roles(roles_list):
     if not roles_list:
         return DEFAULT_PEOPLE_ROLES
     res = []
+    seen = set()
     for r in roles_list:
         if isinstance(r, dict):
-            res.append({
-                "name": r.get("name", ""),
-                "target": r.get("target", "pod")
-            })
-        elif isinstance(r, str):
-            target = "ps" if ("judge" in r.lower() or "evaluator" in r.lower()) else "pod"
-            res.append({"name": r, "target": target})
+            raw_name = r.get("name", "")
+        else:
+            raw_name = str(r)
+        norm_name, _ = normalize_volunteer_type(raw_name)
+        if norm_name not in seen:
+            seen.add(norm_name)
+            target = "ps" if norm_name == "JUDGE" else ("both" if norm_name == "FACULTY" else "pod")
+            res.append({"name": norm_name, "target": target})
+    for default_r in DEFAULT_PEOPLE_ROLES:
+        if default_r["name"] not in seen:
+            seen.add(default_r["name"])
+            res.append(default_r)
     return res
 
 @router.get("/people-roles")
@@ -2452,7 +2466,7 @@ def create_volunteer(
     if not name or not type_str or not contact:
         raise HTTPException(status_code=400, detail="Name, type, and contact are required")
         
-    type_val = str(type_str).strip()
+    type_val, user_role = normalize_volunteer_type(type_str)
         
     if pod_id:
         pod = db.query(Pod).filter(Pod.id == pod_id, Pod.eventId == current_user.eventId).first()
@@ -2494,7 +2508,7 @@ def create_volunteer(
             eventId=current_user.eventId,
             username=generated_username,
             passwordHash=get_password_hash(generated_password),
-            role=Role.VOLUNTEER,
+            role=user_role,
             volunteerId=volunteer.id
         )
         db.add(volunteer_user)
@@ -2551,13 +2565,14 @@ def update_volunteer(
             volunteer.name = name
             
     if "type" in payload:
-        new_type = str(payload["type"]).strip()
+        new_type, new_role = normalize_volunteer_type(payload["type"])
         if volunteer.type != new_type:
             old_type = volunteer.type
             diff["type"] = {"from": old_type, "to": new_type}
             volunteer.type = new_type
             if volunteer.user:
                 vol_user = volunteer.user
+                vol_user.role = new_role
                 new_key = default_system_key_for(new_type)
                 old_key = default_system_key_for(old_type)
                 if new_key != old_key:
@@ -2701,10 +2716,12 @@ def create_volunteer_login(
     if not v:
         raise HTTPException(status_code=404, detail="Volunteer not found")
     
+    type_val, user_role = normalize_volunteer_type(v.type)
     if v.user:
         # Volunteer already has a user account; re-provision credentials cleanly
         password = generate_random_password()
         v.user.passwordHash = get_password_hash(password)
+        v.user.role = user_role
         revoke_all_sessions(db, v.user.id)
         assign_default_role(db, v.user, v)
         db.commit()
@@ -2730,7 +2747,7 @@ def create_volunteer_login(
         eventId=current_user.eventId,
         username=username,
         passwordHash=get_password_hash(password),
-        role=Role.VOLUNTEER,
+        role=user_role,
         volunteerId=v.id
     )
     db.add(vol_user)

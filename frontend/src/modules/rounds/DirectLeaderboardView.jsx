@@ -179,7 +179,7 @@ export const DirectLeaderboardView = ({ defaultRoundId }) => {
     }
   };
 
-  // Export Detailed Multi-Sheet Print-Ready Workbook
+  // Export Detailed Print-Ready Zip of Workbooks
   const handleExportDetailed = async () => {
     if (!selectedRoundId) return;
     setExportingDetailed(true);
@@ -187,15 +187,15 @@ export const DirectLeaderboardView = ({ defaultRoundId }) => {
       const res = await api.get(`/admin/rounds/${selectedRoundId}/export/detailed-sheets`, {
         responseType: 'blob',
       });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/zip' }));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `${selectedRound?.name || 'Round'}_Detailed_Evaluation_Sheets.xlsx`);
+      link.setAttribute('download', `${selectedRound?.name || 'Round'}_Detailed_Evaluation_Sheets.zip`);
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      addToast('Detailed evaluation sheets downloaded successfully!', 'success');
+      addToast('Detailed evaluation sheets ZIP downloaded successfully!', 'success');
     } catch (err) {
       console.error('Failed to export detailed sheets', err);
       addToast('Failed to export detailed evaluation sheets', 'error');

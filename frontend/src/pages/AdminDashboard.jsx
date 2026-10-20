@@ -3688,13 +3688,13 @@ const PodRosterModal = ({ pod, onClose }) => {
 
   // New volunteer form states
   const [newVolName, setNewVolName] = useState('');
-  const [newVolType, setNewVolType] = useState('Faculty Lead');
+  const [newVolType, setNewVolType] = useState('VOLUNTEER');
   const [newVolEmail, setNewVolEmail] = useState('');
   const [newVolPhone, setNewVolPhone] = useState('');
   const [peopleRoles, setPeopleRoles] = useState([
-    { name: "Faculty Lead", target: "both" },
-    { name: "Judge / Evaluator", target: "ps" },
-    { name: "Volunteer / Monitor", target: "pod" }
+    { name: "VOLUNTEER", target: "pod" },
+    { name: "FACULTY", target: "both" },
+    { name: "JUDGE", target: "ps" }
   ]);
 
   const normalizeRoles = (rolesData) => {
@@ -3866,7 +3866,7 @@ const PodRosterModal = ({ pod, onClose }) => {
       setNewVolName('');
       setNewVolEmail('');
       setNewVolPhone('');
-      const defaultRole = (peopleRoles[0] && (typeof peopleRoles[0] === 'object' ? peopleRoles[0].name : peopleRoles[0])) || 'Faculty Lead';
+      const defaultRole = (peopleRoles[0] && (typeof peopleRoles[0] === 'object' ? peopleRoles[0].name : peopleRoles[0])) || 'VOLUNTEER';
       setNewVolType(defaultRole);
       setShowCreateNew(false);
       await fetchRoster();
@@ -4263,7 +4263,7 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
 
   // Form states
   const [name, setName] = useState('');
-  const [type, setType] = useState('FACULTY');
+  const [type, setType] = useState('VOLUNTEER');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [remarks, setRemarks] = useState('');
@@ -4275,9 +4275,9 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
   const [deleteConfirmState, setDeleteConfirmState] = useState(null);
 
   const [peopleRoles, setPeopleRoles] = useState([
-    { name: "Faculty Lead", target: "both" },
-    { name: "Judge / Evaluator", target: "ps" },
-    { name: "Volunteer / Monitor", target: "pod" }
+    { name: "VOLUNTEER", target: "pod" },
+    { name: "FACULTY", target: "both" },
+    { name: "JUDGE", target: "ps" }
   ]);
   const [showManageRolesModal, setShowManageRolesModal] = useState(false);
   const [newRoleInput, setNewRoleInput] = useState('');

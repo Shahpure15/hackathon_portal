@@ -143,9 +143,11 @@ def assign_default_role(db: Session, user, volunteer, created_by: str = 'AUTO_DE
 
 
 def resolve_access(db: Session, ctx: CurrentUser) -> ResolvedAccess:
-    if ctx.role == Role.ADMIN:
+    role_val = getattr(ctx.role, 'value', ctx.role)
+    role_str = str(role_val or '').upper()
+    if role_str == 'ADMIN':
         return ResolvedAccess(set(CATALOG), True, set(), set(), ['Admin'])
-    if ctx.role != Role.VOLUNTEER:
+    if role_str not in ('VOLUNTEER', 'FACULTY', 'JUDGE'):
         return ResolvedAccess(set(), False, set(), set(), [])
 
     now = time.time()
@@ -229,8 +231,11 @@ def require_permission(key: str, *more: str, principal_types: Optional[tuple] = 
         current_user: CurrentUser = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> Principal:
-        if principal_types is not None and current_user.role not in principal_types:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=FORBIDDEN_DETAIL)
+        if principal_types is not None:
+            user_r = getattr(current_user.role, 'value', current_user.role)
+            type_vals = [getattr(t, 'value', t) for t in principal_types]
+            if user_r not in type_vals and current_user.role not in principal_types:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=FORBIDDEN_DETAIL)
         principal = Principal(current_user, resolve_access(db, current_user))
         if not any(principal.has(k) for k in keys):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=FORBIDDEN_DETAIL)
@@ -245,7 +250,9 @@ def require_principal(*types):
         current_user: CurrentUser = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> Principal:
-        if current_user.role not in types:
+        user_r = getattr(current_user.role, 'value', current_user.role)
+        type_vals = [getattr(t, 'value', t) for t in types]
+        if user_r not in type_vals and current_user.role not in types:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=FORBIDDEN_DETAIL)
         return Principal(current_user, resolve_access(db, current_user))
 
@@ -288,19 +295,26 @@ SHELL_PERMISSIONS = {
 
 def compute_landing(role_value: str, permissions: Set[str], is_admin: bool) -> str:
     """Single source of truth for where a user lands after login.
-    Returns one of: 'admin', 'staff', 'judge', 'leader', 'none'."""
+    Returns one of: 'admin', 'staff', 'judge', 'leader', 'volunteer', 'none'."""
     role_value = (role_value or '').upper()
     if is_admin or role_value == 'ADMIN':
         return 'admin'
     if role_value == 'LEADER':
         return 'leader'
+    if not permissions:
+        return 'none'
+    if role_value == 'FACULTY':
+        return 'staff'
+    if role_value == 'JUDGE':
+        return 'judge'
     if role_value == 'VOLUNTEER':
-        if not permissions:
-            return 'none'
-        if permissions & SHELL_PERMISSIONS:
-            return 'staff'
-        if 'evaluation.score' in permissions:
-            return 'judge'
-        return 'staff'   # people.view / people.checkin only: still a staff user
+        return 'volunteer'
+    # Fallback by permissions if role_value is unrecognized or empty
+    if permissions & SHELL_PERMISSIONS:
+        return 'staff'
+    if 'evaluation.score' in permissions:
+        return 'judge'
+    if 'attendance.mark' in permissions or 'checkpoint.view' in permissions:
+        return 'volunteer'
     return 'none'
 

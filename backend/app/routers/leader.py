@@ -166,8 +166,10 @@ def get_problem_statements_for_leaders(
             detail="Problem statements are not yet released"
         )
 
-    team = db.query(Team).filter(Team.id == current_user.teamId).first()
-    team_cat_str = team.category.value if hasattr(team.category, 'value') else str(team.category) if (team and team.category) else None
+    team = db.query(Team).filter(Team.id == current_user.teamId).first() if current_user.teamId else None
+    team_cat_str = None
+    if team and team.category:
+        team_cat_str = team.category.value if hasattr(team.category, 'value') else str(team.category)
 
     query = db.query(ProblemStatement).filter(ProblemStatement.eventId == current_user.eventId)
     if team_cat_str:

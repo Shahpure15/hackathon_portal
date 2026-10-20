@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
@@ -48,19 +49,8 @@ export default function Sidebar({
 }) {
   const [rounds, setRounds] = useState([]);
   const [roundsExpanded, setRoundsExpanded] = useState(true);
-
-  // Read current roundId from URL search params if present
-  const [currentRoundId, setCurrentRoundId] = useState(() => {
-    return new URLSearchParams(window.location.search).get('roundId');
-  });
-
-  useEffect(() => {
-    const handleUrlChange = () => {
-      setCurrentRoundId(new URLSearchParams(window.location.search).get('roundId'));
-    };
-    window.addEventListener('popstate', handleUrlChange);
-    return () => window.removeEventListener('popstate', handleUrlChange);
-  }, []);
+  const [searchParams] = useSearchParams();
+  const currentRoundId = searchParams.get('roundId');
 
   const fetchRoundsList = async () => {
     try {

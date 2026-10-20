@@ -78,12 +78,14 @@ def test_rbac_parity_matrix(db: Session):
         if raw_path.startswith('/leader'):
             assert res_vol.status_code == 403, f"VOLUNTEER expected 403 on {method} {raw_path}, got {res_vol.status_code}"
         elif raw_path.startswith('/volunteer') or raw_path == '/auth/me':
-            assert res_vol.status_code != 403, f"VOLUNTEER got unexpected 403 on {method} {raw_path} ({res_vol.status_code}: {res_vol.text})"
+            if raw_path in ('/volunteer/problem-statements', '/volunteer/teams/{team_id}/select-ps'):
+                assert res_vol.status_code == 403, f"VOLUNTEER expected 403 on {method} {raw_path}, got {res_vol.status_code}"
+            else:
+                assert res_vol.status_code != 403, f"VOLUNTEER got unexpected 403 on {method} {raw_path} ({res_vol.status_code}: {res_vol.text})"
         elif raw_path.startswith('/admin'):
-            # The volunteer holds team.view, ps.view, checkpoint.view
+            # The volunteer holds team.view, checkpoint.view (attendance-only)
             vol_view_routes = (
                 '/admin/teams', '/admin/teams/unresolved-leaders', '/admin/teams/{team_id}',
-                '/admin/problem-statements', '/admin/problem-statements/{ps_id}/teams',
                 '/admin/checkpoints'
             )
             if method == 'GET' and raw_path in vol_view_routes:

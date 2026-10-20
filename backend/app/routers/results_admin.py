@@ -3,6 +3,7 @@ from decimal import Decimal
 import hashlib
 import io
 import re
+import zipfile
 from collections import defaultdict
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -31,6 +32,7 @@ from app.models import (
     ResultReleaseItem,
     TeamRoundStatus,
     Team,
+    TeamStatus,
     Volunteer,
     ProblemStatement,
     PSSelection,
@@ -43,6 +45,7 @@ from app.models import (
 from app.rbac import Principal, require_permission
 from app.routers.admin import log_audit
 from app.services.export_utils import safe_cell, set_cell_safe, sanitize_workbook
+from app.services.eligibility import is_team_eligible
 from app.services.progression import select_top_n, select_threshold
 from app.services.ranking import build_leaderboard
 from app.services.evaluation import current_finals
@@ -604,14 +607,33 @@ def export_leaderboard(
         return avg_a, avg_b
 
     def get_panel_str(team_id: str):
-        names = list(judges_by_team.get(team_id, []))
+        count = len(judges_by_team.get(team_id, []))
         for fin in finals_by_team.get(team_id, []):
             vid = getattr(fin.evaluation, 'judgeVolunteerId', None)
-            if vid and vid in volunteers_map:
-                v_name = volunteers_map[vid].name
-                if v_name not in names:
-                    names.append(v_name)
-        return ", ".join(names) or "Unassigned"
+            if vid and vid in volunteers_map and vid not in judges_by_team.get(team_id, []):
+                count += 1
+        return ", ".join([f"Judge {i+1}" for i in range(count)]) or "Unassigned"
+
+    has_shortlisted_flag = any(
+        (t.status == TeamStatus.SHORTLISTED or str(t.status).upper() == "SHORTLISTED")
+        for t in teams
+    )
+    def is_team_included(t_id: str) -> bool:
+        t_obj = team_map.get(t_id)
+        if not t_obj:
+            return False
+        if has_shortlisted_flag:
+            is_st = (t_obj.status == TeamStatus.SHORTLISTED or str(t_obj.status).upper() == "SHORTLISTED")
+            if not is_st:
+                return False
+        else:
+            st_str = str(t_obj.status).upper()
+            if "DISQUALIFIED" in st_str or "WAITLISTED" in st_str:
+                return False
+        return is_team_eligible(db, round_obj, t_id)
+
+    rows = [r for r in rows if is_team_included(r["teamId"])]
+    unscored = [u for u in unscored if is_team_included(u["teamId"])]
 
     wb = openpyxl.Workbook()
     if "Sheet" in wb.sheetnames:
@@ -767,6 +789,29 @@ def export_detailed_sheets(
     teams = db.query(Team).filter(Team.id.in_(team_ids)).all() if team_ids else []
     team_map = {t.id: t for t in teams}
 
+    # Filter strictly to teams shortlisted and eligible for this round
+    has_shortlisted_flag = any(
+        (t.status == TeamStatus.SHORTLISTED or str(t.status).upper() == "SHORTLISTED")
+        for t in teams
+    )
+    shortlisted_entries = []
+    for e in all_entries:
+        t_id = e["teamId"]
+        t_obj = team_map.get(t_id)
+        if not t_obj:
+            continue
+        if has_shortlisted_flag:
+            is_st = (t_obj.status == TeamStatus.SHORTLISTED or str(t_obj.status).upper() == "SHORTLISTED")
+            if not is_st:
+                continue
+        else:
+            st_str = str(t_obj.status).upper()
+            if "DISQUALIFIED" in st_str or "WAITLISTED" in st_str:
+                continue
+        if not is_team_eligible(db, round_obj, t_id):
+            continue
+        shortlisted_entries.append(e)
+
     ps_records = db.query(ProblemStatement).filter(ProblemStatement.eventId == round_obj.eventId).all()
     ps_map = {p.id: p for p in ps_records}
 
@@ -824,262 +869,320 @@ def export_detailed_sheets(
         bottom=Side(style="double", color="166534"),
     )
 
-    wb = openpyxl.Workbook()
-    if "Sheet" in wb.sheetnames:
-        wb.remove(wb["Sheet"])
+    # Prepare ZIP Archive containing Leaderboard.xlsx and individual team excels
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        # -------------------------------------------------------------
+        # 1. Leaderboard & Evaluation Summary Workbook
+        # -------------------------------------------------------------
+        wb_sum = openpyxl.Workbook()
+        ws_sum = wb_sum.active
+        ws_sum.title = "Evaluation Summary"
 
-    # Sheet 1: Summary Sheet
-    ws_sum = wb.create_sheet(title="Evaluation Summary")
-    ws_sum.merge_cells("A1:L1")
-    top_sum = ws_sum.cell(row=1, column=1, value=f"{round_obj.name.upper()} - EVALUATION SUMMARY & LEADERBOARD")
-    top_sum.font = font_banner
-    top_sum.fill = navy_fill
-    top_sum.alignment = Alignment(horizontal="center", vertical="center")
-    ws_sum.row_dimensions[1].height = 30
+        ws_sum.merge_cells("A1:L1")
+        top_sum = ws_sum.cell(row=1, column=1, value=f"{round_obj.name.upper()} - EVALUATION SUMMARY & LEADERBOARD")
+        top_sum.font = font_banner
+        top_sum.fill = navy_fill
+        top_sum.alignment = Alignment(horizontal="center", vertical="center")
+        ws_sum.row_dimensions[1].height = 30
 
-    sum_headers = [
-        "Rank", "Team Code", "Team Name", "College / Institution", "Team Leader",
-        "PS Code", "Problem Statement Title", "Assigned Panel Judges",
-        "Sec A Score", "Sec B Score", "Total Score (/100)", "Status"
-    ]
-    ws_sum.append([])
-    ws_sum.append(sum_headers)
-    for col_idx in range(1, len(sum_headers) + 1):
-        c = ws_sum.cell(row=3, column=col_idx)
-        c.font = font_header
-        c.fill = dark_gray_fill
-        c.alignment = Alignment(horizontal="center", vertical="center")
-
-    curr_sum_row = 4
-    for e in all_entries:
-        t_id = e["teamId"]
-        t_obj = team_map.get(t_id)
-        ps_id = team_ps_map.get(t_id)
-        ps_obj = ps_map.get(ps_id) if ps_id else None
-        ps_code = ps_obj.code if ps_obj else "-"
-        ps_title = ps_obj.title if ps_obj else "Not Assigned"
-
-        # Collect all panel names
-        p_names = [j.name for j in judges_by_team.get(t_id, [])]
-        for fin in finals_by_team.get(t_id, []):
-            vid = getattr(fin.evaluation, 'judgeVolunteerId', None)
-            if vid and vid in volunteers_map:
-                v_name = volunteers_map[vid].name
-                if v_name not in p_names:
-                    p_names.append(v_name)
-        panel_str = ", ".join(p_names) or "Unassigned"
-
-        # Calculate section marks
-        t_finals = finals_by_team.get(t_id, [])
-        sec_a_avg = None
-        sec_b_avg = None
-        if t_finals:
-            a_sums = []
-            b_sums = []
-            for fin in t_finals:
-                a_m = sum(float(sc.marks or 0) for sc in fin.scores if sc.marks is not None and fields_by_id.get(sc.fieldId) and fields_by_id[sc.fieldId].problemStatementId)
-                b_m = sum(float(sc.marks or 0) for sc in fin.scores if sc.marks is not None and fields_by_id.get(sc.fieldId) and not fields_by_id[sc.fieldId].problemStatementId and fields_by_id[sc.fieldId].type == 'numeric')
-                a_sums.append(a_m)
-                b_sums.append(b_m)
-            sec_a_avg = round(sum(a_sums) / len(a_sums), 2) if a_sums else 0.0
-            sec_b_avg = round(sum(b_sums) / len(b_sums), 2) if b_sums else 0.0
-
-        rank_val = e.get("rank") or "-"
-        final_score_val = float(e["displayScore"]) if e.get("displayScore") is not None else (float(e["score"]) if e.get("score") is not None else "-")
-        status_val = "Finalized" if not e.get("provisional") and e.get("score") is not None else ("Provisional" if e.get("score") is not None else "Unscored")
-
-        ws_sum.append([
-            rank_val,
-            e["registrationId"],
-            e["name"],
-            t_obj.collegeName if t_obj else "-",
-            t_obj.leaderName if t_obj else "-",
-            ps_code,
-            ps_title,
-            panel_str,
-            sec_a_avg if sec_a_avg is not None else "-",
-            sec_b_avg if sec_b_avg is not None else "-",
-            final_score_val,
-            status_val,
-        ])
+        sum_headers = [
+            "Rank", "Team Code", "Team Name", "College / Institution", "Team Leader",
+            "PS Code", "Problem Statement Title", "Assigned Panel Judges",
+            "Sec A Score", "Sec B Score", "Total Score (/100)", "Status"
+        ]
+        ws_sum.append([])
+        ws_sum.append(sum_headers)
         for col_idx in range(1, len(sum_headers) + 1):
-            c = ws_sum.cell(row=curr_sum_row, column=col_idx)
-            c.font = font_data
-            c.border = thin_border
-            if curr_sum_row % 2 == 1:
-                c.fill = zebra_fill
-            if col_idx in (1, 6, 9, 10, 11, 12):
-                c.alignment = Alignment(horizontal="center", vertical="center")
-        curr_sum_row += 1
-
-    for col in ws_sum.columns:
-        max_len = max(len(str(cell.value or "")) for cell in col)
-        col_letter = get_column_letter(col[0].column)
-        ws_sum.column_dimensions[col_letter].width = max(max_len + 3, 12)
-
-    # Sheets 2..N: Individual Team Sheets
-    used_titles = {"Evaluation Summary"}
-    for e in all_entries:
-        t_id = e["teamId"]
-        t_obj = team_map.get(t_id)
-        if not t_obj:
-            continue
-
-        raw_name = f"{e.get('rank', '-')}_{t_obj.registrationId or t_obj.name}"
-        clean_name = re.sub(r'[\\/*?:\[\]]', '_', raw_name)[:30]
-        sheet_title = clean_name
-        idx_suffix = 1
-        while sheet_title in used_titles:
-            sheet_title = f"{clean_name[:26]}_{idx_suffix}"
-            idx_suffix += 1
-        used_titles.add(sheet_title)
-
-        ws_team = wb.create_sheet(title=sheet_title)
-
-        # 1. Page setup (Portrait, A4, fit to 1 page wide)
-        ws_team.page_setup.orientation = ws_team.ORIENTATION_PORTRAIT
-        ws_team.page_setup.paperSize = ws_team.PAPERSIZE_A4
-        ws_team.page_setup.fitToPage = True
-        ws_team.page_setup.fitToWidth = 1
-        ws_team.page_setup.fitToHeight = 0
-        ws_team.sheet_properties.pageSetUpPr.fitToPage = True
-
-        # Resolve all judges for this team (evaluating + assigned)
-        t_finals = finals_by_team.get(t_id, [])
-        eval_by_vol_id = {}
-        for fin in t_finals:
-            if hasattr(fin, 'evaluation') and fin.evaluation and fin.evaluation.judgeVolunteerId:
-                eval_by_vol_id[fin.evaluation.judgeVolunteerId] = fin
-
-        combined_judges = []
-        seen_judge_ids = set()
-        for fin in t_finals:
-            vid = getattr(fin.evaluation, 'judgeVolunteerId', None)
-            if vid and vid not in seen_judge_ids and vid in volunteers_map:
-                combined_judges.append(volunteers_map[vid])
-                seen_judge_ids.add(vid)
-
-        for j in judges_by_team.get(t_id, []):
-            if j.id not in seen_judge_ids:
-                combined_judges.append(j)
-                seen_judge_ids.add(j.id)
-
-        num_judges = max(len(combined_judges), 2)
-        judge_names = []
-        for i in range(num_judges):
-            if i < len(combined_judges):
-                judge_names.append(combined_judges[i].name)
-            else:
-                judge_names.append(f"Judge {i+1}")
-
-        total_cols = 5 + num_judges + 1
-        last_col_letter = get_column_letter(total_cols)
-
-        # Header Banner
-        ws_team.merge_cells(f"A1:{last_col_letter}1")
-        top_c = ws_team.cell(row=1, column=1, value=f"{round_obj.name.upper()} - OFFICIAL EVALUATION SHEET")
-        top_c.font = font_banner
-        top_c.fill = navy_fill
-        top_c.alignment = Alignment(horizontal="center", vertical="center")
-        ws_team.row_dimensions[1].height = 28
-
-        # Team Info Block
-        ps_id = team_ps_map.get(t_id)
-        ps_obj = ps_map.get(ps_id) if ps_id else None
-        ps_code = ps_obj.code if ps_obj else "PS"
-        ps_title = ps_obj.title if ps_obj else "Not Assigned"
-
-        mid_col = max(3, total_cols // 2)
-        mid_col_letter = get_column_letter(mid_col)
-
-        ws_team.cell(row=3, column=1, value="Team Name:").font = font_bold
-        ws_team.merge_cells(f"B3:{mid_col_letter}3")
-        ws_team.cell(row=3, column=2, value=f"{t_obj.name} ({t_obj.collegeName})").font = font_data
-
-        ws_team.cell(row=3, column=mid_col + 1, value="Registration ID:").font = font_bold
-        ws_team.merge_cells(f"{get_column_letter(mid_col + 2)}3:{last_col_letter}3")
-        ws_team.cell(row=3, column=mid_col + 2, value=t_obj.registrationId or "-").font = font_data
-
-        ws_team.cell(row=4, column=1, value="Problem Statement:").font = font_bold
-        ws_team.merge_cells(f"B4:{mid_col_letter}4")
-        ws_team.cell(row=4, column=2, value=f"[{ps_code}] {ps_title}").font = font_data
-
-        ws_team.cell(row=4, column=mid_col + 1, value="Panel Judges:").font = font_bold
-        ws_team.merge_cells(f"{get_column_letter(mid_col + 2)}4:{last_col_letter}4")
-        ws_team.cell(row=4, column=mid_col + 2, value=", ".join(judge_names) or "Unassigned").font = font_data
-
-        # Guidance / Decisive Test Banner
-        guidance_obj = guidance_by_ps.get(ps_id) if ps_id else None
-        curr_row = 6
-        if guidance_obj and (guidance_obj.decisiveTest or guidance_obj.notes):
-            ws_team.cell(row=curr_row, column=1, value=f"DECISIVE STRESS TEST / REQUIRED CASE ({ps_code}):").font = Font(name="Calibri", size=9.5, bold=True, color="B45309")
-            curr_row += 1
-            ws_team.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=total_cols)
-            dec_text = guidance_obj.decisiveTest or ""
-            if guidance_obj.notes:
-                dec_text += f"\nJudging Guidance Notes: {guidance_obj.notes}"
-            c_dec = ws_team.cell(row=curr_row, column=1, value=dec_text)
-            c_dec.font = Font(name="Calibri", size=9, italic=True, color="78350F")
-            c_dec.fill = amber_fill
-            c_dec.alignment = Alignment(wrap_text=True, vertical="center")
-            c_dec.border = thin_border
-            ws_team.row_dimensions[curr_row].height = 40
-            curr_row += 2
-
-        # Criteria Breakdown Table
-        app_fields = applicable_fields(db, curr_rubric, t_id, require_ps=False)
-        sec_a_fields = [f for f in app_fields if f.type == "numeric" and f.problemStatementId]
-        sec_b_fields = [f for f in app_fields if f.type == "numeric" and not f.problemStatementId]
-        txt_fields = [f for f in app_fields if f.type == "text"]
-
-        # Extract per-judge scores map
-        judge_scores_map = []
-        judge_texts_map = []
-        for i in range(num_judges):
-            v_id = combined_judges[i].id if i < len(combined_judges) else None
-            ev = eval_by_vol_id.get(v_id) if v_id else None
-            if ev:
-                sc_dict = {sc.fieldId: float(sc.marks) for sc in ev.scores if sc.marks is not None}
-                tx_dict = {tx.fieldId: tx.value for tx in ev.texts if tx.value is not None}
-            else:
-                sc_dict = {}
-                tx_dict = {}
-            judge_scores_map.append(sc_dict)
-            judge_texts_map.append(tx_dict)
-
-        table_headers = ["Section", "Code", "Evaluation Criterion", "Max", "Weight"]
-        for i in range(num_judges):
-            table_headers.append(f"J{i+1} ({judge_names[i]})")
-        table_headers.append("Avg Marks")
-
-        ws_team.row_dimensions[curr_row].height = 22
-        for col_i, h in enumerate(table_headers, 1):
-            c = ws_team.cell(row=curr_row, column=col_i, value=h)
+            c = ws_sum.cell(row=3, column=col_idx)
             c.font = font_header
             c.fill = dark_gray_fill
             c.alignment = Alignment(horizontal="center", vertical="center")
-            c.border = thin_border
-        curr_row += 1
 
-        # Section A rows
-        j_a_subtotals = [0.0] * num_judges
-        avg_a_subtotal = 0.0
+        curr_sum_row = 4
+        for e in shortlisted_entries:
+            t_id = e["teamId"]
+            t_obj = team_map.get(t_id)
+            ps_id = team_ps_map.get(t_id)
+            ps_obj = ps_map.get(ps_id) if ps_id else None
+            ps_code = ps_obj.code if ps_obj else "-"
+            ps_title = ps_obj.title if ps_obj else "Not Assigned"
 
-        if sec_a_fields:
-            for idx_a, f in enumerate(sec_a_fields, 1):
+            # Anonymise panel judges in summary
+            p_count = len(judges_by_team.get(t_id, []))
+            for fin in finals_by_team.get(t_id, []):
+                vid = getattr(fin.evaluation, 'judgeVolunteerId', None)
+                if vid and vid in volunteers_map and vid not in [j.id for j in judges_by_team.get(t_id, [])]:
+                    p_count += 1
+            panel_str = ", ".join([f"Judge {i+1}" for i in range(p_count)]) or "Unassigned"
+
+            # Calculate section marks
+            t_finals = finals_by_team.get(t_id, [])
+            sec_a_avg = None
+            sec_b_avg = None
+            if t_finals:
+                a_sums = []
+                b_sums = []
+                for fin in t_finals:
+                    a_m = sum(float(sc.marks or 0) for sc in fin.scores if sc.marks is not None and fields_by_id.get(sc.fieldId) and fields_by_id[sc.fieldId].problemStatementId)
+                    b_m = sum(float(sc.marks or 0) for sc in fin.scores if sc.marks is not None and fields_by_id.get(sc.fieldId) and not fields_by_id[sc.fieldId].problemStatementId and fields_by_id[sc.fieldId].type == 'numeric')
+                    a_sums.append(a_m)
+                    b_sums.append(b_m)
+                sec_a_avg = round(sum(a_sums) / len(a_sums), 2) if a_sums else 0.0
+                sec_b_avg = round(sum(b_sums) / len(b_sums), 2) if b_sums else 0.0
+
+            rank_val = e.get("rank") or "-"
+            final_score_val = float(e["displayScore"]) if e.get("displayScore") is not None else (float(e["score"]) if e.get("score") is not None else "-")
+            status_val = "Finalized" if not e.get("provisional") and e.get("score") is not None else ("Provisional" if e.get("score") is not None else "Unscored")
+
+            ws_sum.append([
+                rank_val,
+                e["registrationId"],
+                e["name"],
+                t_obj.collegeName if t_obj else "-",
+                t_obj.leaderName if t_obj else "-",
+                ps_code,
+                ps_title,
+                panel_str,
+                sec_a_avg if sec_a_avg is not None else "-",
+                sec_b_avg if sec_b_avg is not None else "-",
+                final_score_val,
+                status_val,
+            ])
+            for col_idx in range(1, len(sum_headers) + 1):
+                c = ws_sum.cell(row=curr_sum_row, column=col_idx)
+                c.font = font_data
+                c.border = thin_border
+                if curr_sum_row % 2 == 1:
+                    c.fill = zebra_fill
+                if col_idx in (1, 6, 9, 10, 11, 12):
+                    c.alignment = Alignment(horizontal="center", vertical="center")
+            curr_sum_row += 1
+
+        for col in ws_sum.columns:
+            max_len = max(len(str(cell.value or "")) for cell in col)
+            col_letter = get_column_letter(col[0].column)
+            ws_sum.column_dimensions[col_letter].width = max(max_len + 3, 12)
+
+        sanitize_workbook(wb_sum)
+        sum_buf = io.BytesIO()
+        wb_sum.save(sum_buf)
+        zip_file.writestr(f"Round_{round_obj.roundNumber}_Evaluation/Leaderboard.xlsx", sum_buf.getvalue())
+
+        # -------------------------------------------------------------
+        # 2. Individual Team Workbooks (Separate Files, Anonymised)
+        # -------------------------------------------------------------
+        for e in shortlisted_entries:
+            t_id = e["teamId"]
+            t_obj = team_map.get(t_id)
+            if not t_obj:
+                continue
+
+            wb_team = openpyxl.Workbook()
+            ws_team = wb_team.active
+            ws_team.title = "Evaluation Sheet"
+
+            # Page setup (Portrait, A4, fit to 1 page wide)
+            ws_team.page_setup.orientation = ws_team.ORIENTATION_PORTRAIT
+            ws_team.page_setup.paperSize = ws_team.PAPERSIZE_A4
+            ws_team.page_setup.fitToPage = True
+            ws_team.page_setup.fitToWidth = 1
+            ws_team.page_setup.fitToHeight = 0
+            ws_team.sheet_properties.pageSetUpPr.fitToPage = True
+
+            # Resolve judges for this team
+            t_finals = finals_by_team.get(t_id, [])
+            eval_by_vol_id = {}
+            for fin in t_finals:
+                if hasattr(fin, 'evaluation') and fin.evaluation and fin.evaluation.judgeVolunteerId:
+                    eval_by_vol_id[fin.evaluation.judgeVolunteerId] = fin
+
+            combined_judges = []
+            seen_judge_ids = set()
+            for fin in t_finals:
+                vid = getattr(fin.evaluation, 'judgeVolunteerId', None)
+                if vid and vid not in seen_judge_ids and vid in volunteers_map:
+                    combined_judges.append(volunteers_map[vid])
+                    seen_judge_ids.add(vid)
+
+            for j in judges_by_team.get(t_id, []):
+                if j.id not in seen_judge_ids:
+                    combined_judges.append(j)
+                    seen_judge_ids.add(j.id)
+
+            num_judges = max(len(combined_judges), 2)
+            # ANONYMISED JUDGE NAMES: Judge 1, Judge 2, etc. (No real names)
+            judge_names = [f"Judge {i+1}" for i in range(num_judges)]
+
+            total_cols = 5 + num_judges + 1
+            last_col_letter = get_column_letter(total_cols)
+
+            # Header Banner
+            ws_team.merge_cells(f"A1:{last_col_letter}1")
+            top_c = ws_team.cell(row=1, column=1, value=f"{round_obj.name.upper()} - OFFICIAL EVALUATION SHEET")
+            top_c.font = font_banner
+            top_c.fill = navy_fill
+            top_c.alignment = Alignment(horizontal="center", vertical="center")
+            ws_team.row_dimensions[1].height = 28
+
+            # Team Info Block
+            ps_id = team_ps_map.get(t_id)
+            ps_obj = ps_map.get(ps_id) if ps_id else None
+            ps_code = ps_obj.code if ps_obj else "PS"
+            ps_title = ps_obj.title if ps_obj else "Not Assigned"
+
+            mid_col = max(3, total_cols // 2)
+            mid_col_letter = get_column_letter(mid_col)
+
+            ws_team.cell(row=3, column=1, value="Team Name:").font = font_bold
+            ws_team.merge_cells(f"B3:{mid_col_letter}3")
+            ws_team.cell(row=3, column=2, value=f"{t_obj.name} ({t_obj.collegeName})").font = font_data
+
+            ws_team.cell(row=3, column=mid_col + 1, value="Registration ID:").font = font_bold
+            ws_team.merge_cells(f"{get_column_letter(mid_col + 2)}3:{last_col_letter}3")
+            ws_team.cell(row=3, column=mid_col + 2, value=t_obj.registrationId or "-").font = font_data
+
+            ws_team.cell(row=4, column=1, value="Problem Statement:").font = font_bold
+            ws_team.merge_cells(f"B4:{mid_col_letter}4")
+            ws_team.cell(row=4, column=2, value=f"[{ps_code}] {ps_title}").font = font_data
+
+            ws_team.cell(row=4, column=mid_col + 1, value="Panel Judges:").font = font_bold
+            ws_team.merge_cells(f"{get_column_letter(mid_col + 2)}4:{last_col_letter}4")
+            ws_team.cell(row=4, column=mid_col + 2, value=", ".join(judge_names) or "Unassigned").font = font_data
+
+            # Guidance / Decisive Test Banner
+            guidance_obj = guidance_by_ps.get(ps_id) if ps_id else None
+            curr_row = 6
+            if guidance_obj and (guidance_obj.decisiveTest or guidance_obj.notes):
+                ws_team.cell(row=curr_row, column=1, value=f"DECISIVE STRESS TEST / REQUIRED CASE ({ps_code}):").font = Font(name="Calibri", size=9.5, bold=True, color="B45309")
+                curr_row += 1
+                ws_team.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=total_cols)
+                dec_text = guidance_obj.decisiveTest or ""
+                if guidance_obj.notes:
+                    dec_text += f"\nJudging Guidance Notes: {guidance_obj.notes}"
+                c_dec = ws_team.cell(row=curr_row, column=1, value=dec_text)
+                c_dec.font = Font(name="Calibri", size=9, italic=True, color="78350F")
+                c_dec.fill = amber_fill
+                c_dec.alignment = Alignment(wrap_text=True, vertical="center")
+                c_dec.border = thin_border
+                ws_team.row_dimensions[curr_row].height = 40
+                curr_row += 2
+
+            # Criteria Breakdown Table
+            app_fields = applicable_fields(db, curr_rubric, t_id, require_ps=False)
+            sec_a_fields = [f for f in app_fields if f.type == "numeric" and f.problemStatementId]
+            sec_b_fields = [f for f in app_fields if f.type == "numeric" and not f.problemStatementId]
+            # Exclude internal staff notes! Only export participant-visible text comments
+            txt_fields = [f for f in app_fields if f.type == "text" and f.visibility == "participant"]
+
+            judge_scores_map = []
+            judge_texts_map = []
+            for i in range(num_judges):
+                v_id = combined_judges[i].id if i < len(combined_judges) else None
+                ev = eval_by_vol_id.get(v_id) if v_id else None
+                if ev:
+                    sc_dict = {sc.fieldId: float(sc.marks) for sc in ev.scores if sc.marks is not None}
+                    tx_dict = {tx.fieldId: tx.value for tx in ev.texts if tx.value is not None}
+                else:
+                    sc_dict = {}
+                    tx_dict = {}
+                judge_scores_map.append(sc_dict)
+                judge_texts_map.append(tx_dict)
+
+            table_headers = ["Section", "Code", "Evaluation Criterion", "Max", "Weight"]
+            for i in range(num_judges):
+                table_headers.append(f"J{i+1}")
+            table_headers.append("Avg Marks")
+
+            ws_team.row_dimensions[curr_row].height = 22
+            for col_i, h in enumerate(table_headers, 1):
+                c = ws_team.cell(row=curr_row, column=col_i, value=h)
+                c.font = font_header
+                c.fill = dark_gray_fill
+                c.alignment = Alignment(horizontal="center", vertical="center")
+                c.border = thin_border
+            curr_row += 1
+
+            # Section A rows
+            j_a_subtotals = [0.0] * num_judges
+            avg_a_subtotal = 0.0
+
+            if sec_a_fields:
+                for idx_a, f in enumerate(sec_a_fields, 1):
+                    row_scores = [judge_scores_map[i].get(f.id) for i in range(num_judges)]
+                    valid_vals = [v for v in row_scores if v is not None]
+                    avg_m = round(sum(valid_vals) / len(valid_vals), 2) if valid_vals else None
+
+                    for i, v in enumerate(row_scores):
+                        if v is not None:
+                            j_a_subtotals[i] += v
+                    if avg_m is not None:
+                        avg_a_subtotal += avg_m
+
+                    row_vals = [
+                        f"Sec A ({ps_code})",
+                        f"A.{idx_a}",
+                        f.label,
+                        f.maxMarks,
+                        f"{f.weight}%",
+                    ]
+                    for v in row_scores:
+                        row_vals.append(v if v is not None else "-")
+                    row_vals.append(avg_m if avg_m is not None else "-")
+
+                    for col_i, rv in enumerate(row_vals, 1):
+                        c = ws_team.cell(row=curr_row, column=col_i, value=rv)
+                        c.font = font_data
+                        c.border = thin_border
+                        c.alignment = Alignment(horizontal="center" if col_i not in (1, 3) else "left", vertical="center")
+                    curr_row += 1
+
+                # Subtotal Section A Row
+                sec_a_max = sum(float(f.maxMarks or 0) for f in sec_a_fields)
+                sec_a_wt = sum(float(f.weight or 0) for f in sec_a_fields)
+
+                ws_team.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=3)
+                sub_a_label = ws_team.cell(row=curr_row, column=1, value=f"SECTION A: PROBLEM STATEMENT SPECIFIC SUBTOTAL (MAX {int(sec_a_max)})")
+                sub_a_label.font = font_bold
+                sub_a_label.alignment = Alignment(horizontal="right", vertical="center")
+                ws_team.cell(row=curr_row, column=4, value=sec_a_max).font = font_bold
+                ws_team.cell(row=curr_row, column=5, value=f"{int(sec_a_wt)}%").font = font_bold
+
+                for i in range(num_judges):
+                    has_eval = any(judge_scores_map[i].get(f.id) is not None for f in sec_a_fields)
+                    ws_team.cell(row=curr_row, column=6 + i, value=round(j_a_subtotals[i], 2) if has_eval else "-").font = font_bold
+
+                ws_team.cell(row=curr_row, column=total_cols, value=round(avg_a_subtotal, 2) if t_finals else "-").font = font_bold
+
+                for col_i in range(1, total_cols + 1):
+                    c = ws_team.cell(row=curr_row, column=col_i)
+                    c.fill = amber_fill
+                    c.border = thin_border
+                    if col_i in range(4, total_cols + 1):
+                        c.alignment = Alignment(horizontal="center", vertical="center")
+                curr_row += 1
+            else:
+                sec_a_max = 0.0
+                sec_a_wt = 0.0
+
+            # Section B rows
+            j_b_subtotals = [0.0] * num_judges
+            avg_b_subtotal = 0.0
+
+            for idx_b, f in enumerate(sec_b_fields, 1):
                 row_scores = [judge_scores_map[i].get(f.id) for i in range(num_judges)]
                 valid_vals = [v for v in row_scores if v is not None]
                 avg_m = round(sum(valid_vals) / len(valid_vals), 2) if valid_vals else None
 
                 for i, v in enumerate(row_scores):
                     if v is not None:
-                        j_a_subtotals[i] += v
+                        j_b_subtotals[i] += v
                 if avg_m is not None:
-                    avg_a_subtotal += avg_m
+                    avg_b_subtotal += avg_m
 
                 row_vals = [
-                    f"Sec A ({ps_code})",
-                    f"A.{idx_a}",
+                    "Sec B (General)",
+                    f"B.{idx_b}",
                     f.label,
                     f.maxMarks,
                     f"{f.weight}%",
@@ -1095,187 +1198,130 @@ def export_detailed_sheets(
                     c.alignment = Alignment(horizontal="center" if col_i not in (1, 3) else "left", vertical="center")
                 curr_row += 1
 
-            # Subtotal Section A Row
-            sec_a_max = sum(float(f.maxMarks or 0) for f in sec_a_fields)
-            sec_a_wt = sum(float(f.weight or 0) for f in sec_a_fields)
+            # Subtotal Section B Row
+            sec_b_max = sum(float(f.maxMarks or 0) for f in sec_b_fields)
+            sec_b_wt = sum(float(f.weight or 0) for f in sec_b_fields)
 
             ws_team.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=3)
-            sub_a_label = ws_team.cell(row=curr_row, column=1, value=f"SECTION A: PROBLEM STATEMENT SPECIFIC SUBTOTAL (MAX {int(sec_a_max)})")
-            sub_a_label.font = font_bold
-            sub_a_label.alignment = Alignment(horizontal="right", vertical="center")
-            ws_team.cell(row=curr_row, column=4, value=sec_a_max).font = font_bold
-            ws_team.cell(row=curr_row, column=5, value=f"{int(sec_a_wt)}%").font = font_bold
+            sub_b_label = ws_team.cell(row=curr_row, column=1, value=f"SECTION B: GENERAL CRITERIA SUBTOTAL (MAX {int(sec_b_max)})")
+            sub_b_label.font = font_bold
+            sub_b_label.alignment = Alignment(horizontal="right", vertical="center")
+            ws_team.cell(row=curr_row, column=4, value=sec_b_max).font = font_bold
+            ws_team.cell(row=curr_row, column=5, value=f"{int(sec_b_wt)}%").font = font_bold
 
             for i in range(num_judges):
-                has_eval = any(judge_scores_map[i].get(f.id) is not None for f in sec_a_fields)
-                ws_team.cell(row=curr_row, column=6 + i, value=round(j_a_subtotals[i], 2) if has_eval else "-").font = font_bold
+                has_eval = any(judge_scores_map[i].get(f.id) is not None for f in sec_b_fields)
+                ws_team.cell(row=curr_row, column=6 + i, value=round(j_b_subtotals[i], 2) if has_eval else "-").font = font_bold
 
-            ws_team.cell(row=curr_row, column=total_cols, value=round(avg_a_subtotal, 2) if t_finals else "-").font = font_bold
+            ws_team.cell(row=curr_row, column=total_cols, value=round(avg_b_subtotal, 2) if t_finals else "-").font = font_bold
 
             for col_i in range(1, total_cols + 1):
                 c = ws_team.cell(row=curr_row, column=col_i)
-                c.fill = amber_fill
+                c.fill = slate_fill
                 c.border = thin_border
                 if col_i in range(4, total_cols + 1):
                     c.alignment = Alignment(horizontal="center", vertical="center")
             curr_row += 1
-        else:
-            sec_a_max = 0.0
-            sec_a_wt = 0.0
 
-        # Section B rows
-        j_b_subtotals = [0.0] * num_judges
-        avg_b_subtotal = 0.0
+            # Grand Total Score Row
+            grand_max = int(sec_a_max + sec_b_max)
+            grand_wt = int(sec_a_wt + sec_b_wt)
 
-        for idx_b, f in enumerate(sec_b_fields, 1):
-            row_scores = [judge_scores_map[i].get(f.id) for i in range(num_judges)]
-            valid_vals = [v for v in row_scores if v is not None]
-            avg_m = round(sum(valid_vals) / len(valid_vals), 2) if valid_vals else None
+            ws_team.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=3)
+            total_label = ws_team.cell(row=curr_row, column=1, value=f"FINAL TOTAL EVALUATION SCORE (MAX {grand_max})")
+            total_label.font = font_grand
+            total_label.alignment = Alignment(horizontal="right", vertical="center")
+            ws_team.cell(row=curr_row, column=4, value=grand_max).font = font_grand
+            ws_team.cell(row=curr_row, column=5, value=f"{grand_wt}%").font = font_grand
 
-            for i, v in enumerate(row_scores):
-                if v is not None:
-                    j_b_subtotals[i] += v
-            if avg_m is not None:
-                avg_b_subtotal += avg_m
+            for i in range(num_judges):
+                v_id = combined_judges[i].id if i < len(combined_judges) else None
+                has_eval = v_id in eval_by_vol_id if v_id else False
+                j_tot = round(j_a_subtotals[i] + j_b_subtotals[i], 2)
+                ws_team.cell(row=curr_row, column=6 + i, value=j_tot if has_eval else "-").font = font_grand
 
-            row_vals = [
-                "Sec B (General)",
-                f"B.{idx_b}",
-                f.label,
-                f.maxMarks,
-                f"{f.weight}%",
-            ]
-            for v in row_scores:
-                row_vals.append(v if v is not None else "-")
-            row_vals.append(avg_m if avg_m is not None else "-")
+            final_team_score = round(avg_a_subtotal + avg_b_subtotal, 2)
+            ws_team.cell(row=curr_row, column=total_cols, value=final_team_score if t_finals else "-").font = font_grand
 
-            for col_i, rv in enumerate(row_vals, 1):
-                c = ws_team.cell(row=curr_row, column=col_i, value=rv)
-                c.font = font_data
-                c.border = thin_border
-                c.alignment = Alignment(horizontal="center" if col_i not in (1, 3) else "left", vertical="center")
-            curr_row += 1
+            for col_i in range(1, total_cols + 1):
+                c = ws_team.cell(row=curr_row, column=col_i)
+                c.fill = emerald_fill
+                c.border = thick_bottom_border
+                if col_i in range(4, total_cols + 1):
+                    c.alignment = Alignment(horizontal="center", vertical="center")
+            curr_row += 2
 
-        # Subtotal Section B Row
-        sec_b_max = sum(float(f.maxMarks or 0) for f in sec_b_fields)
-        sec_b_wt = sum(float(f.weight or 0) for f in sec_b_fields)
-
-        ws_team.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=3)
-        sub_b_label = ws_team.cell(row=curr_row, column=1, value=f"SECTION B: GENERAL CRITERIA SUBTOTAL (MAX {int(sec_b_max)})")
-        sub_b_label.font = font_bold
-        sub_b_label.alignment = Alignment(horizontal="right", vertical="center")
-        ws_team.cell(row=curr_row, column=4, value=sec_b_max).font = font_bold
-        ws_team.cell(row=curr_row, column=5, value=f"{int(sec_b_wt)}%").font = font_bold
-
-        for i in range(num_judges):
-            has_eval = any(judge_scores_map[i].get(f.id) is not None for f in sec_b_fields)
-            ws_team.cell(row=curr_row, column=6 + i, value=round(j_b_subtotals[i], 2) if has_eval else "-").font = font_bold
-
-        ws_team.cell(row=curr_row, column=total_cols, value=round(avg_b_subtotal, 2) if t_finals else "-").font = font_bold
-
-        for col_i in range(1, total_cols + 1):
-            c = ws_team.cell(row=curr_row, column=col_i)
-            c.fill = slate_fill
-            c.border = thin_border
-            if col_i in range(4, total_cols + 1):
-                c.alignment = Alignment(horizontal="center", vertical="center")
-        curr_row += 1
-
-        # Grand Total Score Row
-        grand_max = int(sec_a_max + sec_b_max)
-        grand_wt = int(sec_a_wt + sec_b_wt)
-
-        ws_team.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=3)
-        total_label = ws_team.cell(row=curr_row, column=1, value=f"FINAL TOTAL EVALUATION SCORE (MAX {grand_max})")
-        total_label.font = font_grand
-        total_label.alignment = Alignment(horizontal="right", vertical="center")
-        ws_team.cell(row=curr_row, column=4, value=grand_max).font = font_grand
-        ws_team.cell(row=curr_row, column=5, value=f"{grand_wt}%").font = font_grand
-
-        for i in range(num_judges):
-            v_id = combined_judges[i].id if i < len(combined_judges) else None
-            has_eval = v_id in eval_by_vol_id if v_id else False
-            j_tot = round(j_a_subtotals[i] + j_b_subtotals[i], 2)
-            ws_team.cell(row=curr_row, column=6 + i, value=j_tot if has_eval else "-").font = font_grand
-
-        final_team_score = round(avg_a_subtotal + avg_b_subtotal, 2)
-        ws_team.cell(row=curr_row, column=total_cols, value=final_team_score if t_finals else "-").font = font_grand
-
-        for col_i in range(1, total_cols + 1):
-            c = ws_team.cell(row=curr_row, column=col_i)
-            c.fill = emerald_fill
-            c.border = thick_bottom_border
-            if col_i in range(4, total_cols + 1):
-                c.alignment = Alignment(horizontal="center", vertical="center")
-        curr_row += 2
-
-        # Written Comments Block
-        if txt_fields:
-            ws_team.cell(row=curr_row, column=1, value="JUDGE QUALITATIVE REMARKS & WRITTEN OBSERVATIONS:").font = font_bold
-            curr_row += 1
-
-            for tf in txt_fields:
-                vis_badge = "Participant Visible" if tf.visibility == "participant" else "Internal Staff Only"
-                ws_team.cell(row=curr_row, column=1, value=f"Criterion: {tf.label} ({vis_badge})").font = font_bold
+            # Participant Visible Remarks Only (No Internal Staff Notes!)
+            if txt_fields:
+                ws_team.cell(row=curr_row, column=1, value="JUDGE QUALITATIVE REMARKS & WRITTEN OBSERVATIONS:").font = font_bold
                 curr_row += 1
 
-                for i in range(num_judges):
-                    j_name = judge_names[i]
-                    val = judge_texts_map[i].get(tf.id) or "None recorded."
-                    ws_team.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=total_cols)
-                    c_txt = ws_team.cell(row=curr_row, column=1, value=f"{j_name}: {val}")
-                    c_txt.font = font_data
-                    c_txt.fill = zebra_fill
-                    c_txt.border = thin_border
-                    c_txt.alignment = Alignment(wrap_text=True, vertical="top")
-                    ws_team.row_dimensions[curr_row].height = 28
+                for tf in txt_fields:
+                    ws_team.cell(row=curr_row, column=1, value=f"Criterion: {tf.label}").font = font_bold
                     curr_row += 1
-                curr_row += 1
 
-        # Signature & Sign-off Block
-        curr_row += 1
-        ws_team.cell(row=curr_row, column=1, value="OFFICIAL VERIFICATION & SIGN-OFF:").font = font_bold
-        curr_row += 1
+                    for i in range(num_judges):
+                        j_name = judge_names[i]
+                        val = judge_texts_map[i].get(tf.id) or "None recorded."
+                        ws_team.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=total_cols)
+                        c_txt = ws_team.cell(row=curr_row, column=1, value=f"{j_name}: {val}")
+                        c_txt.font = font_data
+                        c_txt.fill = zebra_fill
+                        c_txt.border = thin_border
+                        c_txt.alignment = Alignment(wrap_text=True, vertical="top")
+                        ws_team.row_dimensions[curr_row].height = 28
+                        curr_row += 1
+                    curr_row += 1
 
-        col_per_judge = max(3, total_cols // num_judges)
-        for i in range(num_judges):
-            start_c = 1 + i * col_per_judge
-            end_c = min(total_cols, start_c + col_per_judge - 1)
-            if i == num_judges - 1:
-                end_c = total_cols
+            # Signature & Sign-off Block (Anonymised)
+            curr_row += 1
+            ws_team.cell(row=curr_row, column=1, value="OFFICIAL VERIFICATION & SIGN-OFF:").font = font_bold
+            curr_row += 1
 
-            ws_team.merge_cells(start_row=curr_row, start_column=start_c, end_row=curr_row, end_column=end_c)
-            sig_cell = ws_team.cell(
-                row=curr_row,
-                column=start_c,
-                value=f"Panel Judge {i+1}: {judge_names[i]}\nSignature: ________________________________\nDate: ________________________",
-            )
-            sig_cell.font = font_data
-            sig_cell.alignment = Alignment(wrap_text=True, vertical="top")
-            sig_cell.border = thin_border
+            col_per_judge = max(3, total_cols // num_judges)
+            for i in range(num_judges):
+                start_c = 1 + i * col_per_judge
+                end_c = min(total_cols, start_c + col_per_judge - 1)
+                if i == num_judges - 1:
+                    end_c = total_cols
 
-        ws_team.row_dimensions[curr_row].height = 54
+                ws_team.merge_cells(start_row=curr_row, start_column=start_c, end_row=curr_row, end_column=end_c)
+                sig_cell = ws_team.cell(
+                    row=curr_row,
+                    column=start_c,
+                    value=f"Panel Judge {i+1}\nSignature: ________________________________\nDate: ________________________",
+                )
+                sig_cell.font = font_data
+                sig_cell.alignment = Alignment(wrap_text=True, vertical="top")
+                sig_cell.border = thin_border
 
-        # Column widths
-        ws_team.column_dimensions["A"].width = 16
-        ws_team.column_dimensions["B"].width = 8
-        ws_team.column_dimensions["C"].width = 38
-        ws_team.column_dimensions["D"].width = 10
-        ws_team.column_dimensions["E"].width = 10
-        for i in range(num_judges):
-            col_letter = get_column_letter(6 + i)
-            ws_team.column_dimensions[col_letter].width = 18
-        ws_team.column_dimensions[last_col_letter].width = 16
+            ws_team.row_dimensions[curr_row].height = 54
 
-    sanitize_workbook(wb)
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
+            # Column widths
+            ws_team.column_dimensions["A"].width = 16
+            ws_team.column_dimensions["B"].width = 8
+            ws_team.column_dimensions["C"].width = 38
+            ws_team.column_dimensions["D"].width = 10
+            ws_team.column_dimensions["E"].width = 10
+            for i in range(num_judges):
+                col_letter = get_column_letter(6 + i)
+                ws_team.column_dimensions[col_letter].width = 18
+            ws_team.column_dimensions[last_col_letter].width = 16
 
-    filename = f"round_{round_obj.roundNumber}_detailed_evaluation_sheets.xlsx"
+            sanitize_workbook(wb_team)
+            team_buf = io.BytesIO()
+            wb_team.save(team_buf)
+            safe_reg = re.sub(r'[\\/*?:\[\]<>|"]', '_', t_obj.registrationId or 'REG')
+            safe_name = re.sub(r'[\\/*?:\[\]<>|"]', '_', t_obj.name)[:30]
+            rank_str = str(e.get('rank') or 'NA')
+            team_filename = f"Rank_{rank_str}_{safe_reg}_{safe_name}.xlsx"
+            zip_file.writestr(f"Round_{round_obj.roundNumber}_Evaluation/Teams/{team_filename}", team_buf.getvalue())
+
+    zip_buf.seek(0)
+    filename = f"round_{round_obj.roundNumber}_evaluation_sheets.zip"
     return StreamingResponse(
-        buf,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        zip_buf,
+        media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 

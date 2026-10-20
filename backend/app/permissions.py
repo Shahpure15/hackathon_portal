@@ -79,8 +79,8 @@ CATALOG: Dict[str, Permission] = {p.key: p for p in CATALOG_LIST}
 SEED_ROLES = {
     'volunteer': {
         'name': 'Volunteer',
-        'description': 'Teams, attendance, problem statement assistance and people check-in.',
-        'permissions': ['team.view', 'ps.view', 'ps.assist', 'checkpoint.view', 'attendance.mark', 'people.view', 'people.checkin'],
+        'description': 'Teams, attendance, checkpoints and people check-in.',
+        'permissions': ['attendance.mark', 'checkpoint.view', 'team.view', 'people.view', 'people.checkin'],
     },
     'judge': {
         'name': 'Judge',

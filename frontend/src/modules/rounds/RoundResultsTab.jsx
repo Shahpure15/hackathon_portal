@@ -258,7 +258,7 @@ export const RoundResultsTab = ({ round, rubricFields = [] }) => {
     }
   };
 
-  // Export Detailed Print-Ready Multi-Sheet Workbook
+  // Export Detailed Print-Ready Zip of Workbooks
   const handleExportDetailed = async () => {
     setExportingDetailed(true);
     try {
@@ -266,17 +266,17 @@ export const RoundResultsTab = ({ round, rubricFields = [] }) => {
         responseType: 'blob',
       });
       const blob = new Blob([res.data], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        type: 'application/zip',
       });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Round_${round?.name || roundId}_Detailed_Evaluation_Sheets.xlsx`;
+      a.download = `Round_${round?.name || roundId}_Detailed_Evaluation_Sheets.zip`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      addToast('Detailed evaluation sheets exported successfully!', 'success');
+      addToast('Detailed evaluation sheets ZIP exported successfully!', 'success');
     } catch (err) {
       console.error('Failed to export detailed sheets', err);
       addToast('Failed to export detailed evaluation sheets', 'error');

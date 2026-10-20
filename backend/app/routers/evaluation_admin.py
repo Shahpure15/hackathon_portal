@@ -568,6 +568,9 @@ def get_round_progress(
         if v.evaluationId not in status_by_eval:
             status_by_eval[v.evaluationId] = v.status
 
+    vol_records = db.query(Volunteer).filter(Volunteer.eventId == current_user.eventId).all()
+    vol_by_id = {v.id: v for v in vol_records}
+
     judges_map: Dict[str, dict] = {}
     teams_map: Dict[str, dict] = {}
 
@@ -576,7 +579,15 @@ def get_round_progress(
         t_id = a.teamId
 
         if j_id not in judges_map:
-            judges_map[j_id] = {"assigned": 0, "notStarted": 0, "drafts": 0, "finals": 0}
+            vol_obj = vol_by_id.get(j_id)
+            judges_map[j_id] = {
+                "name": vol_obj.name if vol_obj else "Unknown Judge",
+                "type": getattr(vol_obj, "type", "JUDGE") if vol_obj else "JUDGE",
+                "assigned": 0,
+                "notStarted": 0,
+                "drafts": 0,
+                "finals": 0,
+            }
         judges_map[j_id]["assigned"] += 1
 
         if t_id not in teams_map:

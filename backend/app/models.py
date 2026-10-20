@@ -15,6 +15,8 @@ def generate_uuid():
 class Role(str, enum.Enum):
     ADMIN = "ADMIN"
     VOLUNTEER = "VOLUNTEER"
+    FACULTY = "FACULTY"
+    JUDGE = "JUDGE"
     LEADER = "LEADER"
 
 class TeamStatus(str, enum.Enum):

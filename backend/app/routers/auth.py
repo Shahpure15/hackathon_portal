@@ -259,7 +259,7 @@ def get_me(
         permissions = sorted(list(CATALOG.keys()))
         scope = {'teams': {'mode': 'all', 'ids': []}}
         landing = compute_landing(role_val, set(permissions), True)
-    elif (current_user.role == Role.VOLUNTEER) or (role_val.upper() == Role.VOLUNTEER.value.upper()):
+    elif role_val.upper() in (Role.VOLUNTEER.value, Role.FACULTY.value, Role.JUDGE.value):
         access = resolve_access(db, current_user)
         role_names = list(access.role_names or [])
         permissions = sorted(list(access.permissions))
@@ -275,8 +275,8 @@ def get_me(
             scope = {'teams': {'mode': 'all', 'ids': []}}
         landing = compute_landing(role_val, access.permissions, False)
 
-        # Dynamic fallback if no explicit RBAC role name was assigned
-        if not role_names:
+        # Dynamic fallback if no explicit RBAC role name was assigned but user has permissions
+        if not role_names and access.permissions:
             vol = getattr(current_user, 'volunteer', None)
             if not vol and getattr(current_user, 'volunteerId', None):
                 vol = db.query(Volunteer).filter(Volunteer.id == current_user.volunteerId).first()
@@ -285,6 +285,8 @@ def get_me(
                 role_names = [type_val.capitalize()]
             elif landing == 'judge' or 'evaluation.score' in access.permissions:
                 role_names = ['Judge']
+            elif landing == 'staff':
+                role_names = ['Faculty Lead']
             else:
                 role_names = ['Volunteer']
     else:

@@ -425,18 +425,22 @@ def test_detailed_sheets_export(client: TestClient, admin_results_setup):
     admin, round_row = ctx["admin"], ctx["round"]
     headers = auth_header(admin)
 
-    # 1. Test detailed sheets export (GET and POST)
+    import zipfile
+    # 1. Test detailed sheets export (GET and POST returns a ZIP archive containing Leaderboard and team workbooks)
     res = client.get(f"/admin/rounds/{round_row.id}/export/detailed-sheets", headers=headers)
     assert res.status_code == 200
-    assert "application/vnd.openxmlformats" in res.headers["content-type"]
+    assert "zip" in res.headers["content-type"]
 
-    wb = openpyxl.load_workbook(io.BytesIO(res.content))
+    zf = zipfile.ZipFile(io.BytesIO(res.content))
+    namelist = zf.namelist()
+    assert any("Leaderboard.xlsx" in n for n in namelist)
+
+    lb_name = next(n for n in namelist if "Leaderboard.xlsx" in n)
+    lb_bytes = zf.read(lb_name)
+    wb = openpyxl.load_workbook(io.BytesIO(lb_bytes))
     assert "Evaluation Summary" in wb.sheetnames
-    # There should be sheets for evaluated teams
-    assert len(wb.sheetnames) >= 2
     ws_sum = wb["Evaluation Summary"]
     assert "EVALUATION SUMMARY & LEADERBOARD" in str(ws_sum["A1"].value)
-    # Check headers include College / Institution and Team Leader
     sum_headers = [cell.value for cell in ws_sum[3] if cell.value]
     assert "College / Institution" in sum_headers
     assert "Team Leader" in sum_headers
@@ -445,6 +449,7 @@ def test_detailed_sheets_export(client: TestClient, admin_results_setup):
     # Check POST also works
     res_post = client.post(f"/admin/rounds/{round_row.id}/export/detailed-sheets", headers=headers)
     assert res_post.status_code == 200
+    assert "zip" in res_post.headers["content-type"]
 
     # 2. Test leaderboard export (GET and POST)
     lb_res = client.get(f"/admin/rounds/{round_row.id}/leaderboard/export", headers=headers)

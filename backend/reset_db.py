@@ -97,7 +97,7 @@ def reset_db():
         vol_profile = Volunteer(
             eventId=event.id,
             name="Default Volunteer",
-            type="FACULTY",
+            type="VOLUNTEER",
             contact="volunteer@mitindia.com"
         )
         db.add(vol_profile)

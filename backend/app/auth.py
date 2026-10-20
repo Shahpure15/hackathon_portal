@@ -85,6 +85,13 @@ async def get_current_user(
         
         if user_id is None or role is None or event_id is None:
             raise credentials_exception
+            
+        valid_role_values = {r.value for r in Role}
+        if str(role).upper() not in valid_role_values:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No access provided. Invalid role assignment."
+            )
     except JWTError:
         raise credentials_exception
 
@@ -95,6 +102,13 @@ async def get_current_user(
 
     if getattr(user, 'status', 'active') == 'disabled':
         raise credentials_exception
+
+    db_role_val = getattr(user.role, 'value', user.role)
+    if str(db_role_val).upper() not in valid_role_values:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No access provided. Invalid role assignment."
+        )
 
     return CurrentUser(
         id=user.id,

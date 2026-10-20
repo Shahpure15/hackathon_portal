@@ -124,7 +124,14 @@ export default function JudgingProgressConsole({ roundId, roundName }) {
   // Maps for quick lookup
   const staffById = {};
   staffList.forEach((s) => {
-    staffById[s.id] = s;
+    const sId = s.volunteerId || s.id;
+    if (sId) staffById[sId] = s;
+  });
+  const judgeNameFromAssignments = {};
+  assignments.forEach((a) => {
+    if (a.judgeVolunteerId && a.judgeName) {
+      judgeNameFromAssignments[a.judgeVolunteerId] = a.judgeName;
+    }
   });
   const teamById = {};
   assignableTeams.forEach((t) => {
@@ -137,7 +144,7 @@ export default function JudgingProgressConsole({ roundId, roundName }) {
   // Filtered judges
   const judgeIds = Object.keys(perJudge);
   const filteredJudgeIds = judgeIds.filter((jId) => {
-    const name = staffById[jId]?.name || 'Unknown Judge';
+    const name = perJudge[jId]?.name || staffById[jId]?.name || judgeNameFromAssignments[jId] || 'Judge';
     return name.toLowerCase().includes(judgeSearch.toLowerCase());
   });
 
@@ -319,8 +326,8 @@ export default function JudgingProgressConsole({ roundId, roundName }) {
               {filteredJudgeIds.map((jId) => {
                 const jStats = perJudge[jId];
                 const judge = staffById[jId];
-                const name = judge?.name || 'Unknown Judge';
-                const role = judge?.peopleRoles?.join(', ') || judge?.type || 'Judge';
+                const name = jStats?.name || judge?.name || judgeNameFromAssignments[jId] || 'Judge';
+                const role = judge?.peopleRoles?.join(', ') || jStats?.type || judge?.type || 'Judge';
                 const total = jStats.assigned || 0;
                 const finals = jStats.finals || 0;
                 const drafts = jStats.drafts || 0;

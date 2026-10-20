@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Download,
   Upload,
@@ -26,6 +27,9 @@ import { useAuth } from '../../contexts/AuthContext';
 export const RoundsModule = () => {
   const { addToast } = useToast();
   const { features } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlRoundId = searchParams.get('roundId');
+  const urlAction = searchParams.get('action');
 
   const [rounds, setRounds] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -68,6 +72,45 @@ export const RoundsModule = () => {
     fetchRounds();
   }, []);
 
+  // React to URL changes (e.g. from sidebar clicking different rounds)
+  useEffect(() => {
+    if (urlAction === 'create') {
+      if (!editorOpen || selectedRound?.id) {
+        setSelectedRound({
+          name: '',
+          number: rounds.length + 1,
+          description: '',
+          submissionEnabled: false,
+          evaluationEnabled: features?.evaluation !== false,
+          isSubmissionOpen: false,
+          status: 'live',
+          submissionFields: [],
+          rubricFields: [],
+        });
+        setEditorOpen(true);
+      }
+    } else if (urlRoundId) {
+      if (!selectedRound || selectedRound.id !== urlRoundId) {
+        // Fetch full round details
+        api.get(`/admin/rounds/${urlRoundId}`)
+          .then((res) => {
+            setSelectedRound(res.data);
+            setEditorOpen(true);
+          })
+          .catch(() => {
+            const found = rounds.find((rnd) => rnd.id === urlRoundId);
+            if (found) {
+              setSelectedRound(found);
+              setEditorOpen(true);
+            }
+          });
+      }
+    } else if (!urlRoundId && !urlAction && editorOpen) {
+      setEditorOpen(false);
+      setSelectedRound(null);
+    }
+  }, [urlRoundId, urlAction, rounds]);
+
   // Open Create
   const handleOpenCreate = () => {
     setSelectedRound({
@@ -82,11 +125,10 @@ export const RoundsModule = () => {
       rubricFields: [],
     });
     setEditorOpen(true);
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(searchParams);
     params.set('action', 'create');
     params.delete('roundId');
-    window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
-    window.dispatchEvent(new Event('popstate'));
+    setSearchParams(params);
   };
 
   // Open Edit
@@ -95,54 +137,27 @@ export const RoundsModule = () => {
       const res = await api.get(`/admin/rounds/${r.id}`);
       setSelectedRound(res.data);
       setEditorOpen(true);
-    } catch (err) {
+    } catch {
       setSelectedRound(r);
       setEditorOpen(true);
     }
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(searchParams);
     params.set('roundId', r.id);
     params.delete('action');
-    window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
-    window.dispatchEvent(new Event('popstate'));
+    setSearchParams(params);
   };
 
   // Close Editor and clear roundId from URL
   const handleCloseEditor = () => {
     setEditorOpen(false);
     setSelectedRound(null);
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(searchParams);
     params.delete('roundId');
     params.delete('action');
-    const newQuery = params.toString();
-    const newUrl = `${window.location.pathname}${newQuery ? `?${newQuery}` : ''}`;
-    window.history.replaceState(null, '', newUrl);
+    setSearchParams(params);
     fetchRounds();
     window.dispatchEvent(new Event('rounds-updated'));
   };
-
-  // Sync URL search params with active round on mount and popstate
-  useEffect(() => {
-    const handleUrlSync = () => {
-      const params = new URLSearchParams(window.location.search);
-      const rId = params.get('roundId');
-      const action = params.get('action');
-      if (action === 'create') {
-        if (!editorOpen) handleOpenCreate();
-      } else if (rId && rounds.length > 0) {
-        const found = rounds.find((rnd) => rnd.id === rId);
-        if (found && (!selectedRound || selectedRound.id !== rId)) {
-          handleOpenEdit(found);
-        }
-      } else if (!rId && !action && editorOpen) {
-        setEditorOpen(false);
-        setSelectedRound(null);
-        fetchRounds();
-      }
-    };
-    handleUrlSync();
-    window.addEventListener('popstate', handleUrlSync);
-    return () => window.removeEventListener('popstate', handleUrlSync);
-  }, [rounds, editorOpen]);
 
   // Toggle submission open/close
   const handleToggleSubmission = async (roundId, currentOpen) => {
@@ -297,6 +312,7 @@ export const RoundsModule = () => {
     return (
       <div style={{ marginBottom: '28px' }}>
         <RoundEditor
+          key={selectedRound?.id || 'create_round'}
           round={selectedRound}
           features={features}
           onClose={handleCloseEditor}
