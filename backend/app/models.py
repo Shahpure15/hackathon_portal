@@ -97,6 +97,7 @@ class User(Base):
     teamId = Column(String(36), ForeignKey("teams.id", ondelete="SET NULL"), unique=True, nullable=True)
     volunteerId = Column(String(36), ForeignKey("volunteers.id", ondelete="SET NULL"), unique=True, nullable=True)
     status = Column(String(20), default="active", server_default="active", nullable=False) # 'active', 'invited', 'disabled'
+    tokenVersion = Column(Integer, default=1, server_default="1", nullable=False)
     createdAt = Column(DateTime, default=func.now(), nullable=False)
 
     # Relationships

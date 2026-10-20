@@ -111,12 +111,15 @@ def generate_team_leader_password(leader_phone: str, registration_id: str) -> st
         return f"{team_id_clean}123!"
     return generate_random_password()
 
-# Helper: Revoke all active refresh tokens for a user (force logout of all sessions)
+# Helper: Revoke all active refresh tokens and increment tokenVersion for a user (force logout of all sessions)
 def revoke_all_sessions(db: Session, user_id: str):
     db.query(RefreshToken).filter(
         RefreshToken.userId == user_id,
         RefreshToken.revoked == False
     ).update({"revoked": True})
+    u = db.query(User).filter(User.id == user_id).first()
+    if u:
+        u.tokenVersion = (getattr(u, "tokenVersion", 1) or 1) + 1
 
 # Helper: Generate unique volunteer username
 def generate_unique_volunteer_username(db: Session, name: str) -> str:
@@ -2617,7 +2620,8 @@ def update_volunteer(
                                 createdBy='AUTO_DEFAULT',
                             ))
                         invalidate_user(vol_user.id)
-            
+                # Invalidate user session immediately on role change
+                revoke_all_sessions(db, vol_user.id)
     if "contact" in payload:
         contact = str(payload["contact"]).strip()
         if not contact:
@@ -2803,16 +2807,37 @@ def reset_volunteer_password(
     if not v.user:
         raise HTTPException(status_code=400, detail="Volunteer does not have a login account")
         
+    new_username = (payload or {}).get("username")
+    if new_username:
+        new_username = str(new_username).strip()
+        if len(new_username) < 3:
+            raise HTTPException(status_code=400, detail="Username must be at least 3 characters")
+        if new_username.lower() != v.user.username.lower():
+            dup = db.query(User).filter(
+                User.eventId == current_user.eventId,
+                func.lower(User.username) == new_username.lower(),
+                User.id != v.user.id
+            ).first()
+            if dup:
+                raise HTTPException(status_code=400, detail="Username is already taken by another user")
+            v.user.username = new_username
+
     password = (payload or {}).get("password")
-    if not password:
+    if password:
+        password = str(password).strip()
+        if len(password) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+        v.user.passwordHash = get_password_hash(password)
+        revoke_all_sessions(db, v.user.id)
+    elif not new_username:
         password = generate_random_password()
-        
-    v.user.passwordHash = get_password_hash(password)
-    revoke_all_sessions(db, v.user.id)
+        v.user.passwordHash = get_password_hash(password)
+        revoke_all_sessions(db, v.user.id)
+
     db.commit()
     
     return {
-        "message": "Password reset successfully",
+        "message": "Volunteer credentials updated successfully",
         "username": v.user.username,
         "password": password
     }
@@ -2829,12 +2854,26 @@ def reset_team_password(
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
         
+    new_username = (payload or {}).get("username")
     password = (payload or {}).get("password")
-    if not password:
-        password = generate_team_leader_password(team.leaderPhone, team.registrationId)
-        
+
+    if new_username:
+        new_username = str(new_username).strip()
+        if len(new_username) < 3:
+            raise HTTPException(status_code=400, detail="Username must be at least 3 characters")
+
     if not team.user:
-        username = team.registrationId.lower()
+        username = new_username or team.registrationId.lower()
+        # Verify uniqueness
+        dup = db.query(User).filter(
+            User.eventId == current_user.eventId,
+            func.lower(User.username) == username.lower()
+        ).first()
+        if dup:
+            raise HTTPException(status_code=400, detail="Username is already taken")
+
+        if not password:
+            password = generate_team_leader_password(team.leaderPhone, team.registrationId)
         leader_user = User(
             eventId=current_user.eventId,
             username=username,
@@ -2845,17 +2884,36 @@ def reset_team_password(
         db.add(leader_user)
         db.commit()
         return {
-            "message": "Login account created and password set",
+            "message": "Login account created and credentials set",
             "username": username,
             "password": password
         }
         
-    team.user.passwordHash = get_password_hash(password)
-    revoke_all_sessions(db, team.user.id)
+    if new_username and new_username.lower() != team.user.username.lower():
+        dup = db.query(User).filter(
+            User.eventId == current_user.eventId,
+            func.lower(User.username) == new_username.lower(),
+            User.id != team.user.id
+        ).first()
+        if dup:
+            raise HTTPException(status_code=400, detail="Username is already taken by another user")
+        team.user.username = new_username
+
+    if password:
+        password = str(password).strip()
+        if len(password) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+        team.user.passwordHash = get_password_hash(password)
+        revoke_all_sessions(db, team.user.id)
+    elif not new_username:
+        password = generate_team_leader_password(team.leaderPhone, team.registrationId)
+        team.user.passwordHash = get_password_hash(password)
+        revoke_all_sessions(db, team.user.id)
+
     db.commit()
     
     return {
-        "message": "Password reset successfully",
+        "message": "Team credentials updated successfully",
         "username": team.user.username,
         "password": password
     }
@@ -5799,3 +5857,50 @@ async def import_attendance_slots(
 
     db.commit()
     return {"message": f"Successfully processed attendance slots. Created {created_count} new slot(s)."}
+
+
+@router.post("/security/revoke-all-sessions")
+def revoke_all_event_sessions(
+    db: Session = Depends(get_db),
+    current_user: Principal = Depends(require_permission('staff.credentials'))
+):
+    """
+    Revokes all active sessions for all non-admin users in the current event,
+    forcing everyone to re-authenticate immediately.
+    """
+    # 1. Increment tokenVersion for all users in this event except the calling admin
+    users_to_revoke = (
+        db.query(User)
+        .filter(User.eventId == current_user.eventId, User.id != current_user.id)
+        .all()
+    )
+    user_ids = [u.id for u in users_to_revoke]
+    
+    for u in users_to_revoke:
+        u.tokenVersion = (getattr(u, "tokenVersion", 1) or 1) + 1
+        
+    # 2. Revoke all active refresh tokens for these users
+    revoked_count = 0
+    if user_ids:
+        revoked_count = (
+            db.query(RefreshToken)
+            .filter(RefreshToken.userId.in_(user_ids), RefreshToken.revoked == False)
+            .update({"revoked": True}, synchronize_session=False)
+        )
+        
+    db.commit()
+    log_audit(
+        db,
+        current_user.id,
+        "security.revoke_all_sessions",
+        "User",
+        current_user.eventId,
+        {"affectedUsers": len(user_ids), "revokedTokens": revoked_count},
+        event_id=current_user.eventId
+    )
+    
+    return {
+        "status": "success",
+        "message": f"Successfully revoked active logins for {len(user_ids)} users ({revoked_count} active sessions terminated)."
+    }
+

@@ -533,7 +533,30 @@
     display: none;
   }
 
-  .admin-topbar-right > *:not(.admin-logout-btn):not(.admin-password-btn):not(.admin-theme-btn) {
+  .admin-topbar-right > *:not(.admin-logout-btn):not(.admin-password-btn):not(.admin-theme-btn):not(.admin-user-pill) {
+    display: none !important;
+  }
+
+  .admin-user-pill {
+    padding: 2px 8px 2px 4px !important;
+    gap: 5px !important;
+  }
+
+  .admin-user-pill .admin-user-avatar {
+    width: 24px !important;
+    height: 24px !important;
+    font-size: 0.68rem !important;
+  }
+
+  .admin-user-pill span[style*="font-size: 0.8rem"] {
+    max-width: 72px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.72rem !important;
+  }
+
+  .admin-user-pill span[style*="font-size: 0.68rem"] {
     display: none !important;
   }
 
@@ -835,17 +858,18 @@
 .admin-shell-main .glass-panel,
 .admin-shell-main .card,
 .admin-shell-main .panel {
-  background: rgba(253, 251, 247, 0.75);
-  backdrop-filter: blur(24px) saturate(190%) brightness(1.02);
-  -webkit-backdrop-filter: blur(24px) saturate(190%) brightness(1.02);
-  border: 1px solid rgba(43, 33, 24, 0.12);
-  border-top-color: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 16px 40px -16px rgba(33, 26, 19, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.58);
+  backdrop-filter: blur(20px) saturate(190%) brightness(1.02);
+  -webkit-backdrop-filter: blur(20px) saturate(190%) brightness(1.02);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  border-top: 1px solid rgba(255, 255, 255, 0.95);
+  border-left: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow: 0 16px 36px -12px rgba(43, 33, 24, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.9);
 }
 
 .admin-shell-main .glass-card:hover {
-  border-color: rgba(185, 111, 56, 0.4);
-  box-shadow: 0 20px 48px -12px rgba(43, 33, 24, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  border-color: rgba(185, 111, 56, 0.45);
+  box-shadow: 0 20px 48px -12px rgba(43, 33, 24, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 
 [data-theme='dark'] .admin-shell-main .glass-card,
@@ -856,18 +880,19 @@
 [data-theme="dark"] .admin-shell-main .glass-panel,
 [data-theme="dark"] .admin-shell-main .card,
 [data-theme="dark"] .admin-shell-main .panel {
-  background: rgba(24, 20, 16, 0.62) !important;
-  backdrop-filter: blur(28px) saturate(180%) brightness(1.08) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(180%) brightness(1.08) !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  border-top-color: rgba(255, 255, 255, 0.18) !important;
-  box-shadow: 0 16px 40px -16px rgba(0, 0, 0, 0.65), inset 0 1px 1px rgba(255, 255, 255, 0.08) !important;
+  background: rgba(18, 22, 32, 0.55) !important;
+  backdrop-filter: blur(24px) saturate(190%) brightness(1.05) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(190%) brightness(1.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.28) !important;
+  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
 }
 
 [data-theme='dark'] .admin-shell-main .glass-card:hover,
 [data-theme="dark"] .admin-shell-main .glass-card:hover {
-  border-color: rgba(224, 140, 78, 0.4) !important;
-  box-shadow: 0 20px 48px -12px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+  border-color: rgba(224, 140, 78, 0.45) !important;
+  border-top-color: rgba(255, 255, 255, 0.35) !important;
+  box-shadow: 0 24px 50px -10px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
 }
 
 /* Glass Data Tables */

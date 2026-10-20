@@ -129,27 +129,85 @@ export const RoundEditor = ({
   }, [round?.id, number]);
 
   // Load rubric detail if editing existing round
+  // Dirty state tracking to prevent losing unsaved progress
+  const [isDirty, setIsDirty] = useState(false);
+  const initialSnapshotRef = React.useRef(null);
+
+  // Take snapshot of initial values once loaded
   useEffect(() => {
-    if (!isNew && round?.id) {
-      const fetchRubric = async () => {
-        try {
-          const res = await api.get(`/admin/rounds/${round.id}/rubric`);
-          if (res.data) {
-            setRubricFields(res.data.rubricFields || []);
-            setRubricGuidance(res.data.guidance || []);
-            setIsRubricLocked(Boolean(res.data.locked));
-            setIsRubricPublished(Boolean(res.data.published));
-            if (res.data.currentVersion) {
-              setCurrentRubricVersion(res.data.currentVersion);
-            }
-          }
-        } catch (err) {
-          console.error('Failed to load rubric fields', err);
-        }
-      };
-      fetchRubric();
+    if (!initialSnapshotRef.current) {
+      initialSnapshotRef.current = JSON.stringify({
+        name,
+        description,
+        number,
+        status,
+        opensAt,
+        closesAt,
+        evaluationEnabled,
+        aggregation,
+        trimCount,
+        totalScale,
+        eligibilityMode,
+        fromRoundId,
+        submissionEnabled,
+        isSubmissionOpen,
+        submissionFieldsCount: submissionFields.length,
+        rubricFieldsCount: rubricFields.length,
+      });
+    } else {
+      const currentSnapshot = JSON.stringify({
+        name,
+        description,
+        number,
+        status,
+        opensAt,
+        closesAt,
+        evaluationEnabled,
+        aggregation,
+        trimCount,
+        totalScale,
+        eligibilityMode,
+        fromRoundId,
+        submissionEnabled,
+        isSubmissionOpen,
+        submissionFieldsCount: submissionFields.length,
+        rubricFieldsCount: rubricFields.length,
+      });
+      if (currentSnapshot !== initialSnapshotRef.current) {
+        setIsDirty(true);
+      }
     }
-  }, [round?.id, isNew]);
+  }, [
+    name, description, number, status, opensAt, closesAt,
+    evaluationEnabled, aggregation, trimCount, totalScale,
+    eligibilityMode, fromRoundId, submissionEnabled, isSubmissionOpen,
+    submissionFields.length, rubricFields.length
+  ]);
+
+  // Warn on page refresh or browser close if dirty
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = 'You have unsaved changes in this round. If you leave or refresh, your progress will be lost.';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
+
+  // Safe close handler that checks isDirty
+  const handleSafeClose = () => {
+    if (isDirty) {
+      const confirmLeave = window.confirm(
+        'You have unsaved changes in this round! Leaving now will discard your progress.\n\nAre you sure you want to exit without saving?'
+      );
+      if (!confirmLeave) return;
+    }
+    onClose();
+  };
 
   const handleRubricRevised = async (result) => {
     setIsRubricLocked(false);
@@ -252,6 +310,7 @@ export const RoundEditor = ({
         }
       }
 
+      setIsDirty(false);
       if (onSaved) onSaved(savedRound);
       if (shouldClose) {
         onClose();
@@ -309,7 +368,7 @@ export const RoundEditor = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleSafeClose}
               className="btn btn-secondary touch-target"
               style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.84rem', fontWeight: 600 }}
             >

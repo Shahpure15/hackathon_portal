@@ -234,6 +234,55 @@ export function Navbar({
 
         {/* Right Section: Desktop Theme Toggle & Logout or Mobile Menu Button */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+          {/* User badge with username visible on all screens */}
+          {user?.username && (
+            <div
+              title={`Logged in as ${user.username} (${displayRole || 'User'})`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '3px 8px 3px 4px',
+                borderRadius: '999px',
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid var(--border-light)',
+                flexShrink: 0,
+              }}
+            >
+              <div
+                style={{
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '50%',
+                  background: 'linear-gradient(135deg, var(--hero), var(--hero-deep))',
+                  color: '#ffffff',
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  textTransform: 'uppercase',
+                  flexShrink: 0,
+                }}
+              >
+                {user.username[0]}
+              </div>
+              <span
+                style={{
+                  fontWeight: 600,
+                  fontSize: '0.78rem',
+                  maxWidth: isMobile ? '80px' : '130px',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  color: 'var(--text-primary)',
+                }}
+              >
+                {user.username}
+              </span>
+            </div>
+          )}
+
           {!isMobile ? (
             <>
               <IconButton

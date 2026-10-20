@@ -135,11 +135,14 @@ const AdminDashboard = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Custom Reset Password states
+  // Custom Reset Password / Credentials states
   const [resetPasswordState, setResetPasswordState] = useState(null);
+  const [customUsernameValue, setCustomUsernameValue] = useState('');
   const [customPasswordValue, setCustomPasswordValue] = useState('');
   const [showResetPasswordInput, setShowResetPasswordInput] = useState(false);
   const [isSavingReset, setIsSavingReset] = useState(false);
+  const [isRevokingAllSessions, setIsRevokingAllSessions] = useState(false);
+  const [showRevokeAllConfirm, setShowRevokeAllConfirm] = useState(false);
   const [parentCredentialsToShow, setParentCredentialsToShow] = useState(null);
 
   const handleTabClick = (tabName, extraParams) => {
@@ -237,6 +240,7 @@ const AdminDashboard = () => {
             <TeamsView 
               pods={pods} 
               fetchPodsPool={fetchPodsPool} 
+              onRevokeAllSessions={() => setShowRevokeAllConfirm(true)}
               onResetPassword={(teamId, teamName) => {
                 setResetPasswordState({
                   isOpen: true,
@@ -320,27 +324,32 @@ const AdminDashboard = () => {
       {resetPasswordState && (
         <Modal
           isOpen={true}
-          onClose={() => { setResetPasswordState(null); setCustomPasswordValue(''); }}
-          title={`Reset Password for ${resetPasswordState.targetName}`}
-          maxWidth="440px"
+          onClose={() => { setResetPasswordState(null); setCustomUsernameValue(''); setCustomPasswordValue(''); }}
+          title={`Manage Credentials for ${resetPasswordState.targetName}`}
+          maxWidth="460px"
         >
           <form onSubmit={async (e) => {
             e.preventDefault();
+            const usr = customUsernameValue.trim();
             const pwd = customPasswordValue.trim();
-            const payload = pwd ? { password: pwd } : {};
+            const payload = {};
+            if (usr) payload.username = usr;
+            if (pwd) payload.password = pwd;
+
             setIsSavingReset(true);
             try {
               const url = resetPasswordState.type === 'team'
                 ? `/admin/teams/${resetPasswordState.targetId}/reset-password`
                 : `/admin/volunteers/${resetPasswordState.targetId}/reset-password`;
               const res = await api.post(url, payload);
-              addToast(`Password reset successfully!`, 'success');
+              addToast(`Credentials updated successfully!`, 'success');
               setParentCredentialsToShow({
-                title: `Password Reset for ${resetPasswordState.targetName}`,
+                title: `Updated Credentials for ${resetPasswordState.targetName}`,
                 username: res.data.username,
-                password: res.data.password
+                password: res.data.password || '(Unchanged)'
               });
               setResetPasswordState(null);
+              setCustomUsernameValue('');
               setCustomPasswordValue('');
               if (resetPasswordState.type === 'volunteer') {
                 if (typeof fetchVolunteers !== 'undefined' && typeof fetchVolunteers === 'function') {
@@ -348,18 +357,33 @@ const AdminDashboard = () => {
                 }
               }
             } catch (err) {
-              console.error("Password reset failure:", err);
-              addToast(err.response?.data?.detail || err.message || 'Failed to reset password', 'error');
+              console.error("Credentials update failure:", err);
+              addToast(err.response?.data?.detail || err.message || 'Failed to update credentials', 'error');
             } finally {
               setIsSavingReset(false);
             }
           }}>
+            <div className="form-group" style={{ marginBottom: '16px' }}>
+              <label className="form-label">Username</label>
+              <input
+                type="text"
+                placeholder="Leave blank to keep existing username"
+                className="form-input"
+                value={customUsernameValue}
+                onChange={(e) => setCustomUsernameValue(e.target.value)}
+                disabled={isSavingReset}
+              />
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                Admin has permission to change any team or staff username directly.
+              </p>
+            </div>
+
             <div className="form-group" style={{ marginBottom: '20px' }}>
-              <label className="form-label">New Password (Optional)</label>
+              <label className="form-label">New Password</label>
               <div style={{ position: 'relative' }}>
                 <input
                   type={showResetPasswordInput ? "text" : "password"}
-                  placeholder="Leave blank to auto-generate"
+                  placeholder="Leave blank to auto-generate (or keep existing)"
                   className="form-input"
                   value={customPasswordValue}
                   onChange={(e) => setCustomPasswordValue(e.target.value)}
@@ -376,20 +400,69 @@ const AdminDashboard = () => {
               </div>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px', lineHeight: '1.4' }}>
                 {resetPasswordState?.type === 'team'
-                  ? 'If you leave this blank, password will default to First 5 digits of Leader Mobile + Team Code.'
-                  : 'If you leave this blank, the system will automatically generate a strong random password.'}
+                  ? 'If you leave this blank with no username change, password defaults to First 5 digits of Leader Mobile + Team Code.'
+                  : 'If you leave this blank with no username change, system automatically generates a strong random password.'}
               </p>
             </div>
             
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-              <button type="button" onClick={() => { setResetPasswordState(null); setCustomPasswordValue(''); }} className="btn btn-secondary" style={{ minHeight: '38px', height: '38px', padding: '6px 16px', fontSize: '0.85rem' }} disabled={isSavingReset}>
+              <button type="button" onClick={() => { setResetPasswordState(null); setCustomUsernameValue(''); setCustomPasswordValue(''); }} className="btn btn-secondary" style={{ minHeight: '38px', height: '38px', padding: '6px 16px', fontSize: '0.85rem' }} disabled={isSavingReset}>
                 Cancel
               </button>
               <button type="submit" className="btn btn-primary" style={{ minHeight: '38px', height: '38px', padding: '6px 16px', fontSize: '0.85rem' }} disabled={isSavingReset}>
-                {isSavingReset ? <span className="spinner spinner-white" style={{ width: '14px', height: '14px' }}></span> : 'Reset Password'}
+                {isSavingReset ? <span className="spinner spinner-white" style={{ width: '14px', height: '14px' }}></span> : 'Save Credentials'}
               </button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {/* Revoke All Active Sessions Modal */}
+      {showRevokeAllConfirm && (
+        <Modal
+          isOpen={true}
+          onClose={() => setShowRevokeAllConfirm(false)}
+          title="Revoke All Active Logins"
+          maxWidth="460px"
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-primary)', lineHeight: 1.5 }}>
+              Are you sure you want to <strong>revoke active login sessions for all participants, judges, and volunteers</strong> across this event?
+            </p>
+            <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--danger)', lineHeight: 1.4 }}>
+              Every active user session will be invalidated immediately. All users will be forced to re-enter their username and password to log in.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setShowRevokeAllConfirm(false)}
+                className="btn btn-secondary"
+                disabled={isRevokingAllSessions}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsRevokingAllSessions(true);
+                  try {
+                    const res = await api.post('/admin/security/revoke-all-sessions');
+                    addToast(res.data?.message || 'All active sessions revoked successfully!', 'success');
+                    setShowRevokeAllConfirm(false);
+                  } catch (err) {
+                    addToast(err.response?.data?.detail || 'Failed to revoke sessions', 'error');
+                  } finally {
+                    setIsRevokingAllSessions(false);
+                  }
+                }}
+                className="btn btn-primary"
+                style={{ background: 'var(--danger)', borderColor: 'var(--danger)' }}
+                disabled={isRevokingAllSessions}
+              >
+                {isRevokingAllSessions ? 'Revoking Sessions...' : 'Revoke All Sessions'}
+              </button>
+            </div>
+          </div>
         </Modal>
       )}
 
@@ -421,7 +494,7 @@ const PlaceholderView = ({ title, description }) => (
 // ==========================================
 // TEAMS TAB VIEW
 // ==========================================
-const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
+const TeamsView = ({ pods, fetchPodsPool, onResetPassword, onRevokeAllSessions }) => {
   const { addToast } = useToast();
   const { can, access } = useAuth();
   const isAdmin = access?.isAdmin;
@@ -709,6 +782,33 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
             }} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download all team leader login credentials">
               <Lock size={16} />
               Leader Logins CSV
+            </button>
+          )}
+          {onRevokeAllSessions && (can('team.credentials') || isAdmin) && (
+            <button
+              onClick={onRevokeAllSessions}
+              className="btn btn-secondary"
+              style={{
+                width: '100%',
+                height: '42px',
+                minHeight: '42px',
+                justifyContent: 'center',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                padding: '0 12px',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                color: 'var(--danger)',
+                borderColor: 'rgba(239, 68, 68, 0.4)',
+              }}
+              title="Force terminate all active sessions across the event"
+            >
+              <LogOut size={16} />
+              Revoke All Logins
             </button>
           )}
           {(can('team.import') || isAdmin) && (

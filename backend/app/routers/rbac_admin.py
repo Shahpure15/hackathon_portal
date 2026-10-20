@@ -626,10 +626,20 @@ def add_role_member(
 
         if role.systemKey == "judge":
             volunteer.type = "Judge / Evaluator"
+            user.role = Role.JUDGE
         elif role.systemKey == "faculty":
             volunteer.type = "FACULTY"
+            user.role = Role.FACULTY
         elif role.systemKey == "volunteer":
             volunteer.type = "Volunteer / Monitor"
+            user.role = Role.VOLUNTEER
+
+        # Invalidate any existing active sessions so user logs in with new permissions
+        user.tokenVersion = (getattr(user, "tokenVersion", 1) or 1) + 1
+        db.query(RefreshToken).filter(
+            RefreshToken.userId == user.id,
+            RefreshToken.revoked == False
+        ).update({"revoked": True})
 
     assignment = UserRoleAssignment(
         eventId=current_user.eventId,
@@ -731,6 +741,14 @@ def remove_role_member(
         raise HTTPException(status_code=404, detail="Member assignment not found")
 
     db.delete(assignment)
+    # Immediately invalidate user session so removed permissions take effect
+    user_rec = db.query(User).filter(User.id == user_id).first()
+    if user_rec:
+        user_rec.tokenVersion = (getattr(user_rec, "tokenVersion", 1) or 1) + 1
+        db.query(RefreshToken).filter(
+            RefreshToken.userId == user_id,
+            RefreshToken.revoked == False
+        ).update({"revoked": True})
     db.commit()
 
     invalidate_all()

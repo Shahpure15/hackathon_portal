@@ -110,6 +110,24 @@ async def get_current_user(
             detail="No access provided. Invalid role assignment."
         )
 
+    # Invalidate session immediately if user's role was changed in DB
+    if str(role).upper() != str(db_role_val).upper():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Your role or permissions have been updated. Please log in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Invalidate session immediately if token version is older than DB tokenVersion (session revoked or role reset)
+    token_tv = payload.get("tv", 1)
+    user_tv = getattr(user, "tokenVersion", 1) or 1
+    if token_tv < user_tv:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session has been revoked or expired. Please log in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     return CurrentUser(
         id=user.id,
         eventId=user.eventId,
@@ -161,8 +179,9 @@ def rotate_refresh_token(
          
     token_payload = {
         "sub": user.id,
-        "role": user.role,
+        "role": user.role.value if hasattr(user.role, "value") else str(user.role),
         "eventId": event_id,
+        "tv": getattr(user, "tokenVersion", 1) or 1,
     }
     if team_id:
         token_payload["teamId"] = team_id

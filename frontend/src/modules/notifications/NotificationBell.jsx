@@ -99,12 +99,17 @@ export const NotificationBell = ({ onSelectRound }) => {
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="btn btn-icon"
+        className="icon-btn"
         title="Notifications"
         style={{
           position: 'relative',
           width: '38px',
+          minWidth: '38px',
+          maxWidth: '38px',
           height: '38px',
+          minHeight: '38px',
+          maxHeight: '38px',
+          padding: 0,
           borderRadius: '50%',
           display: 'flex',
           alignItems: 'center',
@@ -113,6 +118,7 @@ export const NotificationBell = ({ onSelectRound }) => {
           border: '1px solid var(--border-light)',
           color: unreadCount > 0 ? 'var(--primary)' : 'var(--text-secondary)',
           cursor: 'pointer',
+          flexShrink: 0,
         }}
       >
         <Bell size={18} />

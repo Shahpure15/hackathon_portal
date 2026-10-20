@@ -87,6 +87,7 @@ def login(
         "sub": user.id,
         "role": user.role.value,
         "eventId": user.eventId,
+        "tv": getattr(user, "tokenVersion", 1) or 1,
     }
     if user.teamId:
         token_payload["teamId"] = user.teamId
@@ -227,6 +228,87 @@ class ChangePasswordRequest(BaseModel):
     currentPassword: Optional[str] = None
     newPassword: str
 
+
+class ChangeUsernameRequest(BaseModel):
+    newUsername: str
+    password: Optional[str] = None
+
+
+@router.get("/check-username")
+def check_username(
+    username: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user)
+):
+    cleaned = (username or "").strip()
+    if not cleaned or len(cleaned) < 3:
+        return {"available": False, "message": "Username must be at least 3 characters"}
+
+    import re
+    if not re.match(r'^[a-zA-Z0-9_.-]+$', cleaned):
+        return {"available": False, "message": "Username may only contain letters, numbers, underscores, dashes, and periods"}
+
+    # If it's already the current user's username
+    if cleaned.lower() == current_user.username.lower():
+        return {"available": True, "message": "This is your current username", "isCurrent": True}
+
+    existing = db.query(User).filter(
+        User.eventId == current_user.eventId,
+        func.lower(User.username) == cleaned.lower()
+    ).first()
+
+    if existing:
+        return {"available": False, "message": "Username is already taken"}
+
+    return {"available": True, "message": "Username is available"}
+
+
+@router.post("/change-username")
+def change_username(
+    data: ChangeUsernameRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user)
+):
+    new_username = (data.newUsername or "").strip()
+    if len(new_username) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters long.")
+
+    import re
+    if not re.match(r'^[a-zA-Z0-9_.-]+$', new_username):
+        raise HTTPException(status_code=400, detail="Username may only contain letters, numbers, underscores, dashes, and periods.")
+
+    user = db.query(User).filter(User.id == current_user.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if new_username.lower() == user.username.lower():
+        raise HTTPException(status_code=400, detail="New username cannot be the same as your current username.")
+
+    # Optional password confirmation if user has passwordHash
+    if data.password:
+        if not verify_password(data.password, user.passwordHash):
+            raise HTTPException(status_code=400, detail="Incorrect password.")
+
+    # Check uniqueness within the event
+    existing = db.query(User).filter(
+        User.eventId == user.eventId,
+        func.lower(User.username) == new_username.lower()
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Username is already taken.")
+
+    old_username = user.username
+    user.username = new_username
+    db.commit()
+
+    return {
+        "status": "success",
+        "message": "Username updated successfully.",
+        "username": user.username,
+        "oldUsername": old_username
+    }
+
+
 @router.post("/change-password")
 def change_password(
     data: ChangePasswordRequest,
@@ -258,6 +340,7 @@ def change_password(
     db.commit()
 
     return {"message": "Password changed successfully"}
+
 
 
 @router.get("/me", response_model=AuthMeResponse)

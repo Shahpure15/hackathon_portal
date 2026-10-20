@@ -214,6 +214,31 @@ const Home = () => {
 };
 
 const App = () => {
+  // Global Escape key handler to close topmost open popup/modal/drawer across all views
+  React.useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        const openOverlays = document.querySelectorAll(
+          '.modal-overlay-fade, .detail-drawer-overlay, [role="dialog"], .drawer-overlay'
+        );
+        if (openOverlays.length > 0) {
+          const topOverlay = openOverlays[openOverlays.length - 1];
+          const closeBtn = topOverlay.querySelector(
+            'button[aria-label="Close modal"], button[aria-label="Close"], button[title="Close"], button.modal-close, button.drawer-close-btn'
+          );
+          if (closeBtn) {
+            closeBtn.click();
+          } else {
+            topOverlay.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
+
   return (
     <ErrorBoundary>
       <ThemeProvider>

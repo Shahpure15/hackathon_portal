@@ -190,8 +190,12 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
+  const updateUsername = useCallback((newUsername) => {
+    setUser((prev) => (prev ? { ...prev, username: newUsername } : prev));
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, access, can, canAny, features, loading, login, logout, refreshAccess }}>
+    <AuthContext.Provider value={{ user, access, can, canAny, features, loading, login, logout, refreshAccess, updateUsername }}>
       {children}
     </AuthContext.Provider>
   );
