@@ -166,7 +166,6 @@ export default function Sidebar({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setCurrentRoundId(r.id);
                               onSelectTab('evalRounds', { roundId: r.id });
                             }}
                             style={{
@@ -207,7 +206,6 @@ export default function Sidebar({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setCurrentRoundId('new');
                           onSelectTab('evalRounds', { action: 'create' });
                         }}
                         style={{
