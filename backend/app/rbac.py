@@ -296,17 +296,24 @@ def apply_team_scope(query, principal: Principal, team_model=Team):
 
 
 # Permissions that justify showing the staff shell (the admin-style module sidebar).
-# Anything outside this set (evaluation.score alone, people.view/people.checkin alone)
-# does not.
+# Pure operational volunteer/judge permissions (attendance.mark, checkpoint.view, team.view,
+# people.view, people.checkin, evaluation.score) do NOT justify entering the admin shell.
 SHELL_PERMISSIONS = {
     k for k in CATALOG
-    if k not in ('evaluation.score', 'people.view', 'people.checkin')
+    if k not in (
+        'evaluation.score',
+        'people.view',
+        'people.checkin',
+        'team.view',
+        'attendance.mark',
+        'checkpoint.view',
+    )
 }
 
 
 def compute_landing(role_value: str, permissions: Set[str], is_admin: bool) -> str:
     """Single source of truth for where a user lands after login.
-    Returns one of: 'admin', 'staff', 'judge', 'leader', 'none'."""
+    Returns one of: 'admin', 'staff', 'judge', 'leader', 'volunteer', 'none'."""
     role_value = (role_value or '').upper()
     if is_admin or role_value == 'ADMIN':
         return 'admin'
@@ -320,7 +327,14 @@ def compute_landing(role_value: str, permissions: Set[str], is_admin: bool) -> s
         return 'staff'
     if permissions & SHELL_PERMISSIONS:
         return 'staff'
+    if 'evaluation.score' in permissions and not (permissions - {'evaluation.score'}):
+        return 'judge'
+    if role_value == 'VOLUNTEER' or any(
+        p in permissions for p in ('attendance.mark', 'checkpoint.view', 'team.view', 'people.view', 'people.checkin')
+    ):
+        return 'volunteer'
     if 'evaluation.score' in permissions:
         return 'judge'
-    return 'staff'
+    return 'volunteer'
+
 

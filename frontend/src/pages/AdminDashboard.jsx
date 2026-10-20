@@ -423,6 +423,8 @@ const PlaceholderView = ({ title, description }) => (
 // ==========================================
 const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
   const { addToast } = useToast();
+  const { can, access } = useAuth();
+  const isAdmin = access?.isAdmin;
   const [teams, setTeams] = useState([]);
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
@@ -643,70 +645,82 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
       </div>
 
       {/* Action Grid Toolbar */}
-      <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
-        <button onClick={handleDownloadTeamsTemplate} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download Teams Import Template CSV">
-          <Download size={16} />
-          Template CSV
-        </button>
-        <button onClick={handleExport} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          <Download size={16} />
-          Export CSV
-        </button>
-        <button onClick={async () => {
-          try {
-            const res = await api.get('/admin/evaluation-sheet/export', { responseType: 'blob' });
-            const url = window.URL.createObjectURL(new Blob([res.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', 'evaluation_roster.csv');
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
-            addToast('Evaluation roster downloaded!', 'success');
-          } catch (err) {
-            addToast('Failed to export evaluation roster', 'error');
-          }
-        }} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          <Download size={16} />
-          Evaluation Sheet CSV
-        </button>
-        <button onClick={async () => {
-          try {
-            const res = await api.get('/admin/teams/export-credentials');
-            const list = res.data.credentials || [];
-            if (!list.length) {
-              addToast('No team accounts found to export', 'info');
-              return;
-            }
-            let csv = "Team Name,Team Code,Leader Username,Generated Password,Leader Name,Leader Phone,Leader Email\n";
-            list.forEach(c => {
-              csv += `"${c.teamName}","${c.registrationId}","${c.username}","${c.password}","${c.leaderName || ''}","${c.leaderPhone || ''}","${c.leaderEmail || ''}"\n`;
-            });
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', 'generated_leader_logins.csv');
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
-            addToast(`Exported ${list.length} leader credentials!`, 'success');
-          } catch (err) {
-            addToast('Failed to export leader credentials', 'error');
-          }
-        }} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download all team leader login credentials">
-          <Lock size={16} />
-          Leader Logins CSV
-        </button>
-        <button onClick={() => setShowImportModal(true)} className="btn btn-primary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          <Upload size={16} />
-          Import CSV
-        </button>
-      </div>
+      {(can('team.import') || can('team.export') || can('team.credentials') || isAdmin) && (
+        <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
+          {(can('team.import') || isAdmin) && (
+            <button onClick={handleDownloadTeamsTemplate} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download Teams Import Template CSV">
+              <Download size={16} />
+              Template CSV
+            </button>
+          )}
+          {(can('team.export') || isAdmin) && (
+            <button onClick={handleExport} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <Download size={16} />
+              Export CSV
+            </button>
+          )}
+          {(can('team.export') || isAdmin) && (
+            <button onClick={async () => {
+              try {
+                const res = await api.get('/admin/evaluation-sheet/export', { responseType: 'blob' });
+                const url = window.URL.createObjectURL(new Blob([res.data]));
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('download', 'evaluation_roster.csv');
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                window.URL.revokeObjectURL(url);
+                addToast('Evaluation roster downloaded!', 'success');
+              } catch (err) {
+                addToast('Failed to export evaluation roster', 'error');
+              }
+            }} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <Download size={16} />
+              Evaluation Sheet CSV
+            </button>
+          )}
+          {(can('team.credentials') || isAdmin) && (
+            <button onClick={async () => {
+              try {
+                const res = await api.get('/admin/teams/export-credentials');
+                const list = res.data.credentials || [];
+                if (!list.length) {
+                  addToast('No team accounts found to export', 'info');
+                  return;
+                }
+                let csv = "Team Name,Team Code,Leader Username,Generated Password,Leader Name,Leader Phone,Leader Email\n";
+                list.forEach(c => {
+                  csv += `"${c.teamName}","${c.registrationId}","${c.username}","${c.password}","${c.leaderName || ''}","${c.leaderPhone || ''}","${c.leaderEmail || ''}"\n`;
+                });
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('download', 'generated_leader_logins.csv');
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                window.URL.revokeObjectURL(url);
+                addToast(`Exported ${list.length} leader credentials!`, 'success');
+              } catch (err) {
+                addToast('Failed to export leader credentials', 'error');
+              }
+            }} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download all team leader login credentials">
+              <Lock size={16} />
+              Leader Logins CSV
+            </button>
+          )}
+          {(can('team.import') || isAdmin) && (
+            <button onClick={() => setShowImportModal(true)} className="btn btn-primary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <Upload size={16} />
+              Import CSV
+            </button>
+          )}
+        </div>
+      )}
 
-      {selectedTeamIds.length > 0 && (
+      {selectedTeamIds.length > 0 && (can('pod.manage') || isAdmin) && (
         <div className="glass-panel" style={{ padding: '16px 24px', marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(185, 111, 56, 0.05)', borderColor: 'rgba(185, 111, 56, 0.2)' }}>
           <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>
             <span style={{ color: 'var(--primary)' }}>{selectedTeamIds.length}</span> teams selected
@@ -880,7 +894,7 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
         sortDir={sortDir}
         onSortChange={onSortChange}
         columns={[
-          {
+          ...((can('pod.manage') || isAdmin) ? [{
             header: (
               <input
                 type="checkbox"
@@ -912,7 +926,7 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
                 style={{ cursor: 'pointer', width: '16px', height: '16px' }}
               />
             )
-          },
+          }] : []),
           {
             header: 'Team ID',
             accessor: 'registrationId',
@@ -1010,9 +1024,9 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
                 onClick={(e) => { e.stopPropagation(); setSelectedTeam(t); }}
                 className="btn btn-secondary"
                 style={{ padding: '0', borderRadius: '999px', minHeight: '36px', height: '36px', width: '36px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-                title="Edit Team Roster & Info"
+                title={(can('team.edit') || isAdmin) ? "Edit Team Roster & Info" : "View Team Roster & Details"}
               >
-                <Edit2 size={14} />
+                {(can('team.edit') || isAdmin) ? <Edit2 size={14} /> : <Eye size={14} />}
               </button>
             )
           }
@@ -1039,6 +1053,9 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
           pods={pods}
           fetchPodsPool={fetchPodsPool}
           onResetPassword={onResetPassword}
+          canEdit={can('team.edit') || isAdmin}
+          canCredentials={can('team.credentials') || isAdmin}
+          canPodManage={can('pod.manage') || isAdmin}
           onClose={() => {
             setSelectedTeam(null);
             fetchTeams();
@@ -1244,7 +1261,7 @@ const TeamsView = ({ pods, fetchPodsPool, onResetPassword }) => {
 // ==========================================
 // TEAM DETAILS MODAL COMPONENT (FULL ADMIN EDIT)
 // ==========================================
-const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose }) => {
+const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose, canEdit = true, canCredentials = true, canPodManage = true }) => {
   const { addToast } = useToast();
   
   // Team editable fields
@@ -1396,23 +1413,27 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
         {/* Header Bar */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid var(--border-light)', paddingBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
           <div>
-            <h2 className="panel-title" style={{ fontSize: '1.6rem', fontWeight: 800 }}>Edit Team Profile</h2>
+            <h2 className="panel-title" style={{ fontSize: '1.6rem', fontWeight: 800 }}>
+              {canEdit ? 'Edit Team Profile' : 'Team Details'}
+            </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '2px' }}>
-              Full admin edit mode for team information, leaders, assigned venue location, and roster.
+              {canEdit ? 'Full admin edit mode for team information, leaders, assigned venue location, and roster.' : 'View team information, leaders, assigned venue location, and roster.'}
             </p>
           </div>
           
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <button
-              onClick={handleResetTeamPassword}
-              type="button"
-              className="btn btn-secondary touch-target"
-              style={{ fontSize: '0.85rem', padding: '8px 16px', minHeight: '38px', height: '38px', gap: '6px' }}
-              title="Reset password for leader account"
-            >
-              <Lock size={14} />
-              Reset Leader Password
-            </button>
+            {canCredentials && (
+              <button
+                onClick={handleResetTeamPassword}
+                type="button"
+                className="btn btn-secondary touch-target"
+                style={{ fontSize: '0.85rem', padding: '8px 16px', minHeight: '38px', height: '38px', gap: '6px' }}
+                title="Reset password for leader account"
+              >
+                <Lock size={14} />
+                Reset Leader Password
+              </button>
+            )}
             <button
               onClick={onClose}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
@@ -1445,6 +1466,7 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     required
+                    disabled={!canEdit}
                   />
                 </div>
                 <div>
@@ -1455,6 +1477,7 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
                     value={registrationId}
                     onChange={(e) => setRegistrationId(e.target.value)}
                     required
+                    disabled={!canEdit}
                   />
                 </div>
               </div>
@@ -1466,6 +1489,7 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
                   className="form-input touch-target"
                   value={collegeName}
                   onChange={(e) => setCollegeName(e.target.value)}
+                  disabled={!canEdit}
                 />
               </div>
 
@@ -1477,6 +1501,7 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
                     className="form-input touch-target"
                     value={leaderName}
                     onChange={(e) => setLeaderName(e.target.value)}
+                    disabled={!canEdit}
                   />
                 </div>
                 <div>
@@ -1486,6 +1511,7 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
                     className="form-input touch-target"
                     value={leaderEmail}
                     onChange={(e) => setLeaderEmail(e.target.value)}
+                    disabled={!canEdit}
                   />
                 </div>
                 <div>
@@ -1495,6 +1521,7 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
                     className="form-input touch-target"
                     value={leaderPhone}
                     onChange={(e) => setLeaderPhone(e.target.value)}
+                    disabled={!canEdit}
                   />
                 </div>
               </div>
@@ -1510,6 +1537,7 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
                     className="form-input touch-target"
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
+                    disabled={!canEdit}
                   >
                     <option value="ENGINEERING">Engineering</option>
                     <option value="DESIGN">Design</option>
@@ -1523,11 +1551,12 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
                     placeholder="e.g. Desk 14"
                     value={deskNumber}
                     onChange={(e) => setDeskNumber(e.target.value)}
+                    disabled={!canEdit}
                   />
                 </div>
                 <div>
                   <label className="form-label">Team Status</label>
-                  <select value={status} onChange={(e) => setStatus(e.target.value)} className="form-input touch-target">
+                  <select value={status} onChange={(e) => setStatus(e.target.value)} className="form-input touch-target" disabled={!canEdit}>
                     <option value="REGISTERED">Registered</option>
                     <option value="SHORTLISTED">Shortlisted</option>
                     <option value="WAITLISTED">Waitlisted</option>
@@ -1539,13 +1568,15 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
               <div>
                 <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>POD Group</span>
-                  <button
-                    onClick={() => setShowInlinePod(!showInlinePod)}
-                    type="button"
-                    style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}
-                  >
-                    + Create New Pod
-                  </button>
+                  {canPodManage && canEdit && (
+                    <button
+                      onClick={() => setShowInlinePod(!showInlinePod)}
+                      type="button"
+                      style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}
+                    >
+                      + Create New Pod
+                    </button>
+                  )}
                 </label>
                 {showInlinePod ? (
                   <form onSubmit={handleCreateInlinePod} style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
@@ -1559,7 +1590,7 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
                     <button type="submit" className="btn btn-primary touch-target" style={{ minHeight: '38px', height: '38px', padding: '6px 16px', fontSize: '0.85rem' }}>Save</button>
                   </form>
                 ) : (
-                  <select value={podId} onChange={(e) => setPodId(e.target.value)} className="form-input touch-target">
+                  <select value={podId} onChange={(e) => setPodId(e.target.value)} className="form-input touch-target" disabled={!canEdit}>
                     <option value="">-- Unassigned --</option>
                     {pods.map((p) => (
                       <option key={p.id} value={p.id}>
@@ -1572,7 +1603,7 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
 
               <div>
                 <label className="form-label">Problem Statement Assignment</label>
-                <select value={psId} onChange={(e) => setPsId(e.target.value)} className="form-input touch-target">
+                <select value={psId} onChange={(e) => setPsId(e.target.value)} className="form-input touch-target" disabled={!canEdit}>
                   <option value="">-- None Locked --</option>
                   {problemStatements.map((ps) => (
                     <option key={ps.id} value={ps.id}>
@@ -1590,14 +1621,16 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
                 <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--primary)' }}>
                   Team Roster ({members.length} members)
                 </h3>
-                <button
-                  type="button"
-                  onClick={handleAddMember}
-                  className="btn btn-secondary touch-target"
-                  style={{ padding: '4px 10px', fontSize: '0.75rem', minHeight: '32px' }}
-                >
-                  <Plus size={14} /> Add Member
-                </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={handleAddMember}
+                    className="btn btn-secondary touch-target"
+                    style={{ padding: '4px 10px', fontSize: '0.75rem', minHeight: '32px' }}
+                  >
+                    <Plus size={14} /> Add Member
+                  </button>
+                )}
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', overflowY: 'auto', maxHeight: '460px', paddingRight: '4px' }}>
@@ -1607,7 +1640,7 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
                       <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                         Member #{idx + 1} {m.isTeamLeader ? '★ (Leader)' : ''}
                       </span>
-                      {members.length > 1 && (
+                      {canEdit && members.length > 1 && (
                         <button
                           type="button"
                           onClick={() => handleRemoveMember(idx)}
@@ -1627,6 +1660,7 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
                         style={{ fontSize: '0.85rem' }}
                         value={m.name}
                         onChange={(e) => handleMemberChange(idx, 'name', e.target.value)}
+                        disabled={!canEdit}
                       />
                       <input
                         type="email"
@@ -1635,6 +1669,7 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
                         style={{ fontSize: '0.85rem' }}
                         value={m.email}
                         onChange={(e) => handleMemberChange(idx, 'email', e.target.value)}
+                        disabled={!canEdit}
                       />
                       <input
                         type="text"
@@ -1643,6 +1678,7 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
                         style={{ fontSize: '0.85rem' }}
                         value={m.phone}
                         onChange={(e) => handleMemberChange(idx, 'phone', e.target.value)}
+                        disabled={!canEdit}
                       />
                     </div>
                   </div>
@@ -1654,10 +1690,14 @@ const TeamDetailsModal = ({ team, pods, fetchPodsPool, onResetPassword, onClose 
         )}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid var(--border-light)', paddingTop: '16px', marginTop: '20px' }}>
-          <button onClick={onClose} className="btn btn-secondary touch-target" disabled={isSaving}>Cancel</button>
-          <button onClick={handleSave} className="btn btn-primary touch-target" disabled={isSaving}>
-            {isSaving ? 'Saving...' : 'Save All Team Changes'}
+          <button onClick={onClose} className="btn btn-secondary touch-target" disabled={isSaving}>
+            {canEdit ? 'Cancel' : 'Close'}
           </button>
+          {canEdit && (
+            <button onClick={handleSave} className="btn btn-primary touch-target" disabled={isSaving}>
+              {isSaving ? 'Saving...' : 'Save All Team Changes'}
+            </button>
+          )}
         </div>
       </div>
     </div>,
@@ -2479,6 +2519,11 @@ const GenericCsvImportModal = ({ title, endpoint, previewEndpoint, confirmEndpoi
 // ==========================================
 const PanelsView = () => {
   const { addToast } = useToast();
+  const { can, access } = useAuth();
+  const isAdmin = access?.isAdmin;
+  const canManage = can('panel.manage') || isAdmin;
+  const canExport = can('panel.export') || isAdmin;
+
   const [panels, setPanels] = useState([]);
   const [problemStatements, setProblemStatements] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -2691,20 +2736,30 @@ const PanelsView = () => {
       </div>
 
       {/* Action Grid Toolbar */}
-      <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
-        <button onClick={handleDownloadPanelsTemplate} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download Panels Template CSV">
-          <Download size={16} /> Template CSV
-        </button>
-        <button onClick={handleExportPanels} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Export Panels Master Workbook (.xlsx)">
-          <Download size={16} /> Export Workbook
-        </button>
-        <button onClick={() => setShowImportModal(true)} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Import Panels CSV">
-          <Upload size={16} /> Import CSV
-        </button>
-        <button onClick={openCreateModal} className="btn btn-primary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          + Create Panel
-        </button>
-      </div>
+      {(canManage || canExport) && (
+        <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
+          {canManage && (
+            <button onClick={handleDownloadPanelsTemplate} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download Panels Template CSV">
+              <Download size={16} /> Template CSV
+            </button>
+          )}
+          {canExport && (
+            <button onClick={handleExportPanels} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Export Panels Master Workbook (.xlsx)">
+              <Download size={16} /> Export Workbook
+            </button>
+          )}
+          {canManage && (
+            <button onClick={() => setShowImportModal(true)} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Import Panels CSV">
+              <Upload size={16} /> Import CSV
+            </button>
+          )}
+          {canManage && (
+            <button onClick={openCreateModal} className="btn btn-primary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              + Create Panel
+            </button>
+          )}
+        </div>
+      )}
 
       {showImportModal && (
         <GenericCsvImportModal
@@ -2778,21 +2833,27 @@ const PanelsView = () => {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-light)', paddingTop: '16px', marginTop: '16px' }}>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => openEditModal(p)} className="btn btn-secondary touch-target" style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
-                    Edit
-                  </button>
-                  <button onClick={() => setDeleteConfirmPanel(p)} className="btn btn-secondary touch-target" style={{ padding: '6px 12px', fontSize: '0.8rem', color: 'var(--danger)' }}>
-                    Delete
-                  </button>
+              {(canManage || (canExport && p.problemStatementId)) && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-light)', paddingTop: '16px', marginTop: '16px' }}>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    {canManage && (
+                      <>
+                        <button onClick={() => openEditModal(p)} className="btn btn-secondary touch-target" style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+                          Edit
+                        </button>
+                        <button onClick={() => setDeleteConfirmPanel(p)} className="btn btn-secondary touch-target" style={{ padding: '6px 12px', fontSize: '0.8rem', color: 'var(--danger)' }}>
+                          Delete
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {canExport && p.problemStatementId && (
+                    <button onClick={() => handleExportPSPanelSheet(p.problemStatementId, p.problemStatementCode)} className="btn btn-secondary touch-target" style={{ padding: '6px 12px', fontSize: '0.8rem' }} title="Download Evaluation Sheet for this PS Panel">
+                      <Download size={14} /> Sheet
+                    </button>
+                  )}
                 </div>
-                {p.problemStatementId && (
-                  <button onClick={() => handleExportPSPanelSheet(p.problemStatementId, p.problemStatementCode)} className="btn btn-secondary touch-target" style={{ padding: '6px 12px', fontSize: '0.8rem' }} title="Download Evaluation Sheet for this PS Panel">
-                    <Download size={14} /> Sheet
-                  </button>
-                )}
-              </div>
+              )}
             </div>
           ))}
         </div>
@@ -3348,6 +3409,11 @@ const EvalRoundsView = () => {
 // ==========================================
 const PodsView = ({ pods, fetchPodsPool }) => {
   const { addToast } = useToast();
+  const { can, access } = useAuth();
+  const isAdmin = access?.isAdmin;
+  const canManage = can('pod.manage') || isAdmin;
+  const canExport = can('pod.export') || isAdmin;
+
   const [loading, setLoading] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -3474,23 +3540,33 @@ const PodsView = ({ pods, fetchPodsPool }) => {
       </div>
 
       {/* Action Grid Toolbar */}
-      <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
-        <button onClick={handleDownloadPodsTemplate} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download PODs Import Template CSV">
-          <Download size={16} />
-          Template CSV
-        </button>
-        <button onClick={() => setShowImportModal(true)} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          <Upload size={16} />
-          Import CSV
-        </button>
-        <button onClick={handleExportPods} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Export PODs Master Workbook (.xlsx)">
-          <Download size={16} />
-          Export Workbook
-        </button>
-        <button onClick={() => setShowCreateModal(true)} className="btn btn-primary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          + Create POD Group
-        </button>
-      </div>
+      {(canManage || canExport) && (
+        <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
+          {canManage && (
+            <button onClick={handleDownloadPodsTemplate} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download PODs Import Template CSV">
+              <Download size={16} />
+              Template CSV
+            </button>
+          )}
+          {canManage && (
+            <button onClick={() => setShowImportModal(true)} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <Upload size={16} />
+              Import CSV
+            </button>
+          )}
+          {canExport && (
+            <button onClick={handleExportPods} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Export PODs Master Workbook (.xlsx)">
+              <Download size={16} />
+              Export Workbook
+            </button>
+          )}
+          {canManage && (
+            <button onClick={() => setShowCreateModal(true)} className="btn btn-primary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              + Create POD Group
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Search Controls under Page Title */}
       <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px', position: 'relative' }}>
@@ -3550,23 +3626,29 @@ const PodsView = ({ pods, fetchPodsPool }) => {
                 </div>
 
                 {/* Quick actions (stopping propagation to prevent triggering click-to-modal) */}
-                <div style={{ display: 'flex', gap: '8px', marginTop: '20px', borderTop: '1px solid var(--border-light)', paddingTop: '16px' }}>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleExportRoster(p.id, p.name); }}
-                    className="btn btn-secondary"
-                    style={{ flex: 1, padding: '8px 12px', fontSize: '0.8rem' }}
-                  >
-                    <Download size={12} /> Roster
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setDeleteConfirmPod({ id: p.id, name: p.name }); }}
-                    className="btn btn-secondary"
-                    style={{ padding: '8px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)' }}
-                    title="Delete Pod"
-                  >
-                    ✕
-                  </button>
-                </div>
+                {(canExport || canManage) && (
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '20px', borderTop: '1px solid var(--border-light)', paddingTop: '16px' }}>
+                    {canExport && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleExportRoster(p.id, p.name); }}
+                        className="btn btn-secondary"
+                        style={{ flex: 1, padding: '8px 12px', fontSize: '0.8rem' }}
+                      >
+                        <Download size={12} /> Roster
+                      </button>
+                    )}
+                    {canManage && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDeleteConfirmPod({ id: p.id, name: p.name }); }}
+                        className="btn btn-secondary"
+                        style={{ padding: '8px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)' }}
+                        title="Delete Pod"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -3662,6 +3744,10 @@ const PodsView = ({ pods, fetchPodsPool }) => {
 // ==========================================
 const PodRosterModal = ({ pod, onClose }) => {
   const { addToast } = useToast();
+  const { can, access } = useAuth();
+  const isAdmin = access?.isAdmin;
+  const canManage = can('pod.manage') || isAdmin;
+
   const modalOverlayRef = useRef();
   const [teams, setTeams] = useState([]);
   const [volunteers, setVolunteers] = useState([]);
@@ -3908,7 +3994,7 @@ const PodRosterModal = ({ pod, onClose }) => {
         <div style={{ marginBottom: '24px', paddingRight: '48px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: 0 }}>{localPod.name} Detail Roster</h2>
-            {!isEditingPod && (
+            {!isEditingPod && canManage && (
               <button
                 type="button"
                 onClick={() => setIsEditingPod(true)}
@@ -3971,27 +4057,29 @@ const PodRosterModal = ({ pod, onClose }) => {
                 <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>
                   Assigned Mentors ({volunteers.length})
                 </h3>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    onClick={() => {
-                      const nextVal = !showAddExisting;
-                      setShowAddExisting(nextVal);
-                      setShowCreateNew(false);
-                      if (nextVal) fetchVolunteersPool();
-                    }}
-                    className="btn btn-secondary"
-                    style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 'auto', height: '28px' }}
-                  >
-                    + Assign Existing
-                  </button>
-                  <button
-                    onClick={() => { setShowCreateNew(!showCreateNew); setShowAddExisting(false); }}
-                    className="btn btn-secondary"
-                    style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 'auto', height: '28px' }}
-                  >
-                    + Add New
-                  </button>
-                </div>
+                {canManage && (
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => {
+                        const nextVal = !showAddExisting;
+                        setShowAddExisting(nextVal);
+                        setShowCreateNew(false);
+                        if (nextVal) fetchVolunteersPool();
+                      }}
+                      className="btn btn-secondary"
+                      style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 'auto', height: '28px' }}
+                    >
+                      + Assign Existing
+                    </button>
+                    <button
+                      onClick={() => { setShowCreateNew(!showCreateNew); setShowAddExisting(false); }}
+                      className="btn btn-secondary"
+                      style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 'auto', height: '28px' }}
+                    >
+                      + Add New
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Assign Existing Box */}
@@ -4100,13 +4188,15 @@ const PodRosterModal = ({ pod, onClose }) => {
                           {formatContact(v.contact).phone && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{formatContact(v.contact).phone}</div>}
                         </div>
                       </div>
-                      <button
-                        onClick={() => setUnassignConfirmState(v.id)}
-                        style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, padding: '4px' }}
-                        title="Remove from POD"
-                      >
-                        ✕ Remove
-                      </button>
+                      {canManage && (
+                        <button
+                          onClick={() => setUnassignConfirmState(v.id)}
+                          style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, padding: '4px' }}
+                          title="Remove from POD"
+                        >
+                          ✕ Remove
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -4120,18 +4210,20 @@ const PodRosterModal = ({ pod, onClose }) => {
                 <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>
                   Assigned Teams ({teams.length})
                 </h3>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const nextVal = !showAddTeam;
-                    setShowAddTeam(nextVal);
-                    if (nextVal) fetchTeamsPool();
-                  }}
-                  className="btn btn-secondary"
-                  style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 'auto', height: '28px' }}
-                >
-                  + Assign Team
-                </button>
+                {canManage && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextVal = !showAddTeam;
+                      setShowAddTeam(nextVal);
+                      if (nextVal) fetchTeamsPool();
+                    }}
+                    className="btn btn-secondary"
+                    style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 'auto', height: '28px' }}
+                  >
+                    + Assign Team
+                  </button>
+                )}
               </div>
 
               {/* Assign Team Dropdown Box */}
@@ -4194,7 +4286,7 @@ const PodRosterModal = ({ pod, onClose }) => {
                       </span>
                     )
                   },
-                  {
+                  ...(canManage ? [{
                     header: 'Actions',
                     accessor: 'id',
                     align: 'right',
@@ -4208,7 +4300,7 @@ const PodRosterModal = ({ pod, onClose }) => {
                         ✕ Remove
                       </button>
                     )
-                  }
+                  }] : [])
                 ]}
                 data={teams}
                 onRowClick={(t) => setSelectedTeam(t)}
@@ -4242,6 +4334,8 @@ const PodRosterModal = ({ pod, onClose }) => {
 // ==========================================
 const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
   const { addToast } = useToast();
+  const { can, access } = useAuth();
+  const isAdmin = access?.isAdmin;
   const [volunteers, setVolunteers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [pages, setPages] = useState(1);
@@ -4728,46 +4822,59 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
         </p>
       </div>
 
-      <div className="glass-panel" style={{ padding: '16px 20px', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>Volunteer Self-Assignment to PS</h3>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
-            Allow volunteers to assign problem statements to themselves directly from their dashboard.
-          </p>
+      {(can('config.manage') || can('ps.manage') || isAdmin) && (
+        <div className="glass-panel" style={{ padding: '16px 20px', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>Volunteer Self-Assignment to PS</h3>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
+              Allow volunteers to assign problem statements to themselves directly from their dashboard.
+            </p>
+          </div>
+          <button
+            onClick={handleToggleVolunteerPs}
+            className={`btn ${allowVolunteerPs ? 'btn-secondary' : 'btn-primary'}`}
+            disabled={isTogglingPs}
+            style={{ fontSize: '0.85rem' }}
+          >
+            {isTogglingPs ? 'Saving...' : allowVolunteerPs ? 'Disable Volunteer PS Selection' : 'Enable Volunteer PS Selection'}
+          </button>
         </div>
-        <button
-          onClick={handleToggleVolunteerPs}
-          className={`btn ${allowVolunteerPs ? 'btn-secondary' : 'btn-primary'}`}
-          disabled={isTogglingPs}
-          style={{ fontSize: '0.85rem' }}
-        >
-          {isTogglingPs ? 'Saving...' : allowVolunteerPs ? 'Disable Volunteer PS Selection' : 'Enable Volunteer PS Selection'}
-        </button>
-      </div>
+      )}
 
       {/* Action Grid Toolbar */}
-
-      <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
-        <button onClick={() => setShowManageRolesModal(true)} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Manage Custom Roles">
-          <Layers size={16} />
-          Manage Roles
-        </button>
-        <button onClick={handleDownloadVolunteersTemplate} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download Import Template CSV">
-          <Download size={16} />
-          Template CSV
-        </button>
-        <button onClick={() => setShowImportModal(true)} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          <Upload size={16} />
-          Import CSV
-        </button>
-        <button onClick={handleExportVolunteers} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Export Volunteers & Faculty Master Workbook (.xlsx)">
-          <Download size={16} />
-          Export Workbook
-        </button>
-        <button onClick={() => setShowAddModal(true)} className="btn btn-primary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          + Add Person
-        </button>
-      </div>
+      {(can('role.manage') || can('staff.manage') || can('staff.export') || isAdmin) && (
+        <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
+          {(can('role.manage') || isAdmin) && (
+            <button onClick={() => setShowManageRolesModal(true)} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Manage Custom Roles">
+              <Layers size={16} />
+              Manage Roles
+            </button>
+          )}
+          {(can('staff.manage') || isAdmin) && (
+            <button onClick={handleDownloadVolunteersTemplate} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download Import Template CSV">
+              <Download size={16} />
+              Template CSV
+            </button>
+          )}
+          {(can('staff.manage') || isAdmin) && (
+            <button onClick={() => setShowImportModal(true)} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <Upload size={16} />
+              Import CSV
+            </button>
+          )}
+          {(can('staff.export') || isAdmin) && (
+            <button onClick={handleExportVolunteers} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Export Volunteers & Faculty Master Workbook (.xlsx)">
+              <Download size={16} />
+              Export Workbook
+            </button>
+          )}
+          {(can('staff.manage') || isAdmin) && (
+            <button onClick={() => setShowAddModal(true)} className="btn btn-primary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              + Add Person
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Search and Filters */}
       <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -4951,33 +5058,37 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
                   <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--success)' }}>
                     User: <code>{v.username}</code>
                   </span>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleResetVolunteerPassword(v.id, v.name); }}
-                      className="btn btn-secondary"
-                      style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 0, height: 'auto' }}
-                    >
-                      Reset Password
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setRevokeConfirmState({ isOpen: true, volId: v.id, volName: v.name }); }}
-                      className="btn btn-secondary"
-                      style={{ padding: '4px 8px', fontSize: '0.75rem', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)', minHeight: 0, height: 'auto' }}
-                    >
-                      Revoke
-                    </button>
-                  </div>
+                  {(can('staff.credentials') || isAdmin) && (
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleResetVolunteerPassword(v.id, v.name); }}
+                        className="btn btn-secondary"
+                        style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 0, height: 'auto' }}
+                      >
+                        Reset Password
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setRevokeConfirmState({ isOpen: true, volId: v.id, volName: v.name }); }}
+                        className="btn btn-secondary"
+                        style={{ padding: '4px 8px', fontSize: '0.75rem', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)', minHeight: 0, height: 'auto' }}
+                      >
+                        Revoke
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
                   <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>No Login Account</span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleCreateVolunteerLogin(v.id, v.name); }}
-                    className="btn btn-primary"
-                    style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 0, height: 'auto', alignSelf: 'flex-start' }}
-                  >
-                    Enable Login
-                  </button>
+                  {(can('staff.credentials') || isAdmin) && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleCreateVolunteerLogin(v.id, v.name); }}
+                      className="btn btn-primary"
+                      style={{ padding: '4px 8px', fontSize: '0.75rem', minHeight: 0, height: 'auto', alignSelf: 'flex-start' }}
+                    >
+                      Enable Login
+                    </button>
+                  )}
                 </div>
               )
             )
@@ -4988,22 +5099,26 @@ const VolunteersView = ({ pods, fetchPodsPool, onResetPassword }) => {
             width: '100px',
             render: (v) => (
               <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleOpenEditModal(v); }}
-                  className="btn btn-secondary"
-                  style={{ padding: '6px 10px' }}
-                  title="Edit details"
-                >
-                  <Edit2 size={14} />
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setDeleteConfirmState({ isOpen: true, volId: v.id, volName: v.name }); }}
-                  className="btn btn-secondary"
-                  style={{ padding: '6px 10px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)' }}
-                  title="Delete"
-                >
-                  ✕
-                </button>
+                {(can('staff.manage') || isAdmin) && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleOpenEditModal(v); }}
+                    className="btn btn-secondary"
+                    style={{ padding: '6px 10px' }}
+                    title="Edit details"
+                  >
+                    <Edit2 size={14} />
+                  </button>
+                )}
+                {(can('staff.manage') || isAdmin) && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setDeleteConfirmState({ isOpen: true, volId: v.id, volName: v.name }); }}
+                    className="btn btn-secondary"
+                    style={{ padding: '6px 10px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)' }}
+                    title="Delete"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
             )
           }
@@ -5877,6 +5992,12 @@ const VolunteerImportModal = ({ onClose }) => {
 // ==========================================
 const CheckpointsView = () => {
   const { addToast } = useToast();
+  const { can, access } = useAuth();
+  const isAdmin = access?.isAdmin;
+  const canManage = can('checkpoint.manage') || isAdmin;
+  const canExport = can('attendance.export') || isAdmin;
+  const canDanger = can('attendance.danger') || isAdmin;
+
   const [checkpoints, setCheckpoints] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -6149,23 +6270,35 @@ const CheckpointsView = () => {
       </div>
 
       {/* Action Grid Toolbar */}
-      <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
-        <button onClick={handleExportMasterWorkbook} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--primary)', borderColor: 'rgba(99, 102, 241, 0.3)' }} title="Export Complete Multi-Sheet Excel Master Workbook">
-          <FileSpreadsheet size={16} /> Master Workbook
-        </button>
-        <button onClick={handleDownloadSlotsTemplate} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download Slots Template CSV">
-          <Download size={16} /> Template CSV
-        </button>
-        <button onClick={handleExportSlots} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Export Slots CSV">
-          <Download size={16} /> Export CSV
-        </button>
-        <button onClick={() => setShowImportModal(true)} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Import Slots CSV">
-          <Upload size={16} /> Import CSV
-        </button>
-        <button onClick={() => { setName(''); setDescription(''); setIsDefault(false); setShowAddModal(true); }} className="btn btn-primary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          + Add Attendance Slot
-        </button>
-      </div>
+      {(canExport || canManage) && (
+        <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
+          {canExport && (
+            <button onClick={handleExportMasterWorkbook} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--primary)', borderColor: 'rgba(99, 102, 241, 0.3)' }} title="Export Complete Multi-Sheet Excel Master Workbook">
+              <FileSpreadsheet size={16} /> Master Workbook
+            </button>
+          )}
+          {canManage && (
+            <button onClick={handleDownloadSlotsTemplate} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download Slots Template CSV">
+              <Download size={16} /> Template CSV
+            </button>
+          )}
+          {canExport && (
+            <button onClick={handleExportSlots} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Export Slots CSV">
+              <Download size={16} /> Export CSV
+            </button>
+          )}
+          {canManage && (
+            <button onClick={() => setShowImportModal(true)} className="btn btn-secondary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Import Slots CSV">
+              <Upload size={16} /> Import CSV
+            </button>
+          )}
+          {canManage && (
+            <button onClick={() => { setName(''); setDescription(''); setIsDefault(false); setShowAddModal(true); }} className="btn btn-primary touch-target" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              + Add Attendance Slot
+            </button>
+          )}
+        </div>
+      )}
 
       {showImportModal && (
         <GenericCsvImportModal
@@ -6196,9 +6329,9 @@ const CheckpointsView = () => {
             accessor: 'name',
             render: (c) => (
               <div 
-                onClick={(e) => { e.stopPropagation(); openEditModal(c); }} 
-                style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}
-                title="Click to edit Attendance Slot"
+                onClick={canManage ? (e) => { e.stopPropagation(); openEditModal(c); } : undefined} 
+                style={{ cursor: canManage ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}
+                title={canManage ? "Click to edit Attendance Slot" : undefined}
               >
                 <div style={{ fontWeight: 700, color: 'var(--primary)' }}>{c.name}</div>
                 {c.isDefault ? (
@@ -6209,7 +6342,7 @@ const CheckpointsView = () => {
                   >
                     <Star size={11} fill="currentColor" /> Default
                   </span>
-                ) : (
+                ) : canManage ? (
                   <button
                     onClick={(e) => { e.stopPropagation(); handleSetDefault(c); }}
                     className="btn btn-secondary"
@@ -6218,7 +6351,7 @@ const CheckpointsView = () => {
                   >
                     Set Default
                   </button>
-                )}
+                ) : null}
               </div>
             )
           },
@@ -6233,38 +6366,46 @@ const CheckpointsView = () => {
             width: '280px',
             render: (c) => (
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleExportSingleCheckpoint(c); }}
-                  className="btn btn-secondary"
-                  style={{ padding: '6px 10px', minHeight: 'auto', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                  title="Download single sheet Excel export for this checkpoint"
-                >
-                  <Download size={14} /> Download Sheet
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); openClearConfirm(c); }}
-                  className="btn btn-secondary"
-                  style={{ padding: '6px 10px', color: 'var(--warning)', borderColor: 'rgba(245, 158, 11, 0.2)', minHeight: 'auto', fontSize: '0.8rem' }}
-                  title="Clear all attendance records for this slot"
-                >
-                  Clear Records
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); openEditModal(c); }}
-                  className="btn btn-secondary"
-                  style={{ padding: '6px 10px', minHeight: 'auto' }}
-                  title="Edit Slot"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); openDeleteConfirm(c); }}
-                  className="btn btn-secondary"
-                  style={{ padding: '6px 10px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)', minHeight: 'auto' }}
-                  title="Delete Slot"
-                >
-                  Delete
-                </button>
+                {canExport && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleExportSingleCheckpoint(c); }}
+                    className="btn btn-secondary"
+                    style={{ padding: '6px 10px', minHeight: 'auto', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                    title="Download single sheet Excel export for this checkpoint"
+                  >
+                    <Download size={14} /> Download Sheet
+                  </button>
+                )}
+                {canDanger && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openClearConfirm(c); }}
+                    className="btn btn-secondary"
+                    style={{ padding: '6px 10px', color: 'var(--warning)', borderColor: 'rgba(245, 158, 11, 0.2)', minHeight: 'auto', fontSize: '0.8rem' }}
+                    title="Clear all attendance records for this slot"
+                  >
+                    Clear Records
+                  </button>
+                )}
+                {canManage && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openEditModal(c); }}
+                    className="btn btn-secondary"
+                    style={{ padding: '6px 10px', minHeight: 'auto' }}
+                    title="Edit Slot"
+                  >
+                    Edit
+                  </button>
+                )}
+                {canManage && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openDeleteConfirm(c); }}
+                    className="btn btn-secondary"
+                    style={{ padding: '6px 10px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)', minHeight: 'auto' }}
+                    title="Delete Slot"
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             )
           }
@@ -6274,7 +6415,7 @@ const CheckpointsView = () => {
         pages={pages}
         totalCount={total}
         onPageChange={setPage}
-        onRowClick={(c) => openEditModal(c)}
+        onRowClick={canManage ? (c) => openEditModal(c) : undefined}
         loading={loading}
         emptyState={
           <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
@@ -6477,6 +6618,12 @@ const CheckpointsView = () => {
 // ==========================================
 const PSView = () => {
   const { addToast } = useToast();
+  const { can, access } = useAuth();
+  const isAdmin = access?.isAdmin;
+  const canManage = can('ps.manage') || isAdmin;
+  const canExport = can('ps.export') || isAdmin;
+  const canConfig = can('config.manage') || can('ps.manage') || isAdmin;
+
   const [statements, setStatements] = useState([]);
   const [releaseTime, setReleaseTime] = useState('');
   const [inputReleaseTime, setInputReleaseTime] = useState('');
@@ -6641,98 +6788,110 @@ const PSView = () => {
       </div>
 
       {/* Action Grid Toolbar */}
-      <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
-        <button onClick={() => setEditingPS({})} className="btn btn-primary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          <Plus size={16} />
-          Add Problem Statement
-        </button>
-        <button onClick={handleDownloadPSTemplate} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download PS Import Template CSV">
-          <Download size={16} />
-          Template CSV
-        </button>
-        <button onClick={() => setShowImportModal(true)} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          <Upload size={16} />
-          Import PS CSV
-        </button>
-        <button onClick={handleExportPS} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Export Problem Statements Master Workbook (.xlsx)">
-          <Download size={16} />
-          Export Workbook
-        </button>
-      </div>
+      {(canManage || canExport) && (
+        <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
+          {canManage && (
+            <button onClick={() => setEditingPS({})} className="btn btn-primary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <Plus size={16} />
+              Add Problem Statement
+            </button>
+          )}
+          {canManage && (
+            <button onClick={handleDownloadPSTemplate} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Download PS Import Template CSV">
+              <Download size={16} />
+              Template CSV
+            </button>
+          )}
+          {canManage && (
+            <button onClick={() => setShowImportModal(true)} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <Upload size={16} />
+              Import PS CSV
+            </button>
+          )}
+          {canExport && (
+            <button onClick={handleExportPS} className="btn btn-secondary" style={{ width: '100%', height: '42px', minHeight: '42px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, padding: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Export Problem Statements Master Workbook (.xlsx)">
+              <Download size={16} />
+              Export Workbook
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Release Configuration Card */}
-      <div className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>
-        <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <FileText size={18} style={{ color: 'var(--primary)' }} />
-          Problem Selection Release Config
-        </h3>
+      {canConfig && (
+        <div className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <FileText size={18} style={{ color: 'var(--primary)' }} />
+            Problem Selection Release Config
+          </h3>
 
-        {!releaseTime ? (
-          <div>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-              Problem statement selections are currently <strong>locked</strong>. Set a future release time to allow teams to choose their statement.
-            </p>
-            <form onSubmit={handleSaveConfig} style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-end', maxWidth: '750px' }}>
-              <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: '220px' }}>
-                <label className="form-label">Release Date & Time (Local Time)</label>
-                <DateTimePicker
-                  value={inputReleaseTime}
-                  onChange={setInputReleaseTime}
-                  minDateTime={new Date()}
-                  placeholder="Select Release Date & Time"
-                  disabled={isUpdatingConfig}
-                />
-              </div>
-              <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: '220px' }}>
-                <label className="form-label">Check-in Gate (Opt-in)</label>
-                <select
-                  className="form-input"
-                  value={selectedGateCheckpointId}
-                  onChange={(e) => setSelectedGateCheckpointId(e.target.value)}
-                  disabled={isUpdatingConfig}
-                  style={{ height: '48px' }}
-                >
-                  <option value="">None (Gating Off)</option>
-                  {checkpoints.map((cp) => (
-                    <option key={cp.id} value={cp.id}>
-                      {cp.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <button type="submit" className="btn btn-primary" disabled={isUpdatingConfig} style={{ height: '48px', minHeight: 'auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {isUpdatingConfig ? <span className="spinner"></span> : 'Save Configuration'}
-              </button>
-            </form>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+          {!releaseTime ? (
             <div>
-              <span style={{ fontSize: '0.75rem', background: 'var(--success-glow)', color: 'var(--success)', padding: '2px 8px', borderRadius: '999px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Selections Scheduled / Unlocked
-              </span>
-              <div style={{ fontSize: '1.1rem', fontWeight: 700, marginTop: '6px' }}>
-                {new Date(releaseTime).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'short' })}
-              </div>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                UTC Time: {new Date(releaseTime).toUTCString()}
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                Problem statement selections are currently <strong>locked</strong>. Set a future release time to allow teams to choose their statement.
               </p>
+              <form onSubmit={handleSaveConfig} style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-end', maxWidth: '750px' }}>
+                <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: '220px' }}>
+                  <label className="form-label">Release Date & Time (Local Time)</label>
+                  <DateTimePicker
+                    value={inputReleaseTime}
+                    onChange={setInputReleaseTime}
+                    minDateTime={new Date()}
+                    placeholder="Select Release Date & Time"
+                    disabled={isUpdatingConfig}
+                  />
+                </div>
+                <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: '220px' }}>
+                  <label className="form-label">Check-in Gate (Opt-in)</label>
+                  <select
+                    className="form-input"
+                    value={selectedGateCheckpointId}
+                    onChange={(e) => setSelectedGateCheckpointId(e.target.value)}
+                    disabled={isUpdatingConfig}
+                    style={{ height: '48px' }}
+                  >
+                    <option value="">None (Gating Off)</option>
+                    {checkpoints.map((cp) => (
+                      <option key={cp.id} value={cp.id}>
+                        {cp.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button type="submit" className="btn btn-primary" disabled={isUpdatingConfig} style={{ height: '48px', minHeight: 'auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {isUpdatingConfig ? <span className="spinner"></span> : 'Save Configuration'}
+                </button>
+              </form>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                const localDate = new Date(releaseTime);
-                setInputReleaseTime(localDate.toISOString());
-                setShowReleaseModal(true);
-              }}
-              className="btn btn-primary"
-              style={{ minHeight: 'auto', padding: '10px 20px', cursor: 'pointer' }}
-            >
-              Unlock Selections / Update
-            </button>
-          </div>
-        )}
-      </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+              <div>
+                <span style={{ fontSize: '0.75rem', background: 'var(--success-glow)', color: 'var(--success)', padding: '2px 8px', borderRadius: '999px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Selections Scheduled / Unlocked
+                </span>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700, marginTop: '6px' }}>
+                  {new Date(releaseTime).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'short' })}
+                </div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  UTC Time: {new Date(releaseTime).toUTCString()}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const localDate = new Date(releaseTime);
+                  setInputReleaseTime(localDate.toISOString());
+                  setShowReleaseModal(true);
+                }}
+                className="btn btn-primary"
+                style={{ minHeight: 'auto', padding: '10px 20px', cursor: 'pointer' }}
+              >
+                Unlock Selections / Update
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Search & Discipline Filter Bar under Config Card */}
       <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
@@ -6848,18 +7007,20 @@ const PSView = () => {
                   )}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 600 }}>Click card to view selections ➔</span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingPS(s);
-                      }}
-                      className="btn btn-secondary"
-                      style={{ padding: '4px 10px', fontSize: '0.75rem', height: '28px', minHeight: '28px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                      title="Edit problem statement details"
-                    >
-                      <Edit2 size={12} /> Edit Details
-                    </button>
+                    {canManage && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingPS(s);
+                        }}
+                        className="btn btn-secondary"
+                        style={{ padding: '4px 10px', fontSize: '0.75rem', height: '28px', minHeight: '28px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        title="Edit problem statement details"
+                      >
+                        <Edit2 size={12} /> Edit Details
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -6893,10 +7054,10 @@ const PSView = () => {
         <PSTeamsModal
           ps={selectedPS}
           onClose={() => setSelectedPS(null)}
-          onEdit={(psToEdit) => {
+          onEdit={canManage ? (psToEdit) => {
             setSelectedPS(null);
             setEditingPS(psToEdit);
-          }}
+          } : null}
         />
       )}
 

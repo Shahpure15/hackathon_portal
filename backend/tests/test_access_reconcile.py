@@ -100,7 +100,7 @@ def test_create_volunteer_judge_staff_faculty_flow(db: Session):
     me_vol = client.get("/auth/me", headers=auth_header(vol_user))
     assert me_vol.status_code == 200
     assert "team.view" in me_vol.json()["permissions"]
-    assert me_vol.json()["landing"] == "staff"
+    assert me_vol.json()["landing"] == "volunteer"
 
     # 3. FACULTY
     res_fac = client.post(
@@ -170,7 +170,7 @@ def test_judge_plus_volunteer_roles_mixed_and_rounds(db: Session):
     data = me.json()
     assert "evaluation.score" in data["permissions"]
     assert "team.view" in data["permissions"]
-    assert data["landing"] == "staff"
+    assert data["landing"] == "volunteer"
 
     # Test /judge/rounds still returns 200
     res_rounds = client.get("/judge/rounds", headers=auth_header(vol_user))
@@ -217,15 +217,19 @@ def test_compute_landing_matrix():
     # Pure Judge
     assert compute_landing("VOLUNTEER", {"evaluation.score"}, False) == "judge"
 
-    # Staff (team.view, attendance.mark)
-    assert compute_landing("VOLUNTEER", {"team.view", "attendance.mark"}, False) == "staff"
+    # Volunteers with standard operational permissions land on volunteer portal
+    assert compute_landing("VOLUNTEER", {"team.view", "attendance.mark"}, False) == "volunteer"
 
-    # Mixed (evaluation.score + team.view)
-    assert compute_landing("VOLUNTEER", {"evaluation.score", "team.view"}, False) == "staff"
+    # Mixed volunteer + evaluation scoring lands on volunteer portal
+    assert compute_landing("VOLUNTEER", {"evaluation.score", "team.view"}, False) == "volunteer"
 
-    # people.view only
-    assert compute_landing("VOLUNTEER", {"people.view"}, False) == "staff"
-    assert compute_landing("VOLUNTEER", {"people.checkin"}, False) == "staff"
+    # people.view / people.checkin volunteer operations
+    assert compute_landing("VOLUNTEER", {"people.view"}, False) == "volunteer"
+    assert compute_landing("VOLUNTEER", {"people.checkin"}, False) == "volunteer"
+
+    # Elevated staff permissions (round.manage, pod.manage, etc.) or FACULTY role land on staff shell
+    assert compute_landing("FACULTY", {"team.view"}, False) == "staff"
+    assert compute_landing("VOLUNTEER", {"round.manage", "team.view"}, False) == "staff"
 
     # Empty VOLUNTEER
     assert compute_landing("VOLUNTEER", set(), False) == "none"

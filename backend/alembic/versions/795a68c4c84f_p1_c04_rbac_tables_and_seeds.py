@@ -19,11 +19,9 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 VOLUNTEER_PERMS = [
-    'team.view',
-    'ps.view',
-    'ps.assist',
-    'checkpoint.view',
     'attendance.mark',
+    'checkpoint.view',
+    'team.view',
     'people.view',
     'people.checkin',
 ]

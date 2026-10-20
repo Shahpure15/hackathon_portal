@@ -64,7 +64,7 @@ const ProtectedRoute = ({ children, portalKey, allowedRole }) => {
     const staffAccessEnabled = features?.staff_admin_portal !== false;
     const isStaffOrAdminLanding = ['admin', 'staff'].includes(access?.landing);
 
-    if (isAdmin || (staffAccessEnabled && isStaffOrAdminLanding)) {
+    if (isAdmin || (staffAccessEnabled && isStaffOrAdminLanding && user.role !== 'VOLUNTEER')) {
       return children;
     }
     return <Navigate to="/" replace />;
@@ -181,6 +181,10 @@ const Home = () => {
   // Dynamic Routing based completely on user role, landing, and permissions
   if (user.role === 'ADMIN' || access?.isAdmin || access?.landing === 'admin') {
     return <Navigate to={ADMIN_ROUTE_PATH} replace />;
+  }
+
+  if (access?.landing === 'volunteer' || user.role === 'VOLUNTEER') {
+    return <Navigate to="/volunteer" replace />;
   }
 
   if (access?.landing === 'staff') {

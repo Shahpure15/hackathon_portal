@@ -4,10 +4,13 @@ import {
 } from 'lucide-react';
 import api from '../services/api';
 import { useToast } from '../contexts/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
 import QRScanner from './QRScanner';
 
 export default function AdminQRScannerView({ onOpenEditModal, onResetPassword }) {
   const { addToast } = useToast();
+  const { can, access } = useAuth();
+  const isAdmin = access?.isAdmin;
   const [teamIdInput, setTeamIdInput] = useState('');
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannedTeam, setScannedTeam] = useState(null);
@@ -132,19 +135,21 @@ export default function AdminQRScannerView({ onOpenEditModal, onResetPassword })
               </div>
 
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <button
-                  className="btn btn-secondary"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', padding: '8px 14px', whiteSpace: 'nowrap' }}
-                  onClick={() => onResetPassword && onResetPassword(scannedTeam.id, scannedTeam.name)}
-                >
-                  <Key size={14} /> Reset Password
-                </button>
+                {(can('team.credentials') || isAdmin) && (
+                  <button
+                    className="btn btn-secondary"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', padding: '8px 14px', whiteSpace: 'nowrap' }}
+                    onClick={() => onResetPassword && onResetPassword(scannedTeam.id, scannedTeam.name)}
+                  >
+                    <Key size={14} /> Reset Password
+                  </button>
+                )}
                 <button
                   className="btn btn-primary"
                   style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', padding: '8px 14px', whiteSpace: 'nowrap' }}
                   onClick={() => onOpenEditModal && onOpenEditModal(scannedTeam)}
                 >
-                  <Edit2 size={14} /> Full Edit
+                  {(can('team.edit') || isAdmin) ? <><Edit2 size={14} /> Full Edit</> : <>View Details</>}
                 </button>
                 <button
                   className="btn btn-secondary"
