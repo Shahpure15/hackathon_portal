@@ -196,39 +196,93 @@ export const RoundList = ({
 
               {/* Feature Chips */}
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
-                <span
-                  style={{
-                    fontSize: '0.76rem',
-                    fontWeight: 700,
-                    padding: '4px 10px',
-                    borderRadius: '20px',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    background: isSubEnabled ? 'rgba(34, 197, 94, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-                    color: isSubEnabled ? '#22c55e' : 'var(--text-muted)',
-                  }}
-                >
-                  <FileText size={13} />
-                  {isSubEnabled ? (isOpen ? 'Submissions: Open' : 'Submissions: Closed') : 'Submissions Disabled'}
-                </span>
+                {(() => {
+                  let subLabel = 'Submissions Disabled';
+                  let subBg = 'rgba(255, 255, 255, 0.05)';
+                  let subColor = 'var(--text-muted)';
+                  if (isSubEnabled) {
+                    if (round.status === 'draft') {
+                      subLabel = 'Submissions: In Setup (Draft)';
+                      subBg = 'rgba(234, 179, 8, 0.12)';
+                      subColor = '#eab308';
+                    } else if (round.status === 'closed') {
+                      subLabel = 'Submissions: Closed';
+                      subBg = 'rgba(239, 68, 68, 0.1)';
+                      subColor = '#ef4444';
+                    } else if (isOpen) {
+                      subLabel = 'Submissions: Open';
+                      subBg = 'rgba(34, 197, 94, 0.12)';
+                      subColor = '#22c55e';
+                    } else {
+                      subLabel = 'Submissions: Paused';
+                      subBg = 'rgba(148, 163, 184, 0.1)';
+                      subColor = '#94a3b8';
+                    }
+                  }
 
-                <span
-                  style={{
-                    fontSize: '0.76rem',
-                    fontWeight: 700,
-                    padding: '4px 10px',
-                    borderRadius: '20px',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    background: isEvalEnabled ? 'rgba(99, 102, 241, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-                    color: isEvalEnabled ? 'var(--primary)' : 'var(--text-muted)',
-                  }}
-                >
-                  <Scale size={13} />
-                  {isEvalEnabled ? (rubricSummary.published ? 'Judging: Live' : 'Judging: Draft Rubric') : 'Judging Disabled'}
-                </span>
+                  let evalLabel = 'Judging Disabled';
+                  let evalBg = 'rgba(255, 255, 255, 0.05)';
+                  let evalColor = 'var(--text-muted)';
+                  if (isEvalEnabled) {
+                    if (round.status === 'draft') {
+                      evalLabel = rubricSummary.published ? 'Judging: Ready (Draft)' : 'Judging: Draft Rubric';
+                      evalBg = 'rgba(234, 179, 8, 0.12)';
+                      evalColor = '#eab308';
+                    } else if (round.status === 'closed') {
+                      evalLabel = 'Judging: Closed';
+                      evalBg = 'rgba(239, 68, 68, 0.1)';
+                      evalColor = '#ef4444';
+                    } else if (round.status === 'live') {
+                      if (rubricSummary.published) {
+                        evalLabel = 'Judging: Live';
+                        evalBg = 'rgba(99, 102, 241, 0.14)';
+                        evalColor = 'var(--primary)';
+                      } else {
+                        evalLabel = 'Judging: Unreleased Rubric';
+                        evalBg = 'rgba(234, 179, 8, 0.12)';
+                        evalColor = '#eab308';
+                      }
+                    }
+                  }
+
+                  return (
+                    <>
+                      <span
+                        style={{
+                          fontSize: '0.76rem',
+                          fontWeight: 700,
+                          padding: '4px 10px',
+                          borderRadius: '20px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          background: subBg,
+                          color: subColor,
+                        }}
+                      >
+                        <FileText size={13} />
+                        {subLabel}
+                      </span>
+
+                      <span
+                        style={{
+                          fontSize: '0.76rem',
+                          fontWeight: 700,
+                          padding: '4px 10px',
+                          borderRadius: '20px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          background: evalBg,
+                          color: evalColor,
+                        }}
+                      >
+                        <Scale size={13} />
+                        {evalLabel}
+                      </span>
+                    </>
+                  );
+                })()}
               </div>
 
               {/* Stats & Schedule */}
