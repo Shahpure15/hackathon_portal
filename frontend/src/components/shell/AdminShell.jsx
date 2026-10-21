@@ -107,6 +107,8 @@ export default function AdminShell({
         activeTab={activeTab}
         onSelectTab={onSelectTab}
         badges={badges}
+        user={user}
+        onLogout={onLogout}
       />
 
       <CommandPalette

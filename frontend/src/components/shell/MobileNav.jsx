@@ -16,7 +16,11 @@ import {
   ShieldCheck,
   Award,
   Circle,
+  KeyRound,
+  User as UserIcon,
+  LogOut,
 } from 'lucide-react';
+import ChangePasswordModal from '../ChangePasswordModal';
 
 const ICON_MAP = {
   LayoutDashboard,
@@ -39,8 +43,18 @@ export default function MobileNav({
   activeTab,
   onSelectTab,
   badges = {},
+  user,
+  onLogout,
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalTab, setModalTab] = useState('username');
+
+  const openAccountModal = (tab = 'username') => {
+    setModalTab(tab);
+    setModalOpen(true);
+    setMoreOpen(false);
+  };
 
   // 4 primary items for bottom navigation
   const PRIMARY_ITEMS = [
@@ -117,6 +131,107 @@ export default function MobileNav({
               </button>
             </div>
 
+            {/* User Profile & Account Actions in Mobile Sheet */}
+            {user && (
+              <div
+                style={{
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid var(--border-light)',
+                  borderRadius: '14px',
+                  padding: '12px',
+                  marginBottom: '14px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, var(--hero), var(--hero-deep))',
+                      color: '#ffffff',
+                      fontSize: '0.9rem',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      textTransform: 'uppercase',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {(user?.username || 'A')[0]}
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {user?.username || 'Admin'}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      {user?.role || 'Administrator'}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => openAccountModal('username')}
+                    className="btn btn-secondary"
+                    style={{
+                      padding: '8px 10px',
+                      fontSize: '0.8rem',
+                      borderRadius: '10px',
+                      justifyContent: 'center',
+                      gap: '5px',
+                    }}
+                  >
+                    <UserIcon size={14} />
+                    <span>Username</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openAccountModal('password')}
+                    className="btn btn-secondary"
+                    style={{
+                      padding: '8px 10px',
+                      fontSize: '0.8rem',
+                      borderRadius: '10px',
+                      justifyContent: 'center',
+                      gap: '5px',
+                    }}
+                  >
+                    <KeyRound size={14} />
+                    <span>Password</span>
+                  </button>
+                </div>
+
+                {onLogout && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMoreOpen(false);
+                      onLogout();
+                    }}
+                    className="btn btn-secondary"
+                    style={{
+                      padding: '8px',
+                      fontSize: '0.8rem',
+                      borderRadius: '10px',
+                      justifyContent: 'center',
+                      color: '#ef4444',
+                      borderColor: 'rgba(239, 68, 68, 0.25)',
+                      gap: '6px',
+                    }}
+                  >
+                    <LogOut size={14} />
+                    <span>Log Out</span>
+                  </button>
+                )}
+              </div>
+            )}
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {groups.map((group) => (
                 <div key={group.id}>
@@ -152,6 +267,12 @@ export default function MobileNav({
           </div>
         </div>
       )}
+
+      <ChangePasswordModal
+        isOpen={modalOpen}
+        initialTab={modalTab}
+        onClose={() => setModalOpen(false)}
+      />
     </>
   );
 }

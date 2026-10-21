@@ -24,10 +24,10 @@ for (const group of ADMIN_GROUPS) {
     }
   }
 }
-assert(allIcons.length === 12, `Expected 12 unique icons, found ${allIcons.length}`);
+assert(allIcons.length === 14, `Expected 14 unique icons, found ${allIcons.length}`);
 
 // 2. Admin sees every group
-const adminGroups = visibleGroups(() => true, () => true, {});
+const adminGroups = visibleGroups(() => true, () => true, {}, true);
 assert(adminGroups.length === ADMIN_GROUPS.length, `Admin sees all ${ADMIN_GROUPS.length} groups`);
 assert(adminGroups.every((g) => g.items.length > 0), 'No group is empty for admin');
 

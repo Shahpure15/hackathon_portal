@@ -21,7 +21,7 @@ export default function JudgeDashboard() {
       <main
         style={{
           flex: 1,
-          padding: '96px 16px 32px',
+          padding: 'clamp(74px, 8vw, 96px) clamp(10px, 3vw, 16px) clamp(90px, 12vw, 120px)',
           maxWidth: '1440px',
           width: '100%',
           margin: '0 auto',

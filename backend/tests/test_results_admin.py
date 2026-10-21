@@ -446,6 +446,16 @@ def test_detailed_sheets_export(client: TestClient, admin_results_setup):
     assert "Team Leader" in sum_headers
     assert "Status" in sum_headers
 
+    # Check that individual team sheet has only 1 judge column (J1) because only 1 judge was assigned/evaluated
+    team_names = [n for n in namelist if "Teams/" in n and n.endswith(".xlsx")]
+    assert len(team_names) > 0
+    twb = openpyxl.load_workbook(io.BytesIO(zf.read(team_names[0])))
+    ws_t = twb["Evaluation Sheet"]
+    # Header row for criteria is row 6
+    crit_headers = [cell.value for cell in ws_t[6] if cell.value is not None]
+    assert "J1" in crit_headers
+    assert "J2" not in crit_headers, "Excel should not hardcode 2 judge columns when only 1 judge is allotted!"
+
     # Check POST also works
     res_post = client.post(f"/admin/rounds/{round_row.id}/export/detailed-sheets", headers=headers)
     assert res_post.status_code == 200

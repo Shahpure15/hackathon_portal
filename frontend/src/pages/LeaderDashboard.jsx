@@ -427,13 +427,24 @@ const LeaderDashboard = () => {
           { id: 'ps', label: 'Problem Selection', icon: <Layers size={16} /> },
           { id: 'settings', label: 'Change Password', icon: <Lock size={16} /> }
         ]}
+        notification={
+          <NotificationBell
+            onSelectRound={(rid) => {
+              handleTabClick('rounds');
+              setTimeout(() => {
+                const el = document.getElementById(`round-card-${rid}`);
+                el?.scrollIntoView({ behavior: 'smooth' });
+              }, 100);
+            }}
+          />
+        }
       />
 
       {/* Main Content Area */}
       <div 
         className="main-content" 
         style={{ 
-          padding: '96px 20px 88px 20px', 
+          padding: isMobile ? '74px 14px 80px 14px' : '96px 20px 88px 20px', 
           maxWidth: '1600px', 
           margin: '0 auto',
           width: '100%',
@@ -441,44 +452,74 @@ const LeaderDashboard = () => {
         }}
       >
         {/* Header Block */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>{teamInfo.name}</h1>
-              {teamInfo.psSelection ? (
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '999px', background: 'rgba(62, 125, 71, 0.15)', color: 'var(--success)', border: '1px solid rgba(62, 125, 71, 0.3)' }}>
-                  Topic Locked [{teamInfo.psSelection.code || teamInfo.psSelection.problemStatement?.code}]
-                </span>
-              ) : (
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '999px', background: 'rgba(224, 92, 26, 0.15)', color: 'var(--warning)', border: '1px solid rgba(224, 92, 26, 0.3)' }}>
-                  Pending Topic Selection
-                </span>
-              )}
-            </div>
-            <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Team Code: <strong style={{ color: 'var(--text-primary)' }}>{teamInfo.registrationId}</strong> | {teamInfo.collegeName}
-            </p>
+        <div style={{ marginBottom: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <h1 style={{ fontSize: 'clamp(1.5rem, 5vw, 2.25rem)', fontWeight: 800, margin: 0, lineHeight: 1.2 }}>{teamInfo.name}</h1>
+            {teamInfo.psSelection ? (
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '999px', background: 'rgba(62, 125, 71, 0.15)', color: 'var(--success)', border: '1px solid rgba(62, 125, 71, 0.3)' }}>
+                Topic Locked [{teamInfo.psSelection.code || teamInfo.psSelection.problemStatement?.code}]
+              </span>
+            ) : (
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '999px', background: 'rgba(224, 92, 26, 0.15)', color: 'var(--warning)', border: '1px solid rgba(224, 92, 26, 0.3)' }}>
+                Pending Topic Selection
+              </span>
+            )}
           </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <NotificationBell
-              onSelectRound={(rid) => {
-                handleTabClick('rounds');
-                setTimeout(() => {
-                  const el = document.getElementById(`round-card-${rid}`);
-                  el?.scrollIntoView({ behavior: 'smooth' });
-                }, 100);
-              }}
-            />
-          </div>
+          <p style={{ color: 'var(--text-secondary)', marginTop: '6px', fontSize: '0.88rem', wordBreak: 'break-word' }}>
+            Team Code: <strong style={{ color: 'var(--text-primary)' }}>{teamInfo.registrationId}</strong> | {teamInfo.collegeName}
+          </p>
         </div>
+
+        {/* Mobile Horizontal Quick Tab Selector */}
+        {isMobile && (
+          <div
+            style={{
+              display: 'flex',
+              gap: '6px',
+              overflowX: 'auto',
+              padding: '2px 2px 12px 2px',
+              scrollbarWidth: 'none',
+              msOverflowStyle: 'none',
+              WebkitOverflowScrolling: 'touch',
+              marginBottom: '16px',
+            }}
+          >
+            {[
+              { id: 'team', label: 'Team Roster', icon: <Users size={15} /> },
+              { id: 'rounds', label: 'Evaluation Rounds', icon: <Award size={15} /> },
+              { id: 'ps', label: 'Problem Selection', icon: <Layers size={15} /> },
+              { id: 'settings', label: 'Change Password', icon: <Lock size={15} /> }
+            ].map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => handleTabClick(item.id)}
+                className={`btn ${activeTab === item.id ? 'btn-primary' : 'btn-secondary'} touch-target`}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '999px',
+                  fontSize: '0.8rem',
+                  fontWeight: activeTab === item.id ? 700 : 500,
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         <div style={{ display: activeTab === 'team' ? 'block' : 'none' }}>
           <div>
             {/* Dashboard Cards Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px', marginBottom: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '20px', marginBottom: '24px' }}>
               {/* Team Roster Card */}
-              <div className="glass-card" style={{ padding: '24px' }}>
+              <div className="glass-card" style={{ padding: isMobile ? '18px 16px' : '24px' }}>
                 <h3 style={{ fontSize: '1.1rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
                   <Users size={18} style={{ color: 'var(--primary)' }} />
                   Team Roster ({teamInfo.members.length} members)

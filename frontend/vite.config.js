@@ -4,6 +4,10 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
+  build: {
+    target: 'es2022',
+    cssTarget: ['chrome100', 'safari15', 'firefox100', 'edge100'],
+  },
   plugins: [
     react(),
     VitePWA({

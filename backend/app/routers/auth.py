@@ -252,10 +252,10 @@ def check_username(
     if cleaned.lower() == current_user.username.lower():
         return {"available": True, "message": "This is your current username", "isCurrent": True}
 
-    existing = db.query(User).filter(
-        User.eventId == current_user.eventId,
-        func.lower(User.username) == cleaned.lower()
-    ).first()
+    query = db.query(User).filter(User.id != current_user.id, func.lower(User.username) == cleaned.lower())
+    if current_user.eventId:
+        query = query.filter((User.eventId == current_user.eventId) | (User.eventId.is_(None)))
+    existing = query.first()
 
     if existing:
         return {"available": False, "message": "Username is already taken"}
@@ -289,11 +289,11 @@ def change_username(
         if not verify_password(data.password, user.passwordHash):
             raise HTTPException(status_code=400, detail="Incorrect password.")
 
-    # Check uniqueness within the event
-    existing = db.query(User).filter(
-        User.eventId == user.eventId,
-        func.lower(User.username) == new_username.lower()
-    ).first()
+    # Check uniqueness (scoped to event and global admins)
+    query = db.query(User).filter(User.id != user.id, func.lower(User.username) == new_username.lower())
+    if user.eventId:
+        query = query.filter((User.eventId == user.eventId) | (User.eventId.is_(None)))
+    existing = query.first()
     if existing:
         raise HTTPException(status_code=400, detail="Username is already taken.")
 

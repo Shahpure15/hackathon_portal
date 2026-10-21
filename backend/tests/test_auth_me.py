@@ -132,3 +132,30 @@ def test_auth_me_disabled_user(db: Session):
 
     res = client.get("/auth/me", headers=auth_header(user))
     assert res.status_code == 401
+
+
+def test_admin_change_username_and_password(db: Session):
+    event = make_org_event(db)
+    admin = make_user(db, event, Role.ADMIN, "admin_change_test")
+
+    # Check username availability
+    res = client.get("/auth/check-username?username=admin_new_name", headers=auth_header(admin))
+    assert res.status_code == 200
+    assert res.json()["available"] is True
+
+    # Change username
+    res = client.post(
+        "/auth/change-username",
+        json={"newUsername": "admin_new_name"},
+        headers=auth_header(admin),
+    )
+    assert res.status_code == 200
+    assert res.json()["username"] == "admin_new_name"
+
+    # Change password
+    res = client.post(
+        "/auth/change-password",
+        json={"currentPassword": "Passw0rd!xyz", "newPassword": "newsecretpassword123"},
+        headers=auth_header(admin),
+    )
+    assert res.status_code == 200

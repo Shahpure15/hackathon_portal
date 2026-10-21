@@ -584,7 +584,7 @@ export default function JudgeConsole() {
             </p>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap: '16px' }}>
             {rounds.map((r) => {
               const assigned = r.assigned || 0;
               const submitted = r.submitted || 0;
@@ -749,7 +749,7 @@ export default function JudgeConsole() {
             <p style={{ margin: 0, color: 'var(--text-secondary)' }}>No teams found matching your search filter.</p>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 260px), 1fr))', gap: '14px' }}>
             {filteredTeams.map((t) => {
               const statusColors = {
                 not_started: { bg: 'rgba(156, 163, 175, 0.1)', fg: 'var(--text-muted)', label: 'Not Started' },
@@ -925,10 +925,10 @@ export default function JudgeConsole() {
   const textFields = rubricFields.filter((f) => f.type === 'text');
   const submission = teamDetail?.submission || {};
 
-  const showOverview = !isMobile || mobileStep === 'overview' || mobileStep === 'all';
-  const showSecA = !isMobile || mobileStep === 'secA' || mobileStep === 'all';
-  const showSecB = !isMobile || mobileStep === 'secB' || mobileStep === 'all';
-  const showFeedback = !isMobile || mobileStep === 'review' || mobileStep === 'all';
+  const showOverview = !isMobile || !hasMultiPsSections || mobileStep === 'overview' || mobileStep === 'all';
+  const showSecA = !isMobile || (hasMultiPsSections && (mobileStep === 'secA' || mobileStep === 'all'));
+  const showSecB = !isMobile || (hasMultiPsSections && (mobileStep === 'secB' || mobileStep === 'all'));
+  const showFeedback = !isMobile || !hasMultiPsSections || mobileStep === 'review' || mobileStep === 'all';
 
   const renderCriterionCard = (field, idx) => {
     const val = scores[field.id];
@@ -1027,7 +1027,7 @@ export default function JudgeConsole() {
 
           {/* Quick Benchmark Anchors */}
           {anchors.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginLeft: 'auto' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginLeft: isMobile ? 0 : 'auto', width: isMobile ? '100%' : 'auto' }}>
               {anchors.map((anc, aIdx) => {
                 const targetScore = anc.to !== undefined ? anc.to : anc.score;
                 return (
@@ -1772,26 +1772,35 @@ export default function JudgeConsole() {
           bottom: 0,
           left: 0,
           right: 0,
-          background: 'rgba(15, 23, 42, 0.96)',
-          backdropFilter: 'blur(16px)',
-          borderTop: '1px solid rgba(255, 255, 255, 0.12)',
-          padding: '12px 18px',
+          background: 'var(--bg-surface, #ffffff)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          borderTop: '1px solid var(--border-light)',
+          padding: '10px 16px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           flexWrap: 'wrap',
           gap: '12px',
           zIndex: 100,
-          boxShadow: '0 -4px 24px rgba(0, 0, 0, 0.4)',
+          boxShadow: '0 -4px 24px rgba(0, 0, 0, 0.2)',
         }}
       >
         {isMobile ? (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '8px' }}>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '0.68rem', color: 'rgba(255, 255, 255, 0.7)', fontWeight: 600 }}>
-                {mobileStep === 'overview' ? 'Step 1/4 · Overview' : mobileStep === 'secA' ? `Step 2/4 · Sec A (${secAScoredCount}/${secATotalCount})` : mobileStep === 'secB' ? `Step 3/4 · Sec B (${secBScoredCount}/${secBTotalCount})` : 'Step 4/4 · Review'}
+              <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                {!hasMultiPsSections
+                  ? `Scoring (${secBScoredCount}/${secBTotalCount})`
+                  : mobileStep === 'overview'
+                  ? 'Step 1/4 · Overview'
+                  : mobileStep === 'secA'
+                  ? `Step 2/4 · Sec A (${secAScoredCount}/${secATotalCount})`
+                  : mobileStep === 'secB'
+                  ? `Step 3/4 · Sec B (${secBScoredCount}/${secBTotalCount})`
+                  : 'Step 4/4 · Review'}
               </span>
-              <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#4ade80' }}>
+              <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#22c55e' }}>
                 {liveTotalScore !== null ? `${liveTotalScore}%` : `${secASubtotal + secBSubtotal}%`}
               </span>
             </div>
@@ -1799,44 +1808,14 @@ export default function JudgeConsole() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               {!isLocked && (
                 <>
-                  {mobileStep === 'overview' && (
-                    <button
-                      type="button"
-                      onClick={() => setMobileStep('secA')}
-                      className="btn btn-primary touch-target"
-                      style={{ padding: '8px 16px', fontSize: '0.84rem', fontWeight: 700, borderRadius: '8px' }}
-                    >
-                      Start Sec A →
-                    </button>
-                  )}
-                  {mobileStep === 'secA' && (
-                    <button
-                      type="button"
-                      onClick={() => setMobileStep('secB')}
-                      className="btn btn-primary touch-target"
-                      style={{ padding: '8px 16px', fontSize: '0.84rem', fontWeight: 700, borderRadius: '8px' }}
-                    >
-                      Next: Sec B →
-                    </button>
-                  )}
-                  {mobileStep === 'secB' && (
-                    <button
-                      type="button"
-                      onClick={() => setMobileStep('review')}
-                      className="btn btn-primary touch-target"
-                      style={{ padding: '8px 16px', fontSize: '0.84rem', fontWeight: 700, borderRadius: '8px' }}
-                    >
-                      Review →
-                    </button>
-                  )}
-                  {(mobileStep === 'review' || mobileStep === 'all') && (
+                  {!hasMultiPsSections ? (
                     <button
                       type="button"
                       onClick={() => setSubmitConfirmOpen(true)}
                       disabled={submitting}
                       className="btn btn-primary touch-target"
                       style={{
-                        padding: '8px 16px',
+                        padding: '8px 18px',
                         fontSize: '0.84rem',
                         fontWeight: 700,
                         background: '#22c55e',
@@ -1849,6 +1828,60 @@ export default function JudgeConsole() {
                     >
                       <Send size={14} /> Submit
                     </button>
+                  ) : (
+                    <>
+                      {mobileStep === 'overview' && (
+                        <button
+                          type="button"
+                          onClick={() => setMobileStep('secA')}
+                          className="btn btn-primary touch-target"
+                          style={{ padding: '8px 16px', fontSize: '0.84rem', fontWeight: 700, borderRadius: '8px' }}
+                        >
+                          Start Sec A →
+                        </button>
+                      )}
+                      {mobileStep === 'secA' && (
+                        <button
+                          type="button"
+                          onClick={() => setMobileStep('secB')}
+                          className="btn btn-primary touch-target"
+                          style={{ padding: '8px 16px', fontSize: '0.84rem', fontWeight: 700, borderRadius: '8px' }}
+                        >
+                          Next: Sec B →
+                        </button>
+                      )}
+                      {mobileStep === 'secB' && (
+                        <button
+                          type="button"
+                          onClick={() => setMobileStep('review')}
+                          className="btn btn-primary touch-target"
+                          style={{ padding: '8px 16px', fontSize: '0.84rem', fontWeight: 700, borderRadius: '8px' }}
+                        >
+                          Review →
+                        </button>
+                      )}
+                      {(mobileStep === 'review' || mobileStep === 'all') && (
+                        <button
+                          type="button"
+                          onClick={() => setSubmitConfirmOpen(true)}
+                          disabled={submitting}
+                          className="btn btn-primary touch-target"
+                          style={{
+                            padding: '8px 16px',
+                            fontSize: '0.84rem',
+                            fontWeight: 700,
+                            background: '#22c55e',
+                            borderColor: '#22c55e',
+                            borderRadius: '8px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}
+                        >
+                          <Send size={14} /> Submit
+                        </button>
+                      )}
+                    </>
                   )}
                 </>
               )}

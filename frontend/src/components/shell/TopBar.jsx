@@ -1,14 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Menu,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Search,
   Bell,
   Sun,
   Moon,
   LogOut,
   KeyRound,
+  User as UserIcon,
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import VersionBadge from '../VersionBadge';
@@ -26,7 +28,33 @@ export default function TopBar({
   onLogout,
 }) {
   const { theme, toggleTheme } = useTheme();
-  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalTab, setModalTab] = useState('username');
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setUserMenuOpen(false);
+      }
+    };
+    if (userMenuOpen) {
+      document.addEventListener('mousedown', handleOutsideClick);
+      document.addEventListener('touchstart', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('touchstart', handleOutsideClick);
+    };
+  }, [userMenuOpen]);
+
+  const openAccountModal = (tab = 'username') => {
+    setModalTab(tab);
+    setModalOpen(true);
+    setUserMenuOpen(false);
+  };
 
   return (
     <header className="admin-topbar" role="banner">
@@ -107,28 +135,99 @@ export default function TopBar({
           )}
         </button>
 
-        {/* User Pill */}
-        <div className="admin-user-pill" title={`Logged in as ${user?.username || 'User'} (${user?.role || 'Staff'})`}>
-          <div className="admin-user-avatar">
-            {(user?.username || 'A')[0].toUpperCase()}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.15 }}>
-            <span style={{ fontWeight: 600, fontSize: '0.8rem' }}>{user?.username || 'Admin'}</span>
-            {user?.role && (
-              <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
-                {user.role}
-              </span>
-            )}
-          </div>
+        {/* User Pill with Dropdown Menu */}
+        <div style={{ position: 'relative' }} ref={userMenuRef}>
+          <button
+            type="button"
+            className="admin-user-pill admin-user-pill-btn"
+            onClick={() => setUserMenuOpen((prev) => !prev)}
+            aria-expanded={userMenuOpen}
+            aria-haspopup="true"
+            title={`Account options for ${user?.username || 'User'}`}
+            style={{
+              cursor: 'pointer',
+              border: userMenuOpen ? '1px solid var(--primary)' : undefined,
+              boxShadow: userMenuOpen ? '0 0 0 2px var(--primary-glow)' : undefined,
+            }}
+          >
+            <div className="admin-user-avatar">
+              {(user?.username || 'A')[0].toUpperCase()}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.15 }}>
+              <span style={{ fontWeight: 600, fontSize: '0.8rem' }}>{user?.username || 'Admin'}</span>
+              {user?.role && (
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
+                  {user.role}
+                </span>
+              )}
+            </div>
+            <ChevronDown size={14} style={{ opacity: 0.7, marginLeft: '2px', transform: userMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
+          </button>
+
+          {/* Glassmorphic Dropdown Menu */}
+          {userMenuOpen && (
+            <div className="admin-user-dropdown" role="menu">
+              <div className="admin-user-dropdown-header">
+                <div className="admin-user-avatar" style={{ width: '32px', height: '32px', fontSize: '0.85rem' }}>
+                  {(user?.username || 'A')[0].toUpperCase()}
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.86rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {user?.username || 'Admin'}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                    {user?.role || 'Administrator'}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ padding: '4px 0' }}>
+                <button
+                  type="button"
+                  className="admin-user-dropdown-item"
+                  onClick={() => openAccountModal('username')}
+                >
+                  <UserIcon size={15} />
+                  <span>Change Username</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="admin-user-dropdown-item"
+                  onClick={() => openAccountModal('password')}
+                >
+                  <KeyRound size={15} />
+                  <span>Change Password</span>
+                </button>
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border-light)', margin: '4px 0' }} />
+
+              <div style={{ padding: '4px 0' }}>
+                <button
+                  type="button"
+                  className="admin-user-dropdown-item text-danger"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    onLogout?.();
+                  }}
+                  style={{ color: '#ef4444' }}
+                >
+                  <LogOut size={15} />
+                  <span>Logout</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Change Password */}
+        {/* Change Account Quick Action */}
         <button
           type="button"
           className="btn btn-secondary admin-password-btn"
-          onClick={() => setChangePasswordOpen(true)}
-          aria-label="Change Password"
-          title="Change Password"
+          onClick={() => openAccountModal('username')}
+          aria-label="Account Settings"
+          title="Account Settings (Username & Password)"
           style={{
             padding: '5px 12px',
             minHeight: 'auto',
@@ -140,8 +239,8 @@ export default function TopBar({
             gap: '5px',
           }}
         >
-          <KeyRound size={14} />
-          <span className="admin-btn-text">Password</span>
+          <UserIcon size={14} />
+          <span className="admin-btn-text">Account</span>
         </button>
 
         {/* Logout */}
@@ -171,8 +270,9 @@ export default function TopBar({
       </div>
 
       <ChangePasswordModal
-        isOpen={changePasswordOpen}
-        onClose={() => setChangePasswordOpen(false)}
+        isOpen={modalOpen}
+        initialTab={modalTab}
+        onClose={() => setModalOpen(false)}
       />
     </header>
   );

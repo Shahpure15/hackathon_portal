@@ -5,11 +5,11 @@ import api from '../services/api';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 
-export const ChangePasswordModal = ({ isOpen, onClose }) => {
+export const ChangePasswordModal = ({ isOpen, onClose, initialTab = 'username' }) => {
   const { addToast } = useToast();
   const { user, updateUsername } = useAuth?.() || {};
 
-  const [activeTab, setActiveTab] = useState('username'); // 'username' or 'password'
+  const [activeTab, setActiveTab] = useState(initialTab || 'username'); // 'username' or 'password'
 
   // Username form state
   const [newUsername, setNewUsername] = useState('');
@@ -31,13 +31,18 @@ export const ChangePasswordModal = ({ isOpen, onClose }) => {
   const [passwordError, setPasswordError] = useState(null);
 
   useEffect(() => {
-    if (isOpen && user?.username) {
-      setNewUsername(user.username);
-      setAvailabilityStatus(null);
-      setUsernameError(null);
-      setPasswordError(null);
+    if (isOpen) {
+      if (initialTab) {
+        setActiveTab(initialTab);
+      }
+      if (user?.username) {
+        setNewUsername(user.username);
+        setAvailabilityStatus(null);
+        setUsernameError(null);
+        setPasswordError(null);
+      }
     }
-  }, [isOpen, user]);
+  }, [isOpen, initialTab, user]);
 
   // Live availability check debouncer
   useEffect(() => {

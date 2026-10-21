@@ -36,7 +36,13 @@ const VolunteerDashboard = () => {
   }, [navItems, activeTab]);
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 1000);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Checkpoints dropdown state
   const [checkpoints, setCheckpoints] = useState([]);
@@ -416,7 +422,7 @@ const VolunteerDashboard = () => {
       <div 
         className="main-content" 
         style={{ 
-          padding: '80px 20px 40px 20px', 
+          padding: isMobile ? '74px 14px 40px 14px' : '80px 20px 40px 20px', 
           maxWidth: '1400px', 
           margin: '0 auto',
           width: '100%',
@@ -424,9 +430,9 @@ const VolunteerDashboard = () => {
         }}
       >
         {/* Header and Checkpoint Selection row */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '20px' }}>
-          <div>
-            <h1 style={{ fontSize: '2.25rem', fontWeight: 800 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '16px' }}>
+          <div style={{ flex: '1 1 280px' }}>
+            <h1 style={{ fontSize: 'clamp(1.4rem, 4.5vw, 2.25rem)', fontWeight: 800, margin: 0, lineHeight: 1.2 }}>
               {activeTab === 'evaluations'
                 ? 'Judge Evaluation'
                 : activeTab === 'checkin'
@@ -435,7 +441,7 @@ const VolunteerDashboard = () => {
                 ? 'Attendance Checkpoints'
                 : 'Faculty, Judges & People'} <span className="font-accent">Desk</span>
             </h1>
-            <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
+            <p style={{ color: 'var(--text-secondary)', marginTop: '6px', fontSize: '0.88rem' }}>
               {activeTab === 'evaluations'
                 ? 'Evaluate participant presentations, review deliverables, and record rubric scores.'
                 : activeTab === 'checkin'
@@ -448,8 +454,8 @@ const VolunteerDashboard = () => {
 
           {/* Active Checkpoint dropdown & quick-pills */}
           {['checkin', 'people', 'checkpoints'].includes(activeTab) && (can('checkpoint.view') || can('attendance.mark') || can('people.checkin')) && (
-            <div className="glass-panel" style={{ padding: '12px 18px', display: 'flex', flexDirection: 'column', gap: '10px', minWidth: '300px', maxWidth: '100%' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+            <div className="glass-panel" style={{ padding: '12px 18px', display: 'flex', flexDirection: 'column', gap: '10px', minWidth: isMobile ? '100%' : '300px', width: isMobile ? '100%' : 'auto', boxSizing: 'border-box' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                   Active Checkpoint:
                 </span>
@@ -457,7 +463,7 @@ const VolunteerDashboard = () => {
                   value={activeCheckpointId}
                   onChange={(e) => setActiveCheckpointId(e.target.value)}
                   className="form-input"
-                  style={{ width: '190px', minHeight: '34px', padding: '4px 10px', fontSize: '0.85rem' }}
+                  style={{ flex: isMobile ? '1 1 180px' : 'none', width: isMobile ? 'auto' : '190px', minHeight: '34px', padding: '4px 10px', fontSize: '0.85rem' }}
                 >
                   {checkpoints.length === 0 && <option value="">No Checkpoints</option>}
                   {checkpoints.map(cp => (
@@ -499,6 +505,45 @@ const VolunteerDashboard = () => {
             </div>
           )}
         </div>
+
+        {/* Mobile Horizontal Quick Tab Selector */}
+        {isMobile && navItems.length > 1 && (
+          <div
+            style={{
+              display: 'flex',
+              gap: '6px',
+              overflowX: 'auto',
+              padding: '2px 2px 14px 2px',
+              scrollbarWidth: 'none',
+              msOverflowStyle: 'none',
+              WebkitOverflowScrolling: 'touch',
+              marginBottom: '16px',
+            }}
+          >
+            {navItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActiveTab(item.id)}
+                className={`btn ${activeTab === item.id ? 'btn-primary' : 'btn-secondary'} touch-target`}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '999px',
+                  fontSize: '0.8rem',
+                  fontWeight: activeTab === item.id ? 700 : 500,
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {navItems.length === 0 && (
           <div
@@ -549,8 +594,8 @@ const VolunteerDashboard = () => {
             )}
 
             {/* Action and Search Bar */}
-            <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: '280px', position: 'relative' }}>
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 240px', minWidth: 'min(100%, 240px)', position: 'relative' }}>
                 <Search size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input
                   type="text"
@@ -565,8 +610,8 @@ const VolunteerDashboard = () => {
               {can('attendance.mark') && (
                 <button 
                   onClick={() => setScannerOpen(true)}
-                  className="btn btn-primary"
-                  style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '160px', justifyContent: 'center' }}
+                  className="btn btn-primary touch-target"
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: isMobile ? '100%' : '160px', width: isMobile ? '100%' : 'auto', justifyContent: 'center' }}
                 >
                   <QrCode size={18} />
                   Scan Team QR
@@ -676,8 +721,8 @@ const VolunteerDashboard = () => {
         {activeTab === 'people' && (
           <div>
             {/* Search and Type Filter Bar */}
-            <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: '280px', position: 'relative' }}>
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 240px', minWidth: 'min(100%, 240px)', position: 'relative' }}>
                 <Search size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input
                   type="text"
@@ -699,7 +744,7 @@ const VolunteerDashboard = () => {
                   setPeoplePage(1);
                 }}
                 className="form-input"
-                style={{ width: '220px', minHeight: '42px', padding: '6px 12px' }}
+                style={{ width: isMobile ? '100%' : '220px', minHeight: '42px', padding: '6px 12px' }}
               >
                 <option value="ALL">All Roles / Types</option>
                 <option value="FACULTY">Faculty</option>
@@ -709,8 +754,8 @@ const VolunteerDashboard = () => {
 
               <button
                 onClick={handleExportPeople}
-                className="btn btn-secondary"
-                style={{ minHeight: '42px', height: '42px', padding: '0 16px', display: 'inline-flex', alignItems: 'center', gap: '8px', fontWeight: 600, fontSize: '0.85rem' }}
+                className="btn btn-secondary touch-target"
+                style={{ width: isMobile ? '100%' : 'auto', minHeight: '42px', height: '42px', padding: '0 16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 600, fontSize: '0.85rem' }}
                 title="Export People Check-In Roster"
               >
                 <Download size={16} />
@@ -852,8 +897,8 @@ const VolunteerDashboard = () => {
         {activeTab === 'checkpoints' && (
           <div className="fade-in-up">
             {/* Top Metrics Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px', marginBottom: '28px' }}>
-              <div className="glass-panel" style={{ padding: '22px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: '16px', marginBottom: '24px' }}>
+              <div className="glass-panel" style={{ padding: '20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
                   <CalendarCheck size={18} style={{ color: 'var(--primary)' }} />
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>
@@ -866,7 +911,7 @@ const VolunteerDashboard = () => {
                 </div>
               </div>
 
-              <div className="glass-panel" style={{ padding: '22px' }}>
+              <div className="glass-panel" style={{ padding: '20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
                   <CheckSquare size={18} style={{ color: '#10b981' }} />
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>
@@ -881,7 +926,7 @@ const VolunteerDashboard = () => {
                 </div>
               </div>
 
-              <div className="glass-panel" style={{ padding: '22px' }}>
+              <div className="glass-panel" style={{ padding: '20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
                   <Users size={18} style={{ color: '#8b5cf6' }} />
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>
@@ -924,7 +969,7 @@ const VolunteerDashboard = () => {
             </div>
 
             {/* Checkpoints Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap: '16px' }}>
               {checkpoints.map(cp => {
                 const isActive = cp.id === activeCheckpointId;
                 return (
@@ -1014,15 +1059,15 @@ const VolunteerDashboard = () => {
 
         {/* JUDGE EVALUATION TAB CONTENT */}
         {activeTab === 'evaluations' && (
-          <div className="fade-in-up">
+          <div className="fade-in-up" style={{ paddingBottom: isMobile ? '90px' : '20px' }}>
             <JudgeConsole />
           </div>
         )}
 
         {/* Team Details & PS Allotment Modal */}
         {selectedTeam && (
-          <div className="modal-overlay-fade" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
-            <div className="glass-card modal-scale-up" style={{ width: '100%', maxWidth: '680px', maxHeight: '90vh', overflowY: 'auto', padding: '28px', position: 'relative' }}>
+          <div className="modal-overlay-fade" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: isMobile ? '12px' : '20px' }}>
+            <div className="glass-card modal-scale-up" style={{ width: '100%', maxWidth: '680px', maxHeight: '92vh', overflowY: 'auto', padding: isMobile ? '18px 14px' : '28px', position: 'relative' }}>
               <button onClick={() => setSelectedTeam(null)} style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
                 <X size={20} />
               </button>

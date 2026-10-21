@@ -13,7 +13,8 @@ export function Navbar({
   onLogout,
   navItems = [],
   activeTab,
-  onTabChange
+  onTabChange,
+  notification
 }) {
   const { user: authUser, access } = useAuth?.() || {};
   const user = userProp || authUser;
@@ -104,8 +105,19 @@ export function Navbar({
       {/* Floating Glass Notch Navigation Pill */}
       <nav className={`floating-nav ${scrolled ? 'scrolled' : ''}`}>
         {/* Left Section: Logo & Role Badge */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, paddingRight: '8px' }}>
-          <span style={{ fontWeight: 800, fontSize: '0.85rem', letterSpacing: '0.3px', whiteSpace: 'nowrap' }} className="text-gradient">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, paddingRight: '6px', minWidth: 0 }}>
+          <span
+            style={{
+              fontWeight: 800,
+              fontSize: isMobile ? '0.8rem' : '0.85rem',
+              letterSpacing: '0.3px',
+              whiteSpace: 'nowrap',
+              maxWidth: isMobile ? '120px' : 'auto',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis'
+            }}
+            className="text-gradient"
+          >
             {title}
           </span>
           {displayRole && (
@@ -118,7 +130,10 @@ export function Navbar({
               fontWeight: 700,
               textTransform: 'uppercase',
               letterSpacing: '0.3px',
-              whiteSpace: 'nowrap'
+              whiteSpace: 'nowrap',
+              maxWidth: isMobile ? '70px' : 'auto',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis'
             }}>
               {displayRole}
             </span>
@@ -233,58 +248,61 @@ export function Navbar({
         )}
 
         {/* Right Section: Desktop Theme Toggle & Logout or Mobile Menu Button */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-          {/* User badge with username visible on all screens */}
-          {user?.username && (
-            <div
-              title={`Logged in as ${user.username} (${displayRole || 'User'})`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '3px 8px 3px 4px',
-                borderRadius: '999px',
-                background: 'rgba(255, 255, 255, 0.08)',
-                border: '1px solid var(--border-light)',
-                flexShrink: 0,
-              }}
-            >
-              <div
-                style={{
-                  width: '24px',
-                  height: '24px',
-                  borderRadius: '50%',
-                  background: 'linear-gradient(135deg, var(--hero), var(--hero-deep))',
-                  color: '#ffffff',
-                  fontSize: '0.68rem',
-                  fontWeight: 700,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  textTransform: 'uppercase',
-                  flexShrink: 0,
-                }}
-              >
-                {user.username[0]}
-              </div>
-              <span
-                style={{
-                  fontWeight: 600,
-                  fontSize: '0.78rem',
-                  maxWidth: isMobile ? '80px' : '130px',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  color: 'var(--text-primary)',
-                }}
-              >
-                {user.username}
-              </span>
-            </div>
-          )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+          {/* Optional notification bell */}
+          {notification}
 
           {!isMobile ? (
             <>
+              {/* User badge with username visible on desktop */}
+              {user?.username && (
+                <div
+                  title={`Logged in as ${user.username} (${displayRole || 'User'})`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '3px 8px 3px 4px',
+                    borderRadius: '999px',
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid var(--border-light)',
+                    flexShrink: 0,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, var(--hero), var(--hero-deep))',
+                      color: '#ffffff',
+                      fontSize: '0.68rem',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      textTransform: 'uppercase',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {user.username[0]}
+                  </div>
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      fontSize: '0.78rem',
+                      maxWidth: '120px',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    {user.username}
+                  </span>
+                </div>
+              )}
+
               <IconButton
                 size="34px"
                 onClick={toggleTheme}
@@ -326,45 +344,49 @@ export function Navbar({
               >
                 {theme === 'dark' ? <Sun size={14} color="var(--primary)" /> : <Moon size={14} color="var(--text-secondary)" />}
               </IconButton>
+
+              {/* Responsive Hamburger Toggle Button */}
               <button
                 type="button"
-                onClick={() => setChangePasswordOpen(true)}
+                onClick={() => setMobileOpen(!mobileOpen)}
                 className="btn btn-secondary touch-target"
-                title="Change Password"
-                aria-label="Change Password"
+                title={mobileOpen ? "Close menu" : "Open menu"}
+                aria-label={mobileOpen ? "Close menu" : "Open menu"}
                 style={{
-                  padding: '4px 10px',
-                  minHeight: 'auto',
+                  width: '32px',
                   height: '32px',
+                  minWidth: '32px',
+                  minHeight: '32px',
+                  maxWidth: '32px',
+                  maxHeight: '32px',
+                  padding: 0,
                   borderRadius: '999px',
-                  fontSize: '0.78rem',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '4px',
+                  justifyContent: 'center',
+                  background: mobileOpen ? 'var(--primary-glow)' : 'transparent',
+                  border: '1px solid var(--border-light)',
+                  borderColor: mobileOpen ? 'var(--primary)' : 'var(--border-light)',
+                  color: mobileOpen ? 'var(--primary)' : 'var(--text-primary)',
+                  position: 'relative',
+                  flexShrink: 0
                 }}
               >
-                <KeyRound size={14} />
-                <span className="navbar-btn-text">Password</span>
-              </button>
-              <button
-                type="button"
-                onClick={onLogout}
-                className="btn btn-secondary touch-target"
-                title="Logout"
-                aria-label="Logout"
-                style={{
-                  padding: '4px 10px',
-                  minHeight: 'auto',
-                  height: '32px',
-                  borderRadius: '999px',
-                  fontSize: '0.78rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                }}
-              >
-                <LogOut size={14} />
-                <span className="navbar-btn-text">Logout</span>
+                {mobileOpen ? <X size={16} /> : <Menu size={16} />}
+                {navItems.length > 0 && !mobileOpen && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '3px',
+                      right: '3px',
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      background: 'var(--primary)',
+                      boxShadow: '0 0 5px var(--primary)',
+                    }}
+                  />
+                )}
               </button>
             </div>
           )}
@@ -385,11 +407,27 @@ export function Navbar({
               zIndex: 998
             }}
           />
-          <div className="mobile-glass-dropdown">
+          <div className="mobile-glass-dropdown" style={{ maxHeight: 'calc(100vh - 84px)', overflowY: 'auto' }}>
             {user && (
-              <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>{user?.username || 'User'}</div>
+              <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  background: 'linear-gradient(135deg, var(--hero), var(--hero-deep))',
+                  color: '#ffffff',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  textTransform: 'uppercase',
+                  flexShrink: 0,
+                }}>
+                  {user.username ? user.username[0] : 'U'}
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: '0.92rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.username || 'User'}</div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{displayRole || user?.role}</div>
                 </div>
               </div>

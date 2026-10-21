@@ -1010,8 +1010,8 @@ def export_detailed_sheets(
                     combined_judges.append(j)
                     seen_judge_ids.add(j.id)
 
-            num_judges = max(len(combined_judges), 2)
-            # ANONYMISED JUDGE NAMES: Judge 1, Judge 2, etc. (No real names)
+            num_judges = len(combined_judges) if len(combined_judges) > 0 else 1
+            # ANONYMISED JUDGE NAMES: Judge 1, Judge 2, etc. (Matches exact count of allotted judges)
             judge_names = [f"Judge {i+1}" for i in range(num_judges)]
 
             total_cols = 5 + num_judges + 1
@@ -1048,7 +1048,7 @@ def export_detailed_sheets(
 
             ws_team.cell(row=4, column=mid_col + 1, value="Panel Judges:").font = font_bold
             ws_team.merge_cells(f"{get_column_letter(mid_col + 2)}4:{last_col_letter}4")
-            ws_team.cell(row=4, column=mid_col + 2, value=", ".join(judge_names) or "Unassigned").font = font_data
+            ws_team.cell(row=4, column=mid_col + 2, value=(", ".join(judge_names) if combined_judges else "Unassigned")).font = font_data
 
             # Guidance / Decisive Test Banner
             guidance_obj = guidance_by_ps.get(ps_id) if ps_id else None
